@@ -1,29 +1,27 @@
 import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, ViewStyle, TextStyle } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, ViewStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Colors } from '../styles/colors'; // Importujemy Twoje nowe stałe
 
 interface GradientButtonProps {
   onPress: () => void;
   title: string;
-  style?: ViewStyle; // Opcjonalne dodatkowe style dla kontenera
+  style?: ViewStyle;
 }
 
 export default function GradientButton({ onPress, title, style }: GradientButtonProps) {
   return (
-    <TouchableOpacity onPress={onPress} style={[styles.wrapper, style]}>
-      {/* LinearGradient jest tłem. 
-        'colors' to tablica kolorów gradientu (niebieski -> turkus -> żółty)
-        'start' i 'end' definiują kierunek (od lewego-górnego rogu do prawego-dolnego)
-      */}
+    <TouchableOpacity onPress={onPress} style={[styles.wrapper, style]} activeOpacity={0.8}>
       <LinearGradient
-        colors={['#498ee6', '#20a079',  '#e4d03f']}
+        // Używamy gotowej tablicy z pliku colors.ts
+        colors={Colors.brand.logoGradient}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.gradient}
       >
         <Text style={styles.text}>{title}</Text>
         
-        {/* Lekki połysk/refleks na górze */}
+        {/* Połysk - zostawiamy jako delikatny detal */}
         <LinearGradient
           colors={['rgba(255,255,255,0.4)', 'rgba(255,255,255,0)']}
           style={styles.gloss}
@@ -35,38 +33,33 @@ export default function GradientButton({ onPress, title, style }: GradientButton
 
 const styles = StyleSheet.create({
   wrapper: {
-    // Stylizacja cienia dla iOS
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.2,
     shadowRadius: 5,
-    // Stylizacja cienia dla Androida
-    elevation: 8,
-    overflow: 'visible', // Aby cień był widoczny
+    elevation: 6,
   },
   gradient: {
-    height: 55, // Dostosuj wysokość
-    borderRadius: 27.5, // Połowa wysokości dla idealnego zaokrąglenia
+    height: 58, // Nieco wyższy, by wyglądał solidniej
+    borderRadius: 29, 
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 30, // Margines boczny dla tekstu
-    overflow: 'hidden', // Aby zaokrąglić rogi gradientu i połysku
+    paddingHorizontal: 20,
+    overflow: 'hidden',
   },
   text: {
     color: '#FFFFFF',
     fontSize: 18,
-    fontWeight: 'bold',
-    // Delikatny cień tekstu dla lepszej czytelności (opcjonalne)
-    textShadowColor: 'rgba(0,0,0,0.3)',
+    fontWeight: '700', // Pogrubienie dla lepszej czytelności na gradiencie
+    textShadowColor: 'rgba(0,0,0,0.2)',
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
+    textShadowRadius: 3,
   },
   gloss: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    height: '50%', // Zajmuje górną połowę przycisku
-    opacity: 0.5, // Stopień przezroczystości
+    height: '45%', 
   },
 });
