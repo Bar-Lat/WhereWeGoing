@@ -88,7 +88,7 @@ export const styles = StyleSheet.create({
   },
   secondaryButton: {
     paddingVertical: 12,
-    borderRadius: 30,
+    borderRadius: 16,
     alignItems: 'center',
     width: '80%', 
     alignSelf: 'center',
