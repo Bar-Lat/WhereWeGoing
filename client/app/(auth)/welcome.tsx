@@ -113,7 +113,8 @@ export default function Welcome() {
   );
 
   return (
-    <View style={[styles.container, { backgroundColor: currentColors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: currentColors.background }]}>
+      
       <Stack.Screen options={{ headerShown: false }} />
       
       <View style={styles.header}>
@@ -175,6 +176,6 @@ export default function Welcome() {
           </TouchableOpacity>
         </View>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }

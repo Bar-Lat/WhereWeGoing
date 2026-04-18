@@ -231,6 +231,7 @@ export default function Register() {
             {/* WIDOK 2: FORMULARZ EMAIL */}
             {viewMode === 'email' && (
               <View style={styles.form}>
+                {/* IMIE */}
                 <View style={styles.inputGroup}>
                   <View style={[styles.inputContainer, { backgroundColor: currentColors.card, borderColor: errors.name ? '#ff4444' : currentColors.border }]}>
                     <Ionicons name="person-outline" size={20} color={errors.name ? '#ff4444' : currentColors.subtext} style={styles.inputIcon} />

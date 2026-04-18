@@ -1,16 +1,20 @@
 import { Dimensions, StyleSheet } from 'react-native';
-const { height } = Dimensions.get('window');
+
+const { width, height } = Dimensions.get('window');
+
+// Prosta funkcja pomocnicza do sprawdzania czy to mały ekran
+const isSmallDevice = height < 700;
 
 export const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  scrollContainer: {
+    flexGrow: 1,
+  },
   content: {
     flex: 1,
     paddingHorizontal: 24,
-    paddingTop: 50,
-    paddingBottom: 40,
-    justifyContent: 'space-between', 
   },
   backButton: {
     width: 40,
@@ -19,27 +23,33 @@ export const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    marginVertical: 20,
+    marginVertical: isSmallDevice ? 10 : 20,
   },
   logo: {
-    width: 260,
-    height: 60,
+    width: '85%',
+    maxWidth: 320,
+    height: 50,
     marginBottom: 10,
   },
   title: {
-    fontSize: 36,
+    fontSize: isSmallDevice ? 28 : 36,
     fontWeight: 'bold',
-    marginTop: 20,
+    textAlign: 'center',
+    marginTop: isSmallDevice ? 10 : 20,
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 14,
     textAlign: 'center',
-    marginTop: 15,
+    marginTop: 10,
+    paddingHorizontal: 10,
+  },
+  body: {
+    flex: 1,
+    justifyContent: 'center',
+    marginVertical: 20,
   },
   selectionGap: {
     gap: 16,
-    flex: 1,
-    justifyContent: 'center', 
   },
   socialButtonLarge: {
     flexDirection: 'row',
@@ -49,8 +59,6 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
-
-
     elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -63,14 +71,11 @@ export const styles = StyleSheet.create({
   },
   form: {
     gap: 12,
-    flex: 1,
-    justifyContent: 'center',
   },
   inputGroup: {
-  height: 75, 
-  marginBottom: 0, 
-  justifyContent: 'flex-start',
-},
+    height: isSmallDevice ? 75 : 85, 
+    justifyContent: 'flex-start',
+  },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -87,20 +92,19 @@ export const styles = StyleSheet.create({
     height: '100%',
     fontSize: 16,
   },
-  footerBase: {
-    marginTop: 20,
+  footer: {
+    marginTop: 'auto',
     alignItems: 'center',
   },
-  loginPrompt: {
-    padding: 20,
+  footerText: {
+    padding: 10,
   },
   errorText: {
-  color: '#ff4444',
-  fontSize: 12,
-  marginLeft: 12,
-  marginTop: 2,
-  bottom: 0,
-},
+    color: '#ff4444',
+    fontSize: 12,
+    marginLeft: 12,
+    marginTop: 2,
+  },
   verificationText: {
     fontSize: 16,
     textAlign: 'center',
