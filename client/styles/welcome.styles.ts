@@ -6,7 +6,7 @@ export const styles = StyleSheet.create({
   container: {
     flex: 1,
     justifyContent: 'space-between',
-    paddingTop: 60,
+    paddingTop: 90,
     paddingBottom: 40,
   },
   header: {
@@ -44,6 +44,9 @@ export const styles = StyleSheet.create({
     height: '130%',
     resizeMode: 'cover',
   },
+  slideGradientOverlay: {
+    ...StyleSheet.absoluteFillObject,
+  },
   // ------------------
   slideTextWrapper: {
     zIndex: 10,
@@ -54,17 +57,11 @@ export const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: 'bold',
     marginBottom: 8,
-    textShadowColor: 'rgba(0, 0, 0, 0.8)',
-    textShadowOffset: {width: -1, height: 1},
-    textShadowRadius: 12
   },
   slideDescription: {
     color: '#f0f0f0',
     fontSize: 16,
     lineHeight: 24,
-    textShadowColor: 'rgba(0, 0, 0, 0.8)',
-    textShadowOffset: {width: -1, height: 1},
-    textShadowRadius: 12
   },
   dotsContainer: {
     flexDirection: 'row',

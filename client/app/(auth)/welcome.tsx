@@ -1,7 +1,7 @@
-import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
-import { Dimensions, FlatList, Image, StyleSheet, Text, TouchableOpacity, View, useColorScheme } from 'react-native';
+import { Dimensions, FlatList, Image, Text, TouchableOpacity, View, useColorScheme } from 'react-native';
 import Logo from '../../assets/images/WhereWeGoingLogo.png';
 import GradientButton from '../../components/gradientButton';
 import { Colors } from "../../styles/colors";
@@ -12,38 +12,38 @@ const { width } = Dimensions.get('window');
 const DATA = [
   {
     id: '1',
-    title: 'Paris',
-    description: 'jakies tam pitolenie.',
+    title: 'Paryż',
+    description: 'Wieża Eiffla',
     image: require('../../assets/images/cities/paris.jpg'),
   },
   {
     id: '2',
     title: 'Barcelona',
-    description: 'jakies tam pitolenie',
+    description: 'Pyszne tapas',
     image: require('../../assets/images/cities/barcelona.jpg'),
   },
   {
     id: '3',
-    title: 'London',
-    description: 'jakies tam pitolenie.',
+    title: 'Londyn',
+    description: 'Angielska herbatka',
     image: require('../../assets/images/cities/london.jpg'),
   },
   {
     id: '4',
     title: 'Tokyo',
-    description: 'jakies tam pitolenie.',
+    description: 'Sushi omakase',
     image: require('../../assets/images/cities/tokyo.jpg'),
   },
   {
     id: '5',
-    title: 'Venice',
-    description: 'jakies tam pitolenie',
+    title: 'Wenecja',
+    description: 'Zachód słońca',
     image: require('../../assets/images/cities/venice.jpg'),
   },
   {
     id: '6',
-    title: 'Warsaw',
-    description: 'jakies tam pitolenie',
+    title: 'Warszawa',
+    description: 'Życie nocne',
     image: require('../../assets/images/cities/warsaw.jpg'),
   },
 ];
@@ -95,12 +95,12 @@ const renderItem = ({ item }: { item: typeof DATA[0] }) => (
   <View style={styles.slideWrapper}>
     <View style={styles.slideContainer}>
       <Image source={item.image} style={styles.slideImage} />
-      
-      {/* Stały blur na poziomie 15 */}
-      <BlurView 
-        intensity={15} 
-        tint="dark" 
-        style={StyleSheet.absoluteFill} 
+      <LinearGradient
+        colors={['rgba(0, 0, 0, 0)', 'rgba(0, 0, 0, 0.9)']}
+        locations={[0.5, 1]}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={styles.slideGradientOverlay}
       />
       
       <View style={styles.slideTextWrapper}>
