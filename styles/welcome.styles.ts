@@ -97,4 +97,11 @@ export const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+  footerBase: {
+    marginTop: 20,
+    alignItems: 'center',
+  },
+  loginPrompt: {
+    padding: 0,
+  },
 });

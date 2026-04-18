@@ -1,4 +1,4 @@
-import { StyleSheet, Dimensions } from 'react-native';
+import { Dimensions, StyleSheet } from 'react-native';
 const { height } = Dimensions.get('window');
 
 export const styles = StyleSheet.create({
@@ -10,7 +10,7 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 50,
     paddingBottom: 40,
-    justifyContent: 'space-between', // Rozpycha elementy (header na górze, footer na dole)
+    justifyContent: 'space-between', 
   },
   backButton: {
     width: 40,
@@ -39,7 +39,7 @@ export const styles = StyleSheet.create({
   selectionGap: {
     gap: 16,
     flex: 1,
-    justifyContent: 'center', // Centruje przyciski wyboru w pionie
+    justifyContent: 'center', 
   },
   socialButtonLarge: {
     flexDirection: 'row',
@@ -49,7 +49,8 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
-    // Cień dla iOS/Android
+
+
     elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -66,8 +67,10 @@ export const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   inputGroup: {
-    marginBottom: 4,
-  },
+  height: 75, 
+  marginBottom: 0, 
+  justifyContent: 'flex-start',
+},
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -89,6 +92,24 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loginPrompt: {
-    padding: 10,
+    padding: 20,
+  },
+  errorText: {
+  color: '#ff4444',
+  fontSize: 12,
+  marginLeft: 12,
+  marginTop: 2,
+  bottom: 0,
+},
+  verificationText: {
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 5,
+  },
+  verificationEmail: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 20,
   },
 });

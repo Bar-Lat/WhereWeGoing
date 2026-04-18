@@ -161,22 +161,18 @@ const renderItem = ({ item }: { item: typeof DATA[0] }) => (
 
       <View style={styles.footer}>
         <GradientButton 
-          title="Create an account"
+          title="Załóż konto"
           onPress={() => router.push('/(auth)/register')}
           style={{ marginBottom: 0 }} 
         />
         
-        <TouchableOpacity 
-          style={[
-            styles.secondaryButton, 
-            { backgroundColor: currentColors.card, borderColor: currentColors.border, borderWidth: 1 }
-          ]}
-          onPress={() => router.push('/(auth)/login')}
-        >
-          <Text style={[styles.secondaryButtonText, { color: currentColors.subtext }]}>
-            I already have an account
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.footerBase}>
+                  <TouchableOpacity style={styles.loginPrompt} onPress={() => router.push('/(auth)/login')}>
+                    <Text style={{ color: currentColors.subtext }}>
+                      Masz już konto? <Text style={{ color: Colors.brand.blue, fontWeight: 'bold' }}>Zaloguj się</Text>
+                    </Text>
+                  </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
