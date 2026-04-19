@@ -9,17 +9,17 @@ import {
   TextInput,
   TouchableOpacity,
   useColorScheme,
-  View,
-  Dimensions
+  View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GoogleLogo from '../../assets/images/google-g-logo.png';
 import Logo from '../../assets/images/WhereWeGoingLogo.png';
 import GradientButton from '../../components/gradientButton';
+import {
+  registerUser,
+} from '../../services/auth.api';
 import { Colors } from '../../styles/colors';
 import { styles } from '../../styles/register.styles';
-
-const { height } = Dimensions.get('window');
 
 export default function Register() {
   const router = useRouter();
@@ -28,35 +28,28 @@ export default function Register() {
   const insets = useSafeAreaInsets();
 
   // Zarządzanie widokiem
-  const [viewMode, setViewMode] = useState<'selection' | 'email' | 'verification'>('selection');
+  const [viewMode, setViewMode] = useState<'selection' | 'email'>('selection');
   
   // Stan wartości z formularza
-  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [code, setCode] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
   // Stany ładowania (Loading States)
   const [isRegistering, setIsRegistering] = useState(false);
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [isResending, setIsResending] = useState(false);
-  const [socialLoading, setSocialLoading] = useState<'google' | 'facebook' | null>(null);
+  const [socialLoading, setSocialLoading] = useState<'google' | 'apple' | null>(null);
 
   // Stan błędów walidacji
-  const [errors, setErrors] = useState({ name: '', email: '', password: '', code: '' });
+  const [errors, setErrors] = useState({ email: '', password: '' });
 
   // 1. Obsługa powrotu
   
   // Funkcja czyszcząca wszystkie pola i błędy
   const resetForm = () => {
-    setName('');
     setEmail('');
     setPassword('');
-    setCode('');
-    setErrors({ name: '', email: '', password: '', code: '' });
+    setErrors({ email: '', password: '' });
     setIsRegistering(false);
-    setIsVerifying(false);
     setShowPassword(false);
   };
 
@@ -65,12 +58,7 @@ export default function Register() {
   }, []);
 
   const handleBack = () => {
-    if (viewMode === 'verification') {
-      setViewMode('email');
-      setCode(''); 
-      setErrors(prev => ({ ...prev, code: '' }));
-    } 
-    else if (viewMode === 'email') {
+    if (viewMode === 'email') {
       setViewMode('selection');
       resetForm();
     } 
@@ -80,13 +68,11 @@ export default function Register() {
     }
   };
 
-  // TODO: Dodać obsługę błędów z API i wyświetlać je w UI (np. "E-mail już istnieje", "Nie można połączyć się z serwerem" itp.)
-  const handleRegister = () => {
-    setErrors({ name: '', email: '', password: '', code: '' });
+  const handleRegister = async () => {
+    setErrors({ email: '', password: '' });
     let hasError = false;
-    const newErrors = { name: '', email: '', password: '', code: '' };
+    const newErrors = { email: '', password: '' };
 
-    if (!name.trim()) { newErrors.name = 'Nazwa jest wymagana'; hasError = true; }
     if (!email.includes('@') || !email.includes('.')) { newErrors.email = 'Podaj poprawny adres e-mail'; hasError = true; }
     if (password.length < 6) { newErrors.password = 'Hasło musi mieć min. 6 znaków'; hasError = true; }
 
@@ -96,52 +82,27 @@ export default function Register() {
     }
 
     setIsRegistering(true);
-    
-    // TODO: Zaimplementować rejestrację przez API 
-    setTimeout(() => {
+
+    try {
+      await registerUser({
+        email,
+        password,
+      });
+      router.replace('/(main)');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Nie udalo sie utworzyc konta';
+      setErrors(prev => ({ ...prev, email: message }));
+    } finally {
       setIsRegistering(false);
-      setViewMode('verification');
-    }, 1500); 
-  };
-
-  // TODO: Dodać obsługę błędów z API i wyświetlać je w UI (np. "Nieprawidłowy kod", "Kod wygasł" itp.)
-  const handleVerifyCode = () => {
-    setErrors({ ...errors, code: '' });
-
-    if (code.length !== 6) {
-      setErrors({ ...errors, code: 'Kod musi składać się z 6 cyfr' });
-      return;
     }
-
-    setIsVerifying(true);
-
-    // TODO: Zaimplementować weryfikację kodu przez API
-    setTimeout(() => {
-      setIsVerifying(false);
-      
-      // Jeśli sukces -> Przekierowanie do głównej aplikacji
-      // router.replace('/(tabs)/home'); 
-    }, 1500);
   };
 
-  // Ponowne wysłanie kodu
-  const handleResendCode = () => {
-    setIsResending(true);
-
-    // TODO: Zaimplementować ponowne wysłanie kodu przez API
-    setTimeout(() => {
-      setIsResending(false);
-    }, 1000);
-  };
-
-  // Rejestracja Social Media (Google / Facebook)
-  const handleSocialAuth = (provider: 'google' | 'facebook') => {
+  // Rejestracja Social Media (Google / Apple)
+  const handleSocialAuth = (provider: 'google' | 'apple') => {
     setSocialLoading(provider);
-
-    // TODO: Zaimplementować autoryzację social media przez API (np. GoogleSignin.signIn() lub Supabase/Firebase OAuth)
+    // TODO: Podpiac logowanie social przez backend.
     setTimeout(() => {
       setSocialLoading(null);
-      // router.replace('/(tabs)/home'); 
     }, 2000);
   };
 
@@ -149,13 +110,13 @@ export default function Register() {
   const getHeaderTitle = () => {
     if (viewMode === 'selection') return 'Zacznijmy!';
     if (viewMode === 'email') return 'Utwórz konto';
-    return 'Weryfikacja';
+    return 'Utwórz konto';
   };
 
   const getHeaderSubtitle = () => {
     if (viewMode === 'selection') return 'Wybierz najwygodniejszą metodę rejestracji';
     if (viewMode === 'email') return 'Wpisz swoje dane, aby kontynuować';
-    return 'Potwierdź swój adres e-mail';
+    return 'Wpisz swoje dane, aby kontynuować';
   };
 
   return (
@@ -188,7 +149,7 @@ export default function Register() {
           </View>
 
           {/* WIDOK 1: WYBÓR METODY */}
-          <View style={styles.body}>
+          <View style={[styles.body, viewMode === 'email' ? styles.bodyEmail : null]}>
             {viewMode === 'selection' && (
               <View style={styles.selectionGap}>
                 <TouchableOpacity style={[styles.socialButtonLarge, { backgroundColor: currentColors.card, borderColor: currentColors.border, borderWidth: 1 }]} onPress={() => setViewMode('email')}>
@@ -212,16 +173,16 @@ export default function Register() {
                 </TouchableOpacity>
 
                 <TouchableOpacity 
-                  style={[styles.socialButtonLarge, { backgroundColor: '#1877F2', borderColor: '#1877F2', borderWidth: 1 }]}
-                  onPress={() => handleSocialAuth('facebook')}
+                  style={[styles.socialButtonLarge, { backgroundColor: '#000000', borderColor: '#000000', borderWidth: 1 }]}
+                  onPress={() => handleSocialAuth('apple')}
                   disabled={socialLoading !== null}
                 >
-                  {socialLoading === 'facebook' ? (
+                  {socialLoading === 'apple' ? (
                     <ActivityIndicator color="#fff" />
                   ) : (
                     <>
-                      <Ionicons name="logo-facebook" size={24} color="#ffffff" />
-                      <Text style={[styles.socialButtonText, { color: '#ffffff' }]}>Kontynuuj przez Facebook</Text>
+                      <Ionicons name="logo-apple" size={24} color="#ffffff" />
+                      <Text style={[styles.socialButtonText, { color: '#ffffff' }]}>Kontynuuj przez Apple</Text>
                     </>
                   )}
                 </TouchableOpacity>
@@ -230,25 +191,10 @@ export default function Register() {
 
             {/* WIDOK 2: FORMULARZ EMAIL */}
             {viewMode === 'email' && (
-              <View style={styles.form}>
-                {/* IMIE */}
-                <View style={styles.inputGroup}>
-                  <View style={[styles.inputContainer, { backgroundColor: currentColors.card, borderColor: errors.name ? '#ff4444' : currentColors.border }]}>
-                    <Ionicons name="person-outline" size={20} color={errors.name ? '#ff4444' : currentColors.subtext} style={styles.inputIcon} />
-                    <TextInput 
-                      style={[styles.input, { color: currentColors.text }]} 
-                      placeholder="Nazwa użytkownika" 
-                      autoCapitalize="none"
-                      placeholderTextColor={currentColors.subtext}
-                      value={name}
-                      onChangeText={setName}
-                    />
-                  </View>
-                  {errors.name ? <Text style={styles.errorText}>{errors.name}</Text> : null}
-                </View>
+              <View style={[styles.form, styles.formCompact]}>
 
                 {/* EMAIL */}
-                <View style={styles.inputGroup}>
+                <View style={[styles.inputGroup, styles.inputGroupCompact]}>
                   <View style={[styles.inputContainer, { backgroundColor: currentColors.card, borderColor: errors.email ? '#ff4444' : currentColors.border }]}>
                     <Ionicons name="mail-outline" size={20} color={errors.email ? '#ff4444' : currentColors.subtext} style={styles.inputIcon} />
                     <TextInput 
@@ -265,7 +211,7 @@ export default function Register() {
                 </View>
 
                 {/* HASŁO */}
-                <View style={styles.inputGroup}>
+                <View style={[styles.inputGroup, styles.inputGroupCompact]}>
                   <View style={[styles.inputContainer, { backgroundColor: currentColors.card, borderColor: errors.password ? '#ff4444' : currentColors.border }]}>
                     <Ionicons name="lock-closed-outline" size={20} color={errors.password ? '#ff4444' : currentColors.subtext} style={styles.inputIcon} />
                     <TextInput 
@@ -284,39 +230,6 @@ export default function Register() {
                 </View>
                 
                 <GradientButton title="Utwórz konto" onPress={handleRegister} loading={isRegistering} />
-              </View>
-            )}
-
-            {/* WIDOK 3: WERYFIKACJA KODU */}
-            {viewMode === 'verification' && (
-              <View style={styles.form}>
-                <Text style={[styles.verificationText, { color: currentColors.text }]}>Wysłaliśmy 6-cyfrowy kod na adres:</Text>
-                <Text style={[styles.verificationEmail, { color: Colors.brand.blue }]}>{email}</Text>
-                
-                <View style={styles.inputGroup}>
-                  <View style={[styles.inputContainer, { backgroundColor: currentColors.card, borderColor: errors.code ? '#ff4444' : currentColors.border, justifyContent: 'center' }]}>
-                    <TextInput
-                      style={[styles.input, { color: currentColors.text, textAlign: 'center', fontSize: 24, letterSpacing: 8 }]}
-                      placeholder="000000"
-                      keyboardType="numeric"
-                      maxLength={6}
-                      value={code}
-                      onChangeText={setCode}
-                      placeholderTextColor={currentColors.subtext}
-                    />
-                  </View>
-                  {errors.code ? <Text style={[styles.errorText, { textAlign: 'center', marginLeft: 0 }]}>{errors.code}</Text> : null}
-                </View>
-                
-                <GradientButton title="Zweryfikuj" onPress={handleVerifyCode} loading={isVerifying} />
-                
-                <TouchableOpacity style={{ marginTop: 15, alignItems: 'center' }} onPress={handleResendCode} disabled={isResending}>
-                  {isResending ? (
-                    <ActivityIndicator color={Colors.brand.blue} size="small" />
-                  ) : (
-                    <Text style={{ color: currentColors.subtext }}>Nie dostałeś kodu? <Text style={{ color: Colors.brand.blue, fontWeight: 'bold' }}>Wyślij ponownie</Text></Text>
-                  )}
-                </TouchableOpacity>
               </View>
             )}
           </View>

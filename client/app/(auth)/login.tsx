@@ -32,7 +32,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [isPasswordVisible, setPasswordVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [socialLoading, setSocialLoading] = useState<'google' | 'facebook' | null>(null);
+  const [socialLoading, setSocialLoading] = useState<'google' | 'apple' | null>(null);
 
   // NOWE: Stan dla błędów
   const [errors, setErrors] = useState({ email: '', password: '' });
@@ -89,8 +89,10 @@ export default function Login() {
     );
   };
 
-  const handleSocialAuth = (provider: 'google' | 'facebook') => {
+  const handleSocialAuth = (provider: 'google' | 'apple') => {
     setSocialLoading(provider);
+
+    // TODO: Podpiac logowanie social przez backend.
     setTimeout(() => {
       setSocialLoading(null);
     }, 2000);
@@ -200,14 +202,14 @@ export default function Login() {
                 </TouchableOpacity>
 
                 <TouchableOpacity 
-                  style={[styles.socialButtonSmall, { backgroundColor: '#1877F2', borderColor: '#1877F2' }]}
-                  onPress={() => handleSocialAuth('facebook')}
+                  style={[styles.socialButtonSmall, { backgroundColor: '#000000', borderColor: '#000000' }]}
+                  onPress={() => handleSocialAuth('apple')}
                   disabled={socialLoading !== null}
                 >
-                  {socialLoading === 'facebook' ? (
+                  {socialLoading === 'apple' ? (
                     <ActivityIndicator color="#fff" />
                   ) : (
-                    <Ionicons name="logo-facebook" size={32} color="#ffffff" />
+                    <Ionicons name="logo-apple" size={32} color="#ffffff" />
                   )}
                 </TouchableOpacity>
               </View>

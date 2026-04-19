@@ -48,6 +48,10 @@ export const styles = StyleSheet.create({
     justifyContent: 'center',
     marginVertical: 20,
   },
+  bodyEmail: {
+    justifyContent: 'flex-start',
+    marginTop: isSmallDevice ? 2 : 10,
+  },
   selectionGap: {
     gap: 16,
   },
@@ -72,9 +76,15 @@ export const styles = StyleSheet.create({
   form: {
     gap: 12,
   },
+  formCompact: {
+    gap: 8,
+  },
   inputGroup: {
     height: isSmallDevice ? 75 : 85, 
     justifyContent: 'flex-start',
+  },
+  inputGroupCompact: {
+    height: isSmallDevice ? 70 : 76,
   },
   inputContainer: {
     flexDirection: 'row',
