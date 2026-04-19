@@ -2,10 +2,10 @@ import { Stack } from 'expo-router';
 import React from 'react';
 import { Image, Text, TouchableOpacity, View } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
-import ButtonLogo from '../../assets/images/HereWeGoLogo.png';
-import Logo from '../../assets/images/WhereWeGoingLogo.png';
-import { useAuth } from '../../providers/auth.provider';
-import { styles } from '../../styles/index.styles';
+import ButtonLogo from '@/assets/images/HereWeGoLogo.png';
+import Logo from '@/assets/images/WhereWeGoingLogo.png';
+import { useAuth } from '@/providers/auth.provider';
+import { styles } from '@/styles/index.styles';
 
 export default function Index() {
   const { signOut } = useAuth();

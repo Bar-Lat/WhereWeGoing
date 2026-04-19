@@ -12,15 +12,15 @@ import {
   View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import GoogleLogo from '../../assets/images/google-g-logo.png';
-import Logo from '../../assets/images/WhereWeGoingLogo.png';
-import GradientButton from '../../components/gradientButton';
+import GoogleLogo from '@/assets/images/google-g-logo.png';
+import Logo from '@/assets/images/WhereWeGoingLogo.png';
+import GradientButton from '@/components/gradientButton';
 import {
   registerUser,
-} from '../../services/auth.api';
-import { useAuth } from '../../providers/auth.provider';
-import { Colors } from '../../styles/colors';
-import { styles } from '../../styles/register.styles';
+} from '@/services/auth.api';
+import { useAuth } from '@/providers/auth.provider';
+import { Colors } from '@/styles/colors';
+import { styles } from '@/styles/register.styles';
 
 export default function Register() {
   const router = useRouter();

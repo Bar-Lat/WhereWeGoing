@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Keyboard,
   ScrollView,
   Text,
   TextInput,
@@ -14,12 +15,12 @@ import {
   Alert // <-- Dodano Alert do obsługi "Zapomniałeś hasła"
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import GoogleLogo from '../../assets/images/google-g-logo.png';
-import Logo from '../../assets/images/WhereWeGoingLogo.png';
-import GradientButton from '../../components/gradientButton';
-import { useAuth } from '../../providers/auth.provider';
-import { Colors } from '../../styles/colors';
-import { styles } from '../../styles/login.styles';
+import GoogleLogo from '@/assets/images/google-g-logo.png';
+import Logo from '@/assets/images/WhereWeGoingLogo.png';
+import GradientButton from '@/components/gradientButton';
+import { useAuth } from '@/providers/auth.provider';
+import { Colors } from '@/styles/colors';
+import { styles } from '@/styles/login.styles';
 
 const { height } = Dimensions.get('window');
 
@@ -166,6 +167,10 @@ export default function Login() {
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry={!isPasswordVisible}
+                    autoComplete="password"
+                    textContentType="password"
+                    onSubmitEditing={() => Keyboard.dismiss()}
+                    onEndEditing={() => Keyboard.dismiss()}
                   />
                   <TouchableOpacity onPress={() => setPasswordVisible(!isPasswordVisible)} style={styles.eyeIcon}>
                     <Ionicons 

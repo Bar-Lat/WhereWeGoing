@@ -2,10 +2,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import { Dimensions, FlatList, Image, Text, TouchableOpacity, View, useColorScheme } from 'react-native';
-import Logo from '../../assets/images/WhereWeGoingLogo.png';
-import GradientButton from '../../components/gradientButton';
-import { Colors } from "../../styles/colors";
-import { styles } from '../../styles/welcome.styles';
+import Logo from '@/assets/images/WhereWeGoingLogo.png';
+import GradientButton from '@/components/gradientButton';
+import { Colors } from '@/styles/colors';
+import { styles } from '@/styles/welcome.styles';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const { width } = Dimensions.get('window');

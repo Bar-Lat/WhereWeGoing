@@ -1,7 +1,7 @@
 import { Stack, useRouter, useSegments } from 'expo-router';
 import React, { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import { AuthProvider, useAuth } from '../providers/auth.provider';
+import { AuthProvider, useAuth } from '@/providers/auth.provider';
 
 function AppNavigator() {
   const router = useRouter();

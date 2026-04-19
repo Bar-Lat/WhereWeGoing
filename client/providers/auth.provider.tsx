@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { loginUser, logoutUser, refreshUserSession, type AuthSession } from '../services/auth.api';
-import { clearSession, getSession, saveSession } from '../services/session.storage';
+import { loginUser, logoutUser, refreshUserSession, type AuthSession } from '@/services/auth.api';
+import { clearSession, getSession, saveSession } from '@/services/session.storage';
 
 type AuthContextValue = {
   isBootstrapping: boolean;
