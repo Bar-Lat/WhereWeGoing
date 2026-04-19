@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, useColorScheme } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors } from '../../styles/colors';
+import { Colors } from '@/styles/colors';
 import ScreenHeader from '../../components/ScreenHeader';
 
 export default function Create() {

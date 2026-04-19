@@ -4,8 +4,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 
-import { Colors } from '../../styles/colors';
-import { styles } from '../../styles/trips.styles';
+import { Colors } from '@/styles/colors';
+import { styles } from '@/styles/trips.styles';
 import ScreenHeader from '../../components/ScreenHeader';
 
 // --- MOCK DATA ---

@@ -8,8 +8,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import { Colors } from '../../styles/colors';
-import { styles } from '../../styles/inspiration.styles';
+import { Colors } from '@/styles/colors';
+import { styles } from '@/styles/inspiration.styles';
 import ScreenHeader from '../../components/ScreenHeader';
 
 // --- MOCK DATA ---

@@ -23,7 +23,7 @@ function AppNavigator() {
         const inMainGroup = segments[0] === '(main)';
 
         if (isAuthenticated && inAuthGroup) {
-            router.replace('/(main)');
+            router.replace('/(main)/home');
             return;
         }
 

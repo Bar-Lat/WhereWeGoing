@@ -7,8 +7,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { Colors } from '../../styles/colors';
-import { styles } from '../../styles/home.styles';
+import { Colors } from '@/styles/colors';
+import { styles } from '@/styles/home.styles';
 import ScreenHeader from '../../components/ScreenHeader';
 
 const MOCK_TRIP = {

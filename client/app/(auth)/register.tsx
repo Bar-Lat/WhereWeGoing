@@ -14,7 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GoogleLogo from '@/assets/images/google-g-logo.png';
 import Logo from '@/assets/images/WhereWeGoingLogo.png';
-import GradientButton from '@/components/gradientButton';
+import GradientButton from '@/components/GradientButton';
 import {
   registerUser,
 } from '@/services/auth.api';
@@ -91,7 +91,7 @@ export default function Register() {
         password,
       });
       await signInWithPassword(email, password);
-      router.replace('/(main)');
+      router.replace('/(main)/home');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Nie udalo sie utworzyc konta';
       setErrors(prev => ({ ...prev, email: message }));
