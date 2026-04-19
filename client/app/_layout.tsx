@@ -10,34 +10,18 @@ function AppNavigator() {
 
   useEffect(() => {
     if (isBootstrapping) {
-      console.log('[ROUTE_GUARD_BOOTSTRAPPING]', { segments });
       return;
     }
 
     const inAuthGroup = segments[0] === '(auth)';
     const inMainGroup = segments[0] === '(main)';
 
-    console.log('[ROUTE_GUARD_STATE]', {
-      isAuthenticated,
-      inAuthGroup,
-      inMainGroup,
-      segments,
-    });
-
     if (isAuthenticated && inAuthGroup) {
-      console.log('[ROUTE_GUARD_REDIRECT]', {
-        reason: 'authenticated-in-auth-group',
-        target: '/(main)',
-      });
       router.replace('/(main)');
       return;
     }
 
     if (!isAuthenticated && inMainGroup) {
-      console.log('[ROUTE_GUARD_REDIRECT]', {
-        reason: 'unauthenticated-in-main-group',
-        target: '/(auth)/welcome',
-      });
       router.replace('/(auth)/welcome');
     }
   }, [isAuthenticated, isBootstrapping, router, segments]);

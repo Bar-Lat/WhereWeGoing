@@ -151,6 +151,10 @@ export default function Login() {
                     onChangeText={setEmail}
                     keyboardType="email-address"
                     autoCapitalize="none"
+                    autoComplete="email"
+                    textContentType="emailAddress"
+                    onSubmitEditing={() => Keyboard.dismiss()}
+                    onEndEditing={() => Keyboard.dismiss()}
                   />
                 </View>
                 {errors.email ? <Text style={styles.errorText}>{errors.email}</Text> : null}
