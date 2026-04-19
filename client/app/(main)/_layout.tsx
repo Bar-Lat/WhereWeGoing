@@ -1,6 +1,6 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { View, Text, StyleSheet, Platform, useColorScheme } from 'react-native';
+import { View, Text, StyleSheet, useColorScheme } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '../../styles/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -59,7 +59,7 @@ export default function MainLayout() {
       <Tabs.Screen
         name="inspiration"
         options={{
-          title: 'Odkryj',
+          title: 'Inspiracje',
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? "compass" : "compass-outline"} size={24} color={color} />
           ),

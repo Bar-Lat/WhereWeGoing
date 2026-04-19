@@ -15,8 +15,6 @@ export default function Profile() {
     <View style={[styles.container, { backgroundColor: currentColors.background }]}>
       <ScreenHeader 
         title="Mój Profil" 
-        rightIconName="settings-outline" 
-        onRightPress={() => console.log('Otwieram ustawienia')} 
       />
 
       <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPadding }]}>

@@ -1,12 +1,11 @@
 import React, { useRef, useState } from 'react';
 import { 
   View, Text, TouchableOpacity, StyleSheet, 
-  Animated, PanResponder, Modal, FlatList, 
-  SafeAreaView, Dimensions 
+  Animated, PanResponder, Modal, FlatList, Dimensions 
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors } from '../styles/colors';
+import { SafeAreaView } from 'react-native-safe-area-context'; 
 
 // Tutaj definiujemy wszystkie ścieżki w aplikacji
 const ROUTES = [
