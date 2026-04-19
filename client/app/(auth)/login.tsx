@@ -11,12 +11,12 @@ import {
   useColorScheme,
   View,
   Dimensions,
-  Alert // <-- Dodano Alert do obsługi "Zapomniałeś hasła"
+  Alert 
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GoogleLogo from '../../assets/images/google-g-logo.png';
 import Logo from '../../assets/images/WhereWeGoingLogo.png';
-import GradientButton from '../../components/gradientButton';
+import GradientButton from '../../components/GradientButton'; 
 import { Colors } from '../../styles/colors';
 import { styles } from '../../styles/login.styles';
 
@@ -67,7 +67,7 @@ export default function Login() {
     // TODO: Zaimplementować logikę logowania (np. Firebase/Supabase/własne API)
     setTimeout(() => {
       setIsLoading(false);
-      // router.replace('/home'); 
+      router.replace('/home'); 
     }, 2000);
   };
 

@@ -15,7 +15,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GoogleLogo from '../../assets/images/google-g-logo.png';
 import Logo from '../../assets/images/WhereWeGoingLogo.png';
-import GradientButton from '../../components/gradientButton';
+import GradientButton from '../../components/GradientButton';
 import { Colors } from '../../styles/colors';
 import { styles } from '../../styles/register.styles';
 
