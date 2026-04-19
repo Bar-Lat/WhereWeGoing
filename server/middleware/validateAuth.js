@@ -23,7 +23,49 @@ const validateRegister = (req, res, next) => {
   return next();
 };
 
+// Walidacja danych wejściowych przy logowaniu.
+const validateLogin = (req, res, next) => {
+  const { email, password } = req.body;
+
+  if (!email || !emailRegex.test(email) || !password || typeof password !== 'string') {
+    return res.status(400).json({
+      message: 'Podaj poprawny e-mail i hasło',
+    });
+  }
+
+  return next();
+};
+
+// Walidacja refresh tokena przy przywracaniu sesji.
+const validateRefresh = (req, res, next) => {
+  const { refreshToken } = req.body;
+
+  if (!refreshToken || typeof refreshToken !== 'string') {
+    return res.status(400).json({
+      message: 'Brak poprawnego refresh tokena',
+    });
+  }
+
+  return next();
+};
+
+// Walidacja access tokena przy wylogowaniu.
+const validateLogout = (req, res, next) => {
+  const { accessToken } = req.body;
+
+  if (!accessToken || typeof accessToken !== 'string') {
+    return res.status(400).json({
+      message: 'Brak poprawnego access tokena',
+    });
+  }
+
+  return next();
+};
+
 module.exports = {
   validateRegister,
+  validateLogin,
+  validateRefresh,
+  validateLogout,
 };
 

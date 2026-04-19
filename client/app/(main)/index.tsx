@@ -4,9 +4,12 @@ import { Image, Text, TouchableOpacity, View } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import ButtonLogo from '../../assets/images/HereWeGoLogo.png';
 import Logo from '../../assets/images/WhereWeGoingLogo.png';
+import { useAuth } from '../../providers/auth.provider';
 import { styles } from '../../styles/index.styles';
 
 export default function Index() {
+  const { signOut } = useAuth();
+
   return (
     <View style={styles.container}>
       <Stack.Screen 
@@ -20,6 +23,11 @@ export default function Index() {
           ),
           headerStyle: { backgroundColor: '#222' },
           headerShadowVisible: true,
+          headerRight: () => (
+            <TouchableOpacity onPress={() => signOut('manual')} style={{ marginRight: 12 }}>
+              <Text style={{ color: '#fff', fontWeight: '600' }}>Wyloguj</Text>
+            </TouchableOpacity>
+          ),
         }} 
       />
 
@@ -44,23 +52,23 @@ export default function Index() {
         {/* --- WIERSZ PRZYCISKÓW --- */}
         <View style={styles.buttonsRow}>
           
-          <TouchableOpacity style={styles.sideButton} onPress={() => console.log('LeftLeftButtonClicked')}>
+          <TouchableOpacity style={styles.sideButton} onPress={() => {}}>
             <Text style={styles.sideButtonText}>💡</Text>
           </TouchableOpacity>
           
-          <TouchableOpacity style={styles.sideButton} onPress={() => console.log('LeftButtonClicked')}>
+          <TouchableOpacity style={styles.sideButton} onPress={() => {}}>
             <Text style={styles.sideButtonText}>🔍</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.middleButton} onPress={() => console.log('MiddleButtonClicked')}>
+          <TouchableOpacity style={styles.middleButton} onPress={() => {}}>
             <Image source={ButtonLogo} style={styles.buttonImage} />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.sideButton} onPress={() => console.log('RightButtonClicked')}>
+          <TouchableOpacity style={styles.sideButton} onPress={() => {}}>
             <Text style={styles.sideButtonText}>👤</Text>
           </TouchableOpacity>
           
-          <TouchableOpacity style={styles.sideButton} onPress={() => console.log('RightRightButtonClicked')}>
+          <TouchableOpacity style={styles.sideButton} onPress={() => {}}>
             <Text style={styles.sideButtonText}>🌐</Text>
           </TouchableOpacity>
           

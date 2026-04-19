@@ -10,27 +10,9 @@ const ensureProfile = async ({ userId, email }) => {
   const userModel = User.fromRegistration({ email });
   const profileRow = userModel.toProfileRow(userId);
 
-  console.log('[PROFILE_UPSERT_PAYLOAD]', {
-    profileTarget: `${profileSchema}.${profileTable}`,
-    payload: profileRow,
-  });
-
   const { error: profileError } = await upsertUserProfile(profileRow);
 
   if (profileError) {
-    console.error('[PROFILE_UPSERT_ERROR]', {
-      profileTarget: `${profileSchema}.${profileTable}`,
-      payload: profileRow,
-      message: profileError.message,
-      details: profileError.details,
-      hint: profileError.hint,
-      code: profileError.code,
-    });
-
-    console.error('[PROFILE_UPSERT_HINTS]', {
-      note: 'Sprawdz, czy tabela i kolumny istnieja oraz czy id jest uuid primary key i FK do auth.users(id).',
-    });
-
     return {
       ok: false,
       statusCode: 500,
@@ -57,8 +39,15 @@ const mapSupabaseError = (error) => {
 
   if (/invalid login credentials|invalid email|password/i.test(message)) {
     return {
-      statusCode: 400,
-      message: 'Niepoprawne dane logowania lub rejestracji',
+      statusCode: 401,
+      message: 'Niepoprawny e-mail lub hasło',
+    };
+  }
+
+  if (/refresh token|jwt|token is invalid|invalid token|session not found/i.test(message)) {
+    return {
+      statusCode: 401,
+      message: 'Sesja wygasła. Zaloguj się ponownie.',
     };
   }
 
@@ -75,16 +64,19 @@ const mapSupabaseError = (error) => {
   };
 };
 
+const formatAuthResponse = (data, fallbackEmail = null) => ({
+  user: {
+    id: data?.user?.id || null,
+    email: data?.user?.email || fallbackEmail,
+  },
+  session: data?.session || null,
+});
+
 // Rejestruje konto w auth.users i tworzy rekord profilu 1:1.
 const register = async (req, res, next) => {
   try {
     const { email, password } = req.body;
     const userModel = User.fromRegistration({ email });
-
-    console.log('[REGISTER_REQUEST]', {
-      email,
-      profileTarget: `${profileSchema}.${profileTable}`,
-    });
 
     const signUpOptions = {};
 
@@ -98,20 +90,7 @@ const register = async (req, res, next) => {
       options: signUpOptions,
     });
 
-    console.log('[REGISTER_SIGNUP_RESULT]', {
-      hasUser: Boolean(data?.user),
-      userId: data?.user?.id || null,
-      userEmail: data?.user?.email || null,
-    });
-
     if (error) {
-      console.error('[REGISTER_SIGNUP_ERROR]', {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code,
-        status: error.status,
-      });
       const mapped = mapSupabaseError(error);
       return res.status(mapped.statusCode).json({ message: mapped.message });
     }
@@ -138,7 +117,83 @@ const register = async (req, res, next) => {
   }
 };
 
-module.exports = {
-  register,
+// Logowanie e-mail + hasło i zwrot sesji do klienta mobilnego.
+const login = async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
+
+    const { data, error } = await supabaseAuthClient.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      const mapped = mapSupabaseError(error);
+      return res.status(mapped.statusCode).json({ message: mapped.message });
+    }
+
+    return res.status(200).json({
+      message: 'Logowanie zakończone poprawnie.',
+      ...formatAuthResponse(data, email),
+    });
+  } catch (err) {
+    return next(err);
+  }
 };
 
+// Odświeżenie sesji na podstawie refresh tokena zapisnego w aplikacji.
+const refreshSession = async (req, res, next) => {
+  try {
+    const { refreshToken } = req.body;
+
+    const { data, error } = await supabaseAuthClient.auth.refreshSession({
+      refresh_token: refreshToken,
+    });
+
+    if (error) {
+      const mapped = mapSupabaseError(error);
+      return res.status(mapped.statusCode).json({ message: mapped.message });
+    }
+
+    return res.status(200).json({
+      message: 'Sesja odświeżona poprawnie.',
+      ...formatAuthResponse(data),
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+// Wylogowanie: unieważnia wszystkie sesje użytkownika po zweryfikowaniu access tokena.
+const logout = async (req, res, next) => {
+  try {
+    const { accessToken } = req.body;
+
+    const { data: userData, error: userError } = await supabaseAuthClient.auth.getUser(accessToken);
+
+    if (userError || !userData?.user?.id) {
+      const mapped = mapSupabaseError(userError || new Error('Brak poprawnego tokena'));
+      return res.status(mapped.statusCode).json({ message: mapped.message });
+    }
+
+    const { error: signOutError } = await supabaseAuthClient.auth.admin.signOut(userData.user.id);
+
+    if (signOutError) {
+      const mapped = mapSupabaseError(signOutError);
+      return res.status(mapped.statusCode).json({ message: mapped.message });
+    }
+
+    return res.status(200).json({
+      message: 'Wylogowano poprawnie.',
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+module.exports = {
+  register,
+  login,
+  refreshSession,
+  logout,
+};

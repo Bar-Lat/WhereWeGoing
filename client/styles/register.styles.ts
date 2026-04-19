@@ -1,6 +1,6 @@
 import { Dimensions, StyleSheet } from 'react-native';
 
-const { width, height } = Dimensions.get('window');
+const { height } = Dimensions.get('window');
 
 // Prosta funkcja pomocnicza do sprawdzania czy to mały ekran
 const isSmallDevice = height < 700;
@@ -35,7 +35,7 @@ export const styles = StyleSheet.create({
     fontSize: isSmallDevice ? 28 : 36,
     fontWeight: 'bold',
     textAlign: 'center',
-    marginTop: isSmallDevice ? 10 : 20,
+    marginTop: isSmallDevice ? 16 : 28,
   },
   subtitle: {
     fontSize: 14,

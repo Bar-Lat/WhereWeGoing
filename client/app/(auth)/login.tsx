@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GoogleLogo from '../../assets/images/google-g-logo.png';
 import Logo from '../../assets/images/WhereWeGoingLogo.png';
 import GradientButton from '../../components/gradientButton';
+import { useAuth } from '../../providers/auth.provider';
 import { Colors } from '../../styles/colors';
 import { styles } from '../../styles/login.styles';
 
@@ -24,6 +25,7 @@ const { height } = Dimensions.get('window');
 
 export default function Login() {
   const router = useRouter();
+  const { signInWithPassword } = useAuth();
   const colorScheme = useColorScheme() ?? 'light';
   const currentColors = Colors[colorScheme];
   const insets = useSafeAreaInsets();
@@ -41,7 +43,7 @@ export default function Login() {
     router.back();
   };
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     // 1. Reset błędów
     setErrors({ email: '', password: '' });
     let hasError = false;
@@ -64,11 +66,16 @@ export default function Login() {
 
     // 3. Właściwe logowanie
     setIsLoading(true);
-    // TODO: Zaimplementować logikę logowania (np. Firebase/Supabase/własne API)
-    setTimeout(() => {
+
+    try {
+      await signInWithPassword(email, password);
+      router.replace('/(main)');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Nie udalo sie zalogowac';
+      setErrors(prev => ({ ...prev, email: message }));
+    } finally {
       setIsLoading(false);
-      // router.replace('/home'); 
-    }, 2000);
+    }
   };
 
   // NOWE: Handler zapomnianego hasła

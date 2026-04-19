@@ -18,11 +18,13 @@ import GradientButton from '../../components/gradientButton';
 import {
   registerUser,
 } from '../../services/auth.api';
+import { useAuth } from '../../providers/auth.provider';
 import { Colors } from '../../styles/colors';
 import { styles } from '../../styles/register.styles';
 
 export default function Register() {
   const router = useRouter();
+  const { signInWithPassword } = useAuth();
   const colorScheme = useColorScheme() ?? 'light';
   const currentColors = Colors[colorScheme];
   const insets = useSafeAreaInsets();
@@ -88,6 +90,7 @@ export default function Register() {
         email,
         password,
       });
+      await signInWithPassword(email, password);
       router.replace('/(main)');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Nie udalo sie utworzyc konta';
