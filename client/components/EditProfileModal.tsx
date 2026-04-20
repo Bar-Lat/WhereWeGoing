@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Image,
   Keyboard,
   Modal,
@@ -9,6 +10,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+    Linking,
   useColorScheme,
   KeyboardAvoidingView,
   Platform,
@@ -109,7 +111,22 @@ export default function EditProfileModal({
     if (!accessToken || isUploadingAvatar) return;
 
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) return;
+    if (!permission.granted) {
+      Alert.alert(
+          'Brak dostępu do zdjęć',
+          'Żeby wybrać zdjęcie profilowe, włącz dostęp do zdjęć w ustawieniach telefonu.',
+          [
+            { text: 'Anuluj', style: 'cancel' },
+            {
+              text: 'Otwórz ustawienia',
+              onPress: () => {
+                void Linking.openSettings();
+              },
+            },
+          ],
+      );
+      return;
+    }
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
