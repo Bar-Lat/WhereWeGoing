@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Image,
   Keyboard,
   Modal,
@@ -9,6 +10,8 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Linking,
+  Platform,
   useColorScheme,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -110,6 +113,19 @@ export default function EditProfileModal({
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
     if (!permission.granted) {
+      Alert.alert(
+        'Brak dostępu do zdjęć',
+        'Żeby wybrać zdjęcie profilowe, włącz dostęp do zdjęć w ustawieniach telefonu.',
+        [
+          { text: 'Anuluj', style: 'cancel' },
+          {
+            text: 'Otwórz ustawienia',
+            onPress: () => {
+              void Linking.openSettings();
+            },
+          },
+        ],
+      );
       return;
     }
 
@@ -155,7 +171,9 @@ export default function EditProfileModal({
           onClose();
         }}
       >
-        <View style={styles.modalContainer}>
+        <View
+          style={styles.modalContainer}
+        >
           <Pressable
             onPress={(event) => {
               event.stopPropagation();
@@ -194,7 +212,7 @@ export default function EditProfileModal({
                       <Text style={styles.avatarText}>{initials}</Text>
                     </View>
                   )}
-                  <Text style={styles.avatarHintText}>
+                  <Text style={[styles.avatarHintText, { color: currentColors.subtext }]}>
                     {isUploadingAvatar ? 'Przesyłanie...' : 'Zmień zdjęcie'}
                   </Text>
                 </TouchableOpacity>
@@ -237,8 +255,11 @@ export default function EditProfileModal({
               </View>
 
               <View style={styles.buttonRow}>
-                <TouchableOpacity onPress={onClose} style={styles.secondaryButton}>
-                  <Text style={styles.secondaryButtonText}>Anuluj</Text>
+                <TouchableOpacity
+                  onPress={onClose}
+                  style={[styles.secondaryButton, { borderColor: currentColors.text }]}
+                >
+                  <Text style={[styles.secondaryButtonText, { color: currentColors.text }]}>Anuluj</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -261,9 +282,10 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     alignItems: 'center',
     padding: 12,
+    paddingTop: Platform.OS === 'ios' ? 52 : 36,
   },
   modalContainer: {
     width: '100%',
@@ -272,8 +294,6 @@ const styles = StyleSheet.create({
   sheet: {
     width: '100%',
     maxWidth: 440,
-    minHeight: '72%',
-    maxHeight: '80%',
     borderRadius: 20,
     borderWidth: 1,
     padding: 18,
@@ -291,7 +311,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   subtitle: { fontSize: 14, lineHeight: 20 },
-  content: { paddingBottom: 6, gap: 14, flexGrow: 1 },
+  content: { paddingBottom: 6, gap: 14 },
   avatarSection: { alignItems: 'center' },
   avatarWrapper: {
     alignItems: 'center',
@@ -330,21 +350,19 @@ const styles = StyleSheet.create({
   buttonRow: {
     flexDirection: 'row',
     gap: 10,
-    marginTop: 'auto',
-    paddingTop: 20,
+    marginTop: 10,
+    paddingTop: 0,
   },
   secondaryButton: {
     flex: 1,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#c8c8c8',
     paddingVertical: 12,
     alignItems: 'center',
   },
   secondaryButtonText: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#333',
   },
   primaryButton: {
     flex: 1,
