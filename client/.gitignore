@@ -4,10 +4,12 @@
 node_modules/
 
 # Expo
-client/.expo/
 dist/
 web-build/
 expo-env.d.ts
+.expo/
+.idea/
+.vscode/
 
 # Native
 .kotlin/

@@ -2,10 +2,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import { Dimensions, FlatList, Image, Text, TouchableOpacity, View, useColorScheme } from 'react-native';
-import Logo from '../../assets/images/WhereWeGoingLogo.png';
-import GradientButton from '../../components/gradientButton';
-import { Colors } from "../../styles/colors";
-import { styles } from '../../styles/welcome.styles';
+import Logo from '@/assets/images/WhereWeGoingLogo.png';
+import GradientButton from '@/components/GradientButton';
+import { Colors } from '@/styles/colors';
+import { styles } from '@/styles/welcome.styles';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const { width } = Dimensions.get('window');
 
@@ -30,7 +31,7 @@ const DATA = [
   },
   {
     id: '4',
-    title: 'Tokyo',
+    title: 'Tokio',
     description: 'Sushi omakase',
     image: require('../../assets/images/cities/tokyo.jpg'),
   },
@@ -55,7 +56,7 @@ export default function Welcome() {
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
   const currentColors = Colors[colorScheme];
-
+  
   // Startujemy od indeksu 1 (prawdziwy pierwszy slajd)
   const [currentIndex, setCurrentIndex] = useState(1);
   const flatListRef = useRef<FlatList>(null);
@@ -91,10 +92,10 @@ export default function Welcome() {
     return () => clearInterval(interval);
   }, [currentIndex]);
 
-const renderItem = ({ item }: { item: typeof DATA[0] }) => (
+  const renderItem = ({ item }: { item: typeof DATA[0] }) => (
   <View style={styles.slideWrapper}>
-    <View style={styles.slideContainer}>
-      <Image source={item.image} style={styles.slideImage} />
+      <View style={styles.slideContainer}>
+        <Image source={item.image} style={styles.slideImage} />
       <LinearGradient
         colors={['rgba(0, 0, 0, 0)', 'rgba(0, 0, 0, 0.9)']}
         locations={[0.5, 1]}
@@ -103,16 +104,17 @@ const renderItem = ({ item }: { item: typeof DATA[0] }) => (
         style={styles.slideGradientOverlay}
       />
       
-      <View style={styles.slideTextWrapper}>
-        <Text style={styles.slideTitle}>{item.title}</Text>
-        <Text style={styles.slideDescription}>{item.description}</Text>
+        <View style={styles.slideTextWrapper}>
+          <Text style={styles.slideTitle}>{item.title}</Text>
+          <Text style={styles.slideDescription}>{item.description}</Text>
+        </View>
       </View>
     </View>
-  </View>
-);
+  );
 
   return (
-    <View style={[styles.container, { backgroundColor: currentColors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: currentColors.background }]}>
+      
       <Stack.Screen options={{ headerShown: false }} />
       
       <View style={styles.header}>
@@ -167,13 +169,13 @@ const renderItem = ({ item }: { item: typeof DATA[0] }) => (
         />
         
         <View style={styles.footerBase}>
-                  <TouchableOpacity style={styles.loginPrompt} onPress={() => router.push('/(auth)/login')}>
-                    <Text style={{ color: currentColors.subtext }}>
-                      Masz już konto? <Text style={{ color: Colors.brand.blue, fontWeight: 'bold' }}>Zaloguj się</Text>
-                    </Text>
-                  </TouchableOpacity>
+          <TouchableOpacity style={styles.loginPrompt} onPress={() => router.push('/(auth)/login')}>
+            <Text style={{ color: currentColors.subtext }}>
+              Masz już konto? <Text style={{ color: Colors.brand.blue, fontWeight: 'bold' }}>Zaloguj się</Text>
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }

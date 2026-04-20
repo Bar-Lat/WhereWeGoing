@@ -1,11 +1,14 @@
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
+const authRoutes = require('./routes/auth.routes');
+const errorHandler = require('./middleware/errorHandler');
 
+// Główny punkt wejścia backendu Express.
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
+// Middleware globalne dla całej aplikacji.
 app.use(cors()); // Pozwala na zapytania z innych adresów (np. z telefonu)
 app.use(express.json()); // Pozwala serwerowi rozumieć format JSON w body zapytania
 
@@ -14,9 +17,10 @@ app.get('/', (req, res) => {
     res.send('Serwer Express działa.');
 });
 
-// Tutaj będziesz importować swoje trasy (np. auth i profile)
-// const authRoutes = require('./routes/auth');
-// app.use('/api/auth', authRoutes);
+// Trasy modułu autoryzacji.
+app.use('/api/auth', authRoutes);
+// Centralna obsługa błędów powinna być podpięta na końcu.
+app.use(errorHandler);
 
 app.listen(PORT, () => {
     console.log(`Serwer działa na http://localhost:${PORT}`);

@@ -1,6 +1,7 @@
 # IDE / editor
 .idea/
 .vscode/
+.vs
 
 # OS
 .DS_Store
@@ -20,4 +21,7 @@ yarn-error.log*
 # Temporary files
 *.tmp
 *.temp
+
+# Client Expo cache/generated files
+client/.expo/
 

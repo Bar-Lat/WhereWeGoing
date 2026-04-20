@@ -1,73 +1,84 @@
 import { Dimensions, StyleSheet } from 'react-native';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
+
+// Prosta funkcja pomocnicza do sprawdzania czy to mały ekran
+const isSmallDevice = height < 700;
 
 export const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'space-between',
-    paddingTop: 90,
-    paddingBottom: 40,
   },
   header: {
     alignItems: 'center',
-    marginBottom: 20,
+    // Używamy marginu zamiast sztywnego marginTop: '15%'
+    marginTop: isSmallDevice ? 20 : 40,
     zIndex: 20,
   },
   logo: {
-    width: 260,
-    height: 60,
+    width: '75%', 
+    maxWidth: 320,
+    height: 50,
   },
   middleContent: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     width: width,
+    marginVertical: 10,
   },
-  
   slideWrapper: {
-    width: width, // Cała szerokość ekranu dla poprawnego działania `pagingEnabled`
+    width: width,
     justifyContent: 'center',
     alignItems: 'center',
+    // Zmniejszamy padding na mniejszych urządzeniach
+    paddingHorizontal: isSmallDevice ? 16 : 24,
   },
   slideContainer: {
-    width: width - 48, // Karta węższa niż ekran o 24px z każdej strony
-    height: 420,
-    borderRadius: 32, // Mocno zaokrąglone rogi (prostokąt z promieniami)
+    width: width - (isSmallDevice ? 32 : 48),
+    height: height * 0.55, 
+    minHeight: 320, // Żeby na bardzo małych nie zrobił się pasek
+    maxHeight: 500, // Żeby na iPadach nie był gigantyczny
+    borderRadius: 32,
     overflow: 'hidden',
     justifyContent: 'flex-end',
-    padding: 32,
+    padding: isSmallDevice ? 20 : 32,
+    
   },
   slideImage: {
-    ...StyleSheet.absoluteFillObject,
-    width: '130%',
-    height: '130%',
+    position: 'absolute',
+    width: '130%', 
+    height: '120%',
     resizeMode: 'cover',
   },
   slideGradientOverlay: {
     ...StyleSheet.absoluteFillObject,
   },
-  // ------------------
-  slideTextWrapper: {
-    zIndex: 10,
-    marginBottom: 20,
-  },
   slideTitle: {
     color: '#ffffff',
-    fontSize: 32,
+    fontSize: isSmallDevice ? 26 : 32, // Skalujemy font
     fontWeight: 'bold',
     marginBottom: 8,
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 10,
   },
   slideDescription: {
     color: '#f0f0f0',
-    fontSize: 16,
-    lineHeight: 24,
+    fontSize: isSmallDevice ? 14 : 16,
+    lineHeight: isSmallDevice ? 20 : 24,
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 8,
+  },
+  slideTextWrapper: {
+    zIndex: 10,
   },
   dotsContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 10,
+    paddingVertical: 15,
     gap: 8,
   },
   dot: {
@@ -78,27 +89,14 @@ export const styles = StyleSheet.create({
   footer: {
     width: '100%',
     paddingHorizontal: 24,
-    gap: 8,
-    marginTop: 20,
+    // paddingBottom zostanie obsłużony przez SafeAreaView
     zIndex: 20,
-    marginBottom: 20
-  },
-  secondaryButton: {
-    paddingVertical: 12,
-    borderRadius: 16,
-    alignItems: 'center',
-    width: '80%', 
-    alignSelf: 'center',
-  },
-  secondaryButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
   },
   footerBase: {
-    marginTop: 20,
+    marginTop: 10,
     alignItems: 'center',
   },
   loginPrompt: {
-    padding: 0,
+    padding: 10,
   },
 });
