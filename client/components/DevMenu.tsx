@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { 
   View, Text, TouchableOpacity, StyleSheet, 
-  Animated, PanResponder, Modal, FlatList, Dimensions 
+  Animated, PanResponder, Modal, FlatList 
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';

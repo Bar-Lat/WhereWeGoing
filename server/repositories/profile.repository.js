@@ -18,8 +18,29 @@ const upsertUserProfile = async (profileRow) => {
   return { error };
 };
 
+const getUserProfileById = async (userId) => {
+  const { data, error } = await getProfileQuery()
+    .select('id, first_name, last_name, avatar, created_at, updated_at')
+    .eq('id', userId)
+    .maybeSingle();
+
+  return { data, error };
+};
+
+const updateUserProfileById = async (userId, payload) => {
+  const { data, error } = await getProfileQuery()
+    .update(payload)
+    .eq('id', userId)
+    .select('id, first_name, last_name, avatar, created_at, updated_at')
+    .single();
+
+  return { data, error };
+};
+
 module.exports = {
   upsertUserProfile,
+  getUserProfileById,
+  updateUserProfileById,
   profileSchema,
   profileTable,
 };

@@ -38,6 +38,12 @@
             "backgroundColor": "#000000"
           }
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Aplikacja potrzebuje dostepu do galerii, aby ustawic avatar."
+        }
       ]
     ],
     "experiments": {

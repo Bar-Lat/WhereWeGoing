@@ -11,6 +11,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '@/styles/colors';
 import { styles } from '@/styles/inspiration.styles';
 import ScreenHeader from '../../components/ScreenHeader';
+import { useCurrentUserProfile } from '@/hooks/useCurrentUserProfile';
 
 // --- MOCK DATA ---
 const CATEGORIES = [
@@ -39,6 +40,7 @@ export default function Inspiration() {
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
   const currentColors = Colors[colorScheme];
+  const { userAvatarUrl, userInitials } = useCurrentUserProfile();
   
   const bottomPadding = 65 + (insets.bottom > 0 ? insets.bottom : 10) + 20;
 
@@ -53,10 +55,10 @@ export default function Inspiration() {
       >
         <ScreenHeader 
           variant="inspiration"
-          userInitials="JD"
+          userInitials={userInitials}
           onNotificationPress={() => console.log('Powiadomienia')}
           onProfilePress={() => router.push('/(main)/profile')}
-          userAvatarUrl="https://i.pravatar.cc/150?u=jan.dudek@test.pl"
+          userAvatarUrl={userAvatarUrl}
         />
         
         <View style={styles.heroSection}>
