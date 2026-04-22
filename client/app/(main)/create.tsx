@@ -15,6 +15,8 @@ import { useRouter } from 'expo-router';
 import { Colors } from '@/styles/colors';
 import ScreenHeader from '../../components/ScreenHeader';
 import GradientButton from '../../components/GradientButton';
+import { useTripStore } from '@/stores/tripStore';
+
 
 // INTERFEJSY I TYPY
 interface TripFormData {
@@ -222,12 +224,12 @@ export default function Create() {
     }
   };
 
-  const handleGeneratePlan = () => {
-    console.log('=== DANE FORMULARZA ===');
-    console.log(formData);
-    console.log('======================');
-  };
+  const setStoreFormData = useTripStore((s) => s.setFormData);
 
+  const handleGeneratePlan = () => {
+    setStoreFormData(formData); // używa lokalnego formData z useState
+    router.push('/trip-loading');
+  };
   const renderProgressBar = () => (
     <View style={styles.progressBarContainer}>
       {Array.from({ length: totalSteps }).map((_, index) => {
