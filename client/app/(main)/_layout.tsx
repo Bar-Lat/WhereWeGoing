@@ -4,6 +4,7 @@ import { View, Text, StyleSheet, useColorScheme } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '@/styles/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSegments } from 'expo-router';
 
 export default function MainLayout() {
   const insets = useSafeAreaInsets();
@@ -13,6 +14,10 @@ export default function MainLayout() {
   const activeTrips = 2; // Symulacja powiadomienia
   const bottomPadding = insets.bottom > 0 ? insets.bottom : 10;
   const barHeight = 65 + bottomPadding;
+  
+  const segments = useSegments();
+  const isOnCreate = segments.some(s => s === 'create');
+  
   return (
     <Tabs
       screenOptions={{
@@ -67,11 +72,12 @@ export default function MainLayout() {
       />
 
       {/* 3. ŚRODKOWY PRZYCISK Z TWOIM GRADIENTEM */}
+      
       <Tabs.Screen
         name="create"
         options={{
           title: '',
-          tabBarIcon: () => (
+          tabBarIcon: () => isOnCreate ? null : (
             <View style={styles.floatingButtonContainer}>
               <LinearGradient
                 colors={Colors.brand.logoGradient} 
