@@ -4,7 +4,6 @@ class User {
     email,
     firstName = '',
     lastName = '',
-    birthDate = null,
     avatar = null,
     createdAt = null,
     updatedAt = null,
@@ -13,7 +12,6 @@ class User {
     this.email = email;
     this.firstName = firstName;
     this.lastName = lastName;
-    this.birthDate = birthDate;
     this.avatar = avatar;
     this.createdAt = createdAt;
     this.updatedAt = updatedAt;
@@ -36,7 +34,6 @@ class User {
       id: userId,
       first_name: this.firstName,
       last_name: this.lastName,
-      birth_date: this.birthDate,
       avatar: this.avatar,
       created_at: this.createdAt,
       updated_at: this.updatedAt,

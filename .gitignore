@@ -24,4 +24,7 @@ yarn-error.log*
 
 # Client Expo cache/generated files
 client/.expo/
+node_modules/
+.expo/
 
+expo-env.d.ts

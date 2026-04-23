@@ -1,11 +1,10 @@
 import React from 'react';
-import { View, Image, TouchableOpacity, StyleSheet, Text, TextInput } from 'react-native';
+import { View, Image, TouchableOpacity, StyleSheet, Text, useColorScheme } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useColorScheme } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Colors } from '../styles/colors';
-import Logo from '../assets/images/WhereWeGoingLogo.png';
+import { Colors } from '@/styles/colors';
+import Logo from '@/assets/images/WhereWeGoingLogo.png';
 
 interface ScreenHeaderProps {
   // Wariant nagłówka
@@ -30,7 +29,6 @@ export default function ScreenHeader({
   variant = 'default',
   showLogo = false, 
   title, 
-  userName = "Podróżniku",
   userInitials = "U",
   showNotifications = true,
   onNotificationPress,

@@ -7,6 +7,7 @@ import { useRouter } from 'expo-router';
 import { Colors } from '@/styles/colors';
 import { styles } from '@/styles/trips.styles';
 import ScreenHeader from '../../components/ScreenHeader';
+import { useCurrentUserProfile } from '@/hooks/useCurrentUserProfile';
 
 // --- MOCK DATA ---
 const TRIPS = [
@@ -41,6 +42,7 @@ export default function Trips() {
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
   const currentColors = Colors[colorScheme];
+  const { userAvatarUrl, userInitials } = useCurrentUserProfile();
 
   const bottomPadding = 65 + (insets.bottom > 0 ? insets.bottom : 10) + 20;
 
@@ -55,10 +57,10 @@ export default function Trips() {
         variant="trips"
         title="Twoje Podróże"
         tripCount={TRIPS.length}
-        userInitials="JD"
+        userInitials={userInitials}
         onNotificationPress={() => {}}
         onProfilePress={() => router.push('/(main)/profile')}
-        userAvatarUrl="https://i.pravatar.cc/150?u=jan.dudek@test.pl"
+        userAvatarUrl={userAvatarUrl}
       />
         <View style={[styles.scrollContent, { marginTop: -45, zIndex: 10 }]}>
           

@@ -1,11 +1,11 @@
 import { Stack, useRouter, useSegments } from 'expo-router';
 import React, { useEffect } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, View, useColorScheme } from 'react-native';
 import { AuthProvider, useAuth } from '@/providers/auth.provider';
+import { ProfileProvider } from '@/providers/profile.provider';
 import DevMenu from '../components/DevMenu';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { useColorScheme } from 'react-native';
 
 
 function AppNavigator() {
@@ -47,8 +47,8 @@ function AppNavigator() {
 
             <Stack screenOptions={{ headerShown: false }}>
                 {/* Grupy są wykrywane automatycznie, ale możesz tu zdefiniować ich kolejność */}
-                <Stack.Screen name="(auth)" options={{ animation: 'fade' }} />
-                <Stack.Screen name="(main)" options={{ animation: 'fade' }} />
+                <Stack.Screen name="(auth)" options={{ animation: 'default' }} />
+                <Stack.Screen name="(main)" options={{ animation: 'default' }} />
             </Stack>
 
             {/* Nasz pomocnik deweloperski dostępny w każdym miejscu aplikacji */}
@@ -60,7 +60,9 @@ function AppNavigator() {
 export default function RootLayout() {
     return (
         <AuthProvider>
-            <AppNavigator />
+            <ProfileProvider>
+                <AppNavigator />
+            </ProfileProvider>
         </AuthProvider>
     );
 }
