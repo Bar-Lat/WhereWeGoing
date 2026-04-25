@@ -27,6 +27,7 @@ interface TripFormData {
   budget: number;
   interests: string[];
   transport: string[];
+  attractionsPerDay: number;
 }
 
 interface CustomSliderProps {
@@ -206,11 +207,12 @@ export default function Create() {
     budget: 3000,
     interests: [],
     transport: [],
+    attractionsPerDay: 4,
   });
   const [errors, setErrors] = useState<{[key: string]: string}>({});
   const errorAnim = useRef(new Animated.Value(0)).current;
   const [errorMessages, setErrorMessages] = useState<string[]>([]);
-  const totalSteps = 4;
+  const totalSteps = 5;
 
   const handleNext = () => {
     if (validateCurrentStep()) {
@@ -298,14 +300,10 @@ export default function Create() {
 
   const validateCurrentStep = () => {
     switch (currentStep) {
-      case 1:
-        return validateStep1();
-      case 2:
-        return validateStep2();
-      case 4:
-        return validateStep4();
-      default:
-        return true;
+      case 1: return validateStep1();
+      case 2: return validateStep2();
+      case 4: return validateStep4();
+      default: return true;
     }
   };
   const setStoreFormData = useTripStore((s) => s.setFormData);
@@ -466,7 +464,7 @@ export default function Create() {
             
             <TouchableOpacity
               style={[styles.counterButton, { backgroundColor: '#6366f1' }]}
-              onPress={() => setFormData({ ...formData, travelers: formData.travelers + 1 })}
+              onPress={() => formData.travelers < 15 && setFormData({ ...formData, travelers: formData.travelers + 1 })}
             >
               <Text style={[styles.counterButtonText, { color: '#fff' }]}>+</Text>
             </TouchableOpacity>
@@ -474,13 +472,13 @@ export default function Create() {
           
           <Text style={[styles.travelersLabel, { color: currentColors.subtext }]}>osoby</Text>
           
-          <View style={styles.travelersDots}>
+          <View style={[styles.travelersDots, { flexWrap: 'wrap', justifyContent: 'center' }]}>
             {Array.from({ length: formData.travelers }).map((_, index) => (
               <View
                 key={index}
                 style={[
                   styles.travelerDot,
-                  { backgroundColor: index === 0 ? '#a5b4fc' : index === 1 ? '#c4b5fd' : '#f0abfc' },
+                  { backgroundColor: index === 0 ? '#a5b4fc' : index === 1 ? '#c4b5fd' : index % 3 === 0 ? '#a5b4fc' : index % 3 === 1 ? '#c4b5fd' : '#f0abfc' },
                 ]}
               >
                 <Text style={styles.travelerDotText}>{String.fromCharCode(65 + index)}</Text>
@@ -625,7 +623,76 @@ export default function Create() {
       </View>
     );
   };
+  const renderStep5 = () => (
+    <View style={styles.stepContainer}>
+      <Text style={[styles.stepTitle, { color: currentColors.text }]}>
+        Intensywność planu 🎯
+      </Text>
+      <Text style={[styles.stepSubtitle, { color: currentColors.subtext }]}>
+        Ile atrakcji chcesz zwiedzić każdego dnia?
+      </Text>
 
+      <View style={[styles.travelersCard, { backgroundColor: currentColors.card }]}>
+        <View style={styles.travelersCounter}>
+          <TouchableOpacity
+            style={[styles.counterButton, { backgroundColor: currentColors.border }]}
+            onPress={() =>
+              formData.attractionsPerDay > 2 &&
+              setFormData({ ...formData, attractionsPerDay: formData.attractionsPerDay - 1 })
+            }
+          >
+            <Text style={styles.counterButtonText}>−</Text>
+          </TouchableOpacity>
+
+          <Text style={[styles.travelersCount, { color: currentColors.text }]}>
+            {formData.attractionsPerDay}
+          </Text>
+
+          <TouchableOpacity
+            style={[styles.counterButton, { backgroundColor: '#6366f1' }]}
+            onPress={() =>
+              formData.attractionsPerDay < 8 &&
+              setFormData({ ...formData, attractionsPerDay: formData.attractionsPerDay + 1 })
+            }
+          >
+            <Text style={[styles.counterButtonText, { color: '#fff' }]}>+</Text>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={[styles.travelersLabel, { color: currentColors.subtext }]}>
+          atrakcji dziennie
+        </Text>
+
+        <CustomSlider
+          value={formData.attractionsPerDay}
+          onValueChange={(value) => setFormData({ ...formData, attractionsPerDay: value })}
+          min={2}
+          max={8}
+          step={1}
+          currentColors={currentColors}
+        />
+
+        <View style={{ marginTop: 8, alignItems: 'center'}}>
+          <Text style={[styles.rangeText, { color: currentColors.subtext }]}>2 — spokojnie</Text>
+          <Text style={[styles.rangeText, { color: currentColors.subtext, marginTop: 2 }]}>8 — intensywnie</Text>
+        </View>
+      </View>
+
+      {/* Opis wybranej intensywności */}
+      <View style={[styles.tipBox, { backgroundColor: currentColors.card + '20', borderColor: '#6366f130', marginTop: 20 }]}>
+        <Text style={styles.tipIcon}>
+          {formData.attractionsPerDay <= 3 ? '🧘' : formData.attractionsPerDay <= 5 ? '🚶' : '🏃'}
+        </Text>
+        <Text style={[styles.tipText, { color: currentColors.text }]}>
+          {formData.attractionsPerDay <= 3
+            ? 'Spokojne tempo — dużo czasu na każde miejsce, bez pośpiechu.'
+            : formData.attractionsPerDay <= 5
+            ? 'Umiarkowane tempo — dobry balans między zwiedzaniem a relaksem.'
+            : 'Intensywne tempo — maksimum atrakcji, idealne dla zapaleńców podróży.'}
+        </Text>
+      </View>
+    </View>
+  );
   return (
     <View style={[styles.container, { backgroundColor: currentColors.background }]}>
       {/* Header */}
@@ -642,6 +709,7 @@ export default function Create() {
             {currentStep === 2 && 'Kiedy?'}
             {currentStep === 3 && 'Kto & Budżet'}
             {currentStep === 4 && 'Preferencje'}
+            {currentStep === 5 && 'Intensywność'}
           </Text>
         </View>
         <View style={styles.headerSpacer} />
@@ -658,6 +726,7 @@ export default function Create() {
         {currentStep === 2 && renderStep2()}
         {currentStep === 3 && renderStep3()}
         {currentStep === 4 && renderStep4()}
+        {currentStep === 5 && renderStep5()}
       </ScrollView>
 
       {/* Fiksowany kontener błędów */}

@@ -8,6 +8,7 @@ export interface TripFormData {
   budget: number;
   interests: string[];
   transport: string[];
+  attractionsPerDay: number;
 }
 
 export interface DayPlan {
