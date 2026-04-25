@@ -16,6 +16,7 @@ import GradientButton from '../../components/GradientButton';
 import { useTripStore } from '@/stores/tripStore';
 import { Animated, Easing } from 'react-native';
 import { styles } from '@/styles/create.styles';
+import DateRangePicker from '../../components/DateRangePicker';
 
 // INTERFEJSY I TYPY
 interface TripFormData {
@@ -424,55 +425,15 @@ export default function Create() {
         Wybierz daty wyjazdu i powrotu
       </Text>
 
-      {/* TODO: Dodać funkcjonalność szybkich wyborów */}
-      <View style={styles.quickDatesContainer}>
-        <TouchableOpacity style={[styles.quickDateCard, { backgroundColor: currentColors.card }]}>
-          <Text style={styles.quickDateIcon}>🌙</Text>
-          <Text style={[styles.quickDateTitle, { color: currentColors.text }]}>Weekend</Text>
-          <Text style={[styles.quickDateSubtitle, { color: currentColors.subtext }]}>2-3 dni</Text>
-        </TouchableOpacity>
+      <DateRangePicker
+        departureDate={formData.departureDate}
+        returnDate={formData.returnDate}
+        onDatesChange={(departure, ret) =>
+          setFormData({ ...formData, departureDate: departure, returnDate: ret })
+        }
+      />
 
-        <TouchableOpacity style={[styles.quickDateCard, { backgroundColor: currentColors.card }]}>
-          <Text style={styles.quickDateIcon}>📆</Text>
-          <Text style={[styles.quickDateTitle, { color: currentColors.text }]}>Tydzień</Text>
-          <Text style={[styles.quickDateSubtitle, { color: currentColors.subtext }]}>7 dni</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={[styles.quickDateCard, { backgroundColor: currentColors.card }]}>
-          <Text style={styles.quickDateIcon}>🗺️</Text>
-          <Text style={[styles.quickDateTitle, { color: currentColors.text }]}>Dwa tygodnie</Text>
-          <Text style={[styles.quickDateSubtitle, { color: currentColors.subtext }]}>14 dni</Text>
-        </TouchableOpacity>
-      </View>
-
-      <Text style={[styles.label, { color: currentColors.text }]}>Data wylotu</Text>
-      <View style={[styles.inputContainer, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}>
-        <DateInput
-          value={formData.departureDate}
-          onChangeText={(text) => setFormData({ ...formData, departureDate: text })}
-          placeholder="dd.mm.rrrr"
-          currentColors={currentColors}
-          autoFocus={true}
-        />
-        {/* <Text style={styles.errorText}>
-          {errors.departureDate}
-        </Text> */}
-      </View>
-
-      <Text style={[styles.label, { color: currentColors.text }]}>Data powrotu</Text>
-      <View style={[styles.inputContainer, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}>
-        <DateInput
-          value={formData.returnDate}
-          onChangeText={(text) => setFormData({ ...formData, returnDate: text })}
-          placeholder="dd.mm.rrrr"
-          currentColors={currentColors}
-        />
-        {/* <Text style={styles.errorText}>
-          {errors.returnDate}
-        </Text> */}
-      </View>
-
-      <View style={[styles.tipBox, { backgroundColor: currentColors.card + '20', borderColor: '#6366f130' }]}>
+      <View style={[styles.tipBox, { backgroundColor: currentColors.card + '20', borderColor: '#6366f130', marginTop: 16 }]}>
         <Text style={styles.tipIcon}>📅</Text>
         <Text style={[styles.tipText, { color: currentColors.text }]}>
           Wskazówka: Wyjazdy w środku tygodnia są często nawet 30% tańsze!
