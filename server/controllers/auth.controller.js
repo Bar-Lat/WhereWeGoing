@@ -164,28 +164,21 @@ const refreshSession = async (req, res, next) => {
   }
 };
 
-// Wylogowanie: unieważnia wszystkie sesje użytkownika po zweryfikowaniu access tokena.
+// Wylogowanie: ustawia sesję użytkownika i unieważnia wszystkie sesje (w tym refresh tokeny).
 const logout = async (req, res, next) => {
   try {
-    const { accessToken } = req.body;
+    const { accessToken, refreshToken } = req.body;
 
-    const { data: userData, error: userError } = await supabaseAuthClient.auth.getUser(accessToken);
-
-    if (userError || !userData?.user?.id) {
-      const mapped = mapSupabaseError(userError || new Error('Brak poprawnego tokena'));
-      return res.status(mapped.statusCode).json({ message: mapped.message });
-    }
-
-    const { error: signOutError } = await supabaseAuthClient.auth.admin.signOut(userData.user.id);
-
-    if (signOutError) {
-      const mapped = mapSupabaseError(signOutError);
-      return res.status(mapped.statusCode).json({ message: mapped.message });
-    }
-
-    return res.status(200).json({
-      message: 'Wylogowano poprawnie.',
+    const { error: sessionError } = await supabaseAuthClient.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken,
     });
+
+    if (!sessionError) {
+      await supabaseAuthClient.auth.signOut({ scope: 'global' });
+    }
+
+    return res.status(200).json({ message: 'Wylogowano poprawnie.' });
   } catch (err) {
     return next(err);
   }

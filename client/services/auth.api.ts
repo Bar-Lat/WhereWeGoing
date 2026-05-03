@@ -67,7 +67,7 @@ export const refreshUserSession = async (payload: { refreshToken: string }) => {
   }
 };
 
-export const logoutUser = async (payload: { accessToken: string }) => {
+export const logoutUser = async (payload: { accessToken: string; refreshToken: string }) => {
   try {
     const { data } = await api.post<AuthResponse>('/auth/logout', payload);
     return data;
