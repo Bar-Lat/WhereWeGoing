@@ -36,10 +36,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     clearRefreshTimer();
 
     const accessToken = currentSession?.access_token;
+    const refreshToken = currentSession?.refresh_token;
 
-    if (accessToken) {
+    if (accessToken && refreshToken) {
       try {
-        await logoutUser({ accessToken });
+        await logoutUser({ accessToken, refreshToken });
       } catch {
         // Lokalny cleanup wykonujemy zawsze, nawet gdy backend nie odpowie.
       }

@@ -19,11 +19,15 @@ app.get('/', (req, res) => {
 });
 
 // Trasy modułu autoryzacji.
+const tripRoutes = require('./routes/trip.routes');
+
 app.use('/api/auth', authRoutes);
 app.use('/api/profile', profileRoutes);
+app.use('/api/trip', tripRoutes);
 // Centralna obsługa błędów powinna być podpięta na końcu.
 app.use(errorHandler);
 
 app.listen(PORT, () => {
     console.log(`Serwer działa na http://localhost:${PORT}`);
 });
+
