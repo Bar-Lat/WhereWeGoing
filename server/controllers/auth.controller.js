@@ -1,5 +1,8 @@
 const { supabaseAuthClient } = require('../configs/supabaseClient');
 const User = require('../models/User');
+const UserResponseDTO = require('../dtos/UserResponseDTO');
+const LoginRequestDTO = require('../dtos/LoginRequestDTO');
+const RegisterRequestDTO = require('../dtos/RegisterRequestDTO');
 const {
   upsertUserProfile,
   profileSchema,
@@ -75,8 +78,9 @@ const formatAuthResponse = (data, fallbackEmail = null) => ({
 // Rejestruje konto w auth.users i tworzy rekord profilu 1:1.
 const register = async (req, res, next) => {
   try {
-    const { email, password } = req.body;
-    const userModel = User.fromRegistration({ email });
+    // Konwertuj request na DTO (middleware już waliduje)
+    const registerDTO = new RegisterRequestDTO(req.body);
+    const userModel = User.fromRegistration({ email: registerDTO.email });
 
     const signUpOptions = {};
 
@@ -85,8 +89,8 @@ const register = async (req, res, next) => {
     }
 
     const { data, error } = await supabaseAuthClient.auth.signUp({
-      email: userModel.email,
-      password,
+      email: registerDTO.email,
+      password: registerDTO.password,
       options: signUpOptions,
     });
 
@@ -98,19 +102,18 @@ const register = async (req, res, next) => {
     if (data?.user?.id) {
       const profileResult = await ensureProfile({
         userId: data.user.id,
-        email: data?.user?.email || email,
+        email: data?.user?.email || registerDTO.email,
       });
       if (!profileResult.ok) {
         return res.status(profileResult.statusCode).json(profileResult.body);
       }
     }
 
+    // Zwróć response za pomocą UserResponseDTO
+    const responseDTO = UserResponseDTO.fromAuth(data, registerDTO.email);
     return res.status(201).json({
       message: 'Konto utworzone poprawnie.',
-      user: {
-        id: data?.user?.id || null,
-        email: data?.user?.email || email,
-      },
+      user: responseDTO.toJSON(),
     });
   } catch (err) {
     return next(err);
@@ -120,11 +123,12 @@ const register = async (req, res, next) => {
 // Logowanie e-mail + hasło i zwrot sesji do klienta mobilnego.
 const login = async (req, res, next) => {
   try {
-    const { email, password } = req.body;
+    // Konwertuj request na DTO (middleware już waliduje)
+    const loginDTO = new LoginRequestDTO(req.body);
 
     const { data, error } = await supabaseAuthClient.auth.signInWithPassword({
-      email,
-      password,
+      email: loginDTO.email,
+      password: loginDTO.password,
     });
 
     if (error) {
@@ -132,9 +136,12 @@ const login = async (req, res, next) => {
       return res.status(mapped.statusCode).json({ message: mapped.message });
     }
 
+    // Zwróć response za pomocą UserResponseDTO
+    const responseDTO = UserResponseDTO.fromAuth(data, loginDTO.email);
     return res.status(200).json({
       message: 'Logowanie zakończone poprawnie.',
-      ...formatAuthResponse(data, email),
+      user: responseDTO.toJSON(),
+      session: data?.session || null,
     });
   } catch (err) {
     return next(err);
