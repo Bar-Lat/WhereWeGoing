@@ -1,4 +1,6 @@
 const { supabaseAuthClient, supabaseDbClient } = require('../configs/supabaseClient');
+const UserResponseDTO = require('../dtos/UserResponseDTO');
+const ProfileUpdateRequestDTO = require('../dtos/ProfileUpdateRequestDTO');
 const {
   getUserProfileById,
   upsertUserProfile,
@@ -142,9 +144,15 @@ const getMyProfile = async (req, res, next) => {
       });
     }
 
+    // Zwróć response za pomocą UserResponseDTO
+    const avatar = await resolveAvatarUrl(data?.avatar || null);
+    const responseDTO = UserResponseDTO.fromProfile(user, {
+      ...data,
+      avatar: avatar
+    });
     return res.status(200).json({
       message: 'Profil pobrany poprawnie.',
-      profile: await normalizeProfileResponse(data, user),
+      profile: responseDTO.toJSON(),
     });
   } catch (err) {
     return next(err);
@@ -159,21 +167,10 @@ const updateMyProfile = async (req, res, next) => {
       return;
     }
 
-    const firstName = typeof req.body?.firstName === 'string' ? req.body.firstName.trim() : undefined;
-    const lastName = typeof req.body?.lastName === 'string' ? req.body.lastName.trim() : undefined;
+    // Konwertuj request na DTO (middleware już waliduje)
+    const updateDTO = new ProfileUpdateRequestDTO(req.body);
 
-    const profilePatch = {
-      id: user.id,
-      updated_at: new Date().toISOString(),
-    };
-
-    if (firstName !== undefined) {
-      profilePatch.first_name = firstName;
-    }
-
-    if (lastName !== undefined) {
-      profilePatch.last_name = lastName;
-    }
+    const profilePatch = updateDTO.toProfileRow(user.id);
 
     const { error: upsertError } = await upsertUserProfile(profilePatch);
 
@@ -191,9 +188,15 @@ const updateMyProfile = async (req, res, next) => {
       });
     }
 
+    // Obsługuj avatar za pomocą resolveAvatarUrl
+    const avatar = await resolveAvatarUrl(profileData?.avatar || null);
+    const responseDTO = UserResponseDTO.fromProfile(user, {
+      ...profileData,
+      avatar: avatar
+    });
     return res.status(200).json({
-      message: 'Profil zapisany poprawnie.',
-      profile: await normalizeProfileResponse(profileData, user),
+      message: 'Profil zaktualizowany poprawnie.',
+      profile: responseDTO.toJSON(),
     });
   } catch (err) {
     return next(err);
@@ -278,9 +281,15 @@ const uploadMyAvatar = async (req, res, next) => {
       await deleteAvatarObject(previousAvatarPath);
     }
 
+    // Obsługuj avatar za pomocą resolveAvatarUrl
+    const avatar = await resolveAvatarUrl(profileData?.avatar || null);
+    const responseDTO = UserResponseDTO.fromProfile(user, {
+      ...profileData,
+      avatar: avatar
+    });
     return res.status(200).json({
       message: 'Avatar zapisany poprawnie.',
-      profile: await normalizeProfileResponse(profileData, user),
+      profile: responseDTO.toJSON(),
     });
   } catch (err) {
     return next(err);
