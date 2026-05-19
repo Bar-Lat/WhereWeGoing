@@ -20,10 +20,12 @@ app.get('/', (req, res) => {
 
 // Trasy modułu autoryzacji.
 const tripRoutes = require('./routes/trip.routes');
+const inspirationRoutes = require('./routes/inspiration.routes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/trip', tripRoutes);
+app.use('/api/inspiration', inspirationRoutes);
 // Centralna obsługa błędów powinna być podpięta na końcu.
 app.use(errorHandler);
 
