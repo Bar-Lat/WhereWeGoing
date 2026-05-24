@@ -17,6 +17,7 @@ import EditProfileModal from '@/components/EditProfileModal';
 import { Ionicons } from '@expo/vector-icons';
 import { useCurrentUserProfile } from '@/hooks/useCurrentUserProfile';
 import { useProfile } from '@/providers/profile.provider';
+import {useNetwork} from '@/providers/network.provider'
 
 export default function Profile() {
   const insets = useSafeAreaInsets();
@@ -29,6 +30,8 @@ export default function Profile() {
 
   const [avatarLoadError, setAvatarLoadError] = useState(false);
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
+  
+  const {isOffline, toggleOffline} = useNetwork();
 
   const accessToken = session?.access_token ?? null;
 
@@ -56,6 +59,7 @@ export default function Profile() {
     { label: 'Moje statystyki', icon: 'bar-chart-outline' },
     { label: 'Osiągnięcia', icon: 'trophy-outline' },
     { label: 'Zaproś znajomych', icon: 'share-social-outline' },
+    { label: isOffline ? 'Tryb online' : 'Tryb offline', icon: isOffline ? 'cloud-outline' : 'cloud-offline-outline' },
     { label: 'Wyloguj się', icon: 'log-out-outline' },
   ] as const;
 
@@ -65,11 +69,16 @@ export default function Profile() {
         setIsEditModalVisible(true);
         return;
       }
+      if (label === 'Tryb offline' || label === 'Tryb online') {
+        console.log(isOffline ? 'Tryb online' : 'Tryb offline');
+        toggleOffline();
+        return;
+      }
       if (label === 'Wyloguj się') {
         signOut('manual');
       }
     },
-    [signOut]
+    [signOut, toggleOffline]
   );
 
   return (

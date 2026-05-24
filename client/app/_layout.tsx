@@ -6,6 +6,8 @@ import { ProfileProvider } from '@/providers/profile.provider';
 import DevMenu from '../components/DevMenu';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import {NetworkProvider} from '@/providers/network.provider'
+import OfflineBanner from '@/components/OfflineBanner'
 
 
 function AppNavigator() {
@@ -52,6 +54,7 @@ function AppNavigator() {
                 <Stack.Screen name="trip-loading" options={{ animation: 'fade' }} />
                 <Stack.Screen name="trip-result" options={{ animation: 'slide_from_right' }} />
             </Stack>
+            <OfflineBanner />
 
             {/* Nasz pomocnik deweloperski dostępny w każdym miejscu aplikacji */}
             <DevMenu />
@@ -62,9 +65,11 @@ function AppNavigator() {
 export default function RootLayout() {
     return (
         <AuthProvider>
-            <ProfileProvider>
-                <AppNavigator />
-            </ProfileProvider>
+            <NetworkProvider>
+                <ProfileProvider>
+                    <AppNavigator />
+                </ProfileProvider>
+            </NetworkProvider>
         </AuthProvider>
     );
 }
