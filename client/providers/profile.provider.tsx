@@ -1,6 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/providers/auth.provider';
 import { getMyProfile, type UserProfile } from '@/services/profile.api';
+import { getCachedProfile, saveCachedProfile } from '@/services/profile.storage';
+import { downloadAvatarToCache } from '@/services/avatar.storage';
 
 type ProfileContextValue = {
   profile: UserProfile | null;
@@ -14,6 +16,7 @@ const ProfileContext = createContext<ProfileContextValue | undefined>(undefined)
 export const ProfileProvider = ({ children }: { children: React.ReactNode }) => {
   const { session } = useAuth();
   const accessToken = session?.access_token ?? null;
+  const sessionUserId = session?.user?.id ?? null;
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -28,13 +31,38 @@ export const ProfileProvider = ({ children }: { children: React.ReactNode }) => 
     try {
       setIsLoading(true);
       const response = await getMyProfile(accessToken);
-      setProfile(response.profile);
+      let profileToStore = response.profile;
+
+      if (response.profile.avatar) {
+        const cachedAvatarUri = await downloadAvatarToCache(
+          response.profile.id,
+          response.profile.avatar
+        );
+
+        profileToStore = {
+          ...response.profile,
+          avatar: cachedAvatarUri ?? response.profile.avatar,
+        };
+      }
+
+      setProfile(profileToStore);
+      await saveCachedProfile(profileToStore);
     } catch {
-      setProfile(null);
+      if (sessionUserId) {
+        const cachedProfile = await getCachedProfile(sessionUserId);
+
+        if (cachedProfile) {
+          setProfile(cachedProfile);
+        } else {
+          setProfile(null);
+        }
+      } else {
+        setProfile(null);
+      }
     } finally {
       setIsLoading(false);
     }
-  }, [accessToken]);
+  }, [accessToken, sessionUserId]);
 
   useEffect(() => {
     refreshProfile();

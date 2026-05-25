@@ -70,7 +70,6 @@ export default function Profile() {
         return;
       }
       if (label === 'Tryb offline' || label === 'Tryb online') {
-        console.log(isOffline ? 'Tryb online' : 'Tryb offline');
         toggleOffline();
         return;
       }
@@ -78,7 +77,7 @@ export default function Profile() {
         signOut('manual');
       }
     },
-    [signOut, toggleOffline]
+    [signOut, toggleOffline, isOffline]
   );
 
   return (

@@ -133,7 +133,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           scheduleRefresh(response.session);
         }
       } catch {
-        await signOut('bootstrap-refresh-failed');
+        sessionRef.current = storedSession;
+        setSession(storedSession);
+        scheduleRefresh(storedSession);
       }
     } finally {
       bootstrapInFlightRef.current = false;
