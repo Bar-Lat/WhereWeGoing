@@ -28,6 +28,7 @@ import {
   getTripParticipants,
   removeTripParticipant,
 } from '@/services/trips.api';
+import { useTripStore, TripPlan } from '@/stores/tripStore';
 import type { FriendProfile } from '@/types/friends';
 import type { TripDto, TripParticipantDto } from '@/types/trips';
 
@@ -75,16 +76,16 @@ const formatTripDate = (value: string | null | undefined) => {
 };
 
 const formatTripRange = (trip: TripDto) => {
-  const start = formatTripDate(trip.startDate);
-  const end = formatTripDate(trip.endDate);
+  const start = formatTripDate(trip.startDate || (trip as any).start_date);
+  const end = formatTripDate(trip.endDate || (trip as any).end_date);
   if (!start && !end) return 'Brak daty';
   if (start === end) return start;
   return `${start} - ${end}`;
 };
 
 const getTripDays = (trip: TripDto) => {
-  const start = new Date(`${trip.startDate}T00:00:00`);
-  const end = new Date(`${trip.endDate}T00:00:00`);
+  const start = new Date(`${trip.startDate || (trip as any).start_date}T00:00:00`);
+  const end = new Date(`${trip.endDate || (trip as any).end_date}T00:00:00`);
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
   const diff = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
   return Math.max(diff, 1);
@@ -103,8 +104,9 @@ const formatBudget = (value: number | null | undefined) => {
 
 const getStatusMeta = (status: string) => statusLabels[status] || { label: status || 'Plan', color: Colors.brand.blue };
 
-const getTripImage = (trip: TripDto, index: number) => {
-  if (trip.imageUrl && /^https?:\/\//i.test(trip.imageUrl)) return trip.imageUrl;
+const getTripImage = (trip: TripDto | any, index: number) => {
+  const url = trip.imageUrl || trip.image_url;
+  if (url && /^https?:\/\//i.test(url)) return url;
   return PLACEHOLDER_IMAGES[index % PLACEHOLDER_IMAGES.length];
 };
 
@@ -140,6 +142,7 @@ export default function Trips() {
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
   const currentColors = Colors[colorScheme];
+  
   const { session } = useAuth();
   const { userAvatarUrl, userInitials } = useCurrentUserProfile();
 
@@ -173,7 +176,8 @@ export default function Trips() {
 
         setTripsError(null);
         const response = await getMyTrips(accessToken);
-        setTrips(response.trips);
+        // Obsługa formatu dla obu wersji API
+        setTrips(response.trips || response || []);
       } catch (error) {
         setTripsError(error instanceof Error ? error.message : 'Nie udało się pobrać wycieczek');
       } finally {
@@ -234,6 +238,31 @@ export default function Trips() {
     setFriends([]);
     setActionProfileId(null);
   }, []);
+
+  // Wstrzyknięta logika parsowania notatek z JSON i przekazywania do Zustanda
+  const handleTripPress = useCallback((trip: any) => {
+    const rawPlan = trip.notes || trip.plan || trip.itinerary || trip.data || {};
+    let parsedData: any = {};
+    try {
+      parsedData = typeof rawPlan === 'string' ? JSON.parse(rawPlan) : rawPlan;
+    } catch (e) {}
+
+    const activePlan: TripPlan = {
+      id: trip.id,
+      destination: trip.destination || "Nieznane miejsce",
+      summary: parsedData?.summary || "Brak opisu",
+      totalDays: Array.isArray(parsedData?.days) ? parsedData.days.length : 0,
+      estimatedTotalCost: trip.totalBudget ?? trip.total_budget ?? 0,
+      currency: parsedData?.currency || "PLN",
+      days: Array.isArray(parsedData?.days) ? parsedData.days : [],
+      generalTips: Array.isArray(parsedData?.generalTips) ? parsedData.generalTips : [],
+      bestTransport: parsedData?.bestTransport || "Brak danych",
+      imageUrl: trip.imageUrl || trip.image_url || 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?q=80&w=1000'
+    };
+
+    useTripStore.getState().setTripPlan(activePlan);
+    router.push('../trip-details');
+  }, [router]);
 
   const participantIds = useMemo(
     () => new Set(participants.map((participant) => participant.profileId)),
@@ -368,7 +397,7 @@ export default function Trips() {
           <View style={styles.tripMetaGrid}>
             <View style={[styles.metaPill, { backgroundColor: currentColors.background }]}> 
               <Ionicons name="people-outline" size={16} color={Colors.brand.blue} />
-              <Text style={[styles.metaPillText, { color: currentColors.text }]}>{trip.participantsCount} os.</Text>
+              <Text style={[styles.metaPillText, { color: currentColors.text }]}>{trip.participantsCount || 1} os.</Text>
             </View>
             <View style={[styles.metaPill, { backgroundColor: currentColors.background }]}> 
               <Ionicons name="calendar-outline" size={16} color={Colors.brand.green} />
@@ -376,7 +405,7 @@ export default function Trips() {
             </View>
             <View style={[styles.metaPill, { backgroundColor: currentColors.background }]}> 
               <Ionicons name="wallet-outline" size={16} color={Colors.brand.yellow} />
-              <Text style={[styles.metaPillText, { color: currentColors.text }]}>{formatBudget(trip.totalBudget)}</Text>
+              <Text style={[styles.metaPillText, { color: currentColors.text }]}>{formatBudget(trip.totalBudget || (trip as any).total_budget)}</Text>
             </View>
           </View>
 
@@ -388,7 +417,7 @@ export default function Trips() {
               </Text>
             </View>
             <View style={styles.manageButton}>
-              <Text style={styles.manageButtonText}>Szczegóły</Text>
+              <Text style={styles.manageButtonText}>Zarządzaj</Text>
               <Ionicons name="chevron-forward" size={16} color="#FFFFFF" />
             </View>
           </View>
@@ -463,7 +492,7 @@ export default function Trips() {
           </View>
           <View style={[styles.detailsCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
             <Ionicons name="wallet-outline" size={20} color={Colors.brand.yellow} />
-            <Text style={[styles.detailsValue, { color: currentColors.text }]}>{formatBudget(selectedTrip.totalBudget)}</Text>
+            <Text style={[styles.detailsValue, { color: currentColors.text }]}>{formatBudget(selectedTrip.totalBudget || (selectedTrip as any).total_budget)}</Text>
             <Text style={[styles.detailsLabel, { color: currentColors.subtext }]}>budżet</Text>
           </View>
           <View style={[styles.detailsCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
@@ -526,6 +555,28 @@ export default function Trips() {
             <Text style={[styles.emptyInlineText, { color: currentColors.subtext }]}>Brak uczestników do wyświetlenia.</Text>
           )}
         </View>
+
+        {/* --- PRZYCISK DO OTWARCIA HARMONOGRAMU --- */}
+        <TouchableOpacity
+          style={{
+            backgroundColor: Colors.brand.blue,
+            paddingVertical: 14,
+            borderRadius: 12,
+            alignItems: 'center',
+            marginTop: 16,
+            flexDirection: 'row',
+            justifyContent: 'center',
+            gap: 8,
+          }}
+          onPress={() => {
+            closeTripPanel();
+            handleTripPress(selectedTrip);
+          }}
+        >
+          <Ionicons name="map-outline" size={20} color="#fff" />
+          <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>Otwórz Harmonogram wycieczki</Text>
+        </TouchableOpacity>
+
       </View>
     );
   };
@@ -590,7 +641,7 @@ export default function Trips() {
     <View style={[styles.container, { backgroundColor: currentColors.background }]}> 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: bottomPadding }}
+        contentContainerStyle={{ paddingBottom: bottomPadding, flexGrow: 1 }}
         refreshControl={
           <RefreshControl refreshing={tripsRefreshing} onRefresh={() => loadTrips('refresh')} tintColor={Colors.brand.blue} />
         }

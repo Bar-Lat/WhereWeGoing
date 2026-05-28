@@ -157,23 +157,7 @@ export default function DateRangePicker({
     : 0;
 
   return (
-    <View>
-      {/* Szybkie wybory */}
-      <View style={styles.quickRow}>
-        {[
-          { label: '🌙 Weekend', days: 3 },
-          { label: '📆 Tydzień', days: 7 },
-          { label: '🗺️ 2 tygodnie', days: 14 },
-        ].map((q) => (
-          <TouchableOpacity
-            key={q.days}
-            style={[styles.quickBtn, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}
-            onPress={() => handleQuickSelect(q.days)}
-          >
-            <Text style={[styles.quickBtnText, { color: currentColors.text }]}>{q.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+    <View style={{ width: '100%' }}>
 
       {/* Instrukcja */}
       <Text style={[styles.hint, { color: currentColors.subtext }]}>
@@ -207,7 +191,8 @@ export default function DateRangePicker({
           textMonthFontWeight: '700',
           textDayHeaderFontWeight: '600',
         }}
-        style={[styles.calendar, { backgroundColor: currentColors.card }]}
+        // Wymuszenie szerokości na poziomie stylów kalendarza
+        style={[styles.calendar, { backgroundColor: currentColors.card, width: '100%' }]} 
       />
 
       {/* Reset */}
@@ -221,23 +206,7 @@ export default function DateRangePicker({
 }
 
 const styles = StyleSheet.create({
-  quickRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-    gap: 8,
-  },
-  quickBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    alignItems: 'center',
-  },
-  quickBtnText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
+
   hint: {
     fontSize: 13,
     textAlign: 'center',
@@ -247,6 +216,8 @@ const styles = StyleSheet.create({
   calendar: {
     borderRadius: 16,
     overflow: 'hidden',
+    transform: [{ scale: 0.9 }],
+    marginVertical: -20,
   },
   resetBtn: {
     alignItems: 'center',
