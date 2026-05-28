@@ -101,7 +101,7 @@ export default function ScreenHeader({
             {showNotifications && (
               <TouchableOpacity style={styles.iconCircle} onPress={onNotificationPress}>
                 <Ionicons name="notifications-outline" size={22} color="white" />
-                <View style={styles.notificationDot} />
+                {hasUnreadNotifications && <View style={styles.notificationDot} />}
               </TouchableOpacity>
             )}
             <TouchableOpacity onPress={onProfilePress}>
@@ -137,7 +137,7 @@ export default function ScreenHeader({
             {showNotifications && (
               <TouchableOpacity style={styles.iconCircle} onPress={onNotificationPress}>
                 <Ionicons name="notifications-outline" size={22} color="white" />
-                <View style={styles.notificationDot} />
+                { hasUnreadNotifications && <View style={styles.notificationDot} />}
               </TouchableOpacity>
             )}
             <TouchableOpacity onPress={onProfilePress}>
@@ -177,6 +177,7 @@ export default function ScreenHeader({
         {showNotifications && (
           <TouchableOpacity style={styles.headerButton} onPress={onNotificationPress}>
             <Ionicons name="notifications-outline" size={24} color={currentColors.text} />
+            { hasUnreadNotifications && <View style={styles.notificationDot} />}
           </TouchableOpacity>
         )}
         {showProfile && (

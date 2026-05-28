@@ -92,7 +92,7 @@ export const NetworkProvider = ({ children }: { children: React.ReactNode }) => 
         goOnline,
         toggleOffline,
       }),
-      [effectiveOnline, forceOffline]
+      [effectiveOnline, forceOffline, toggleOffline]
     );
 
   return <NetworkContext.Provider value={value}>{children}</NetworkContext.Provider>;

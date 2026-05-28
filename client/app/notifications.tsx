@@ -13,32 +13,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/styles/colors';
 
-const MOCK_NOTIFICATIONS = [
-  {
-    id: '1',
-    title: 'Zbliżająca się wycieczka',
-    message: 'Za 12 dni wycieczka do Paryża.',
-    icon: 'airplane-outline',
-    color: '#6366f1',
-    time: 'Dzisiaj',
-  },
-  {
-    id: '2',
-    title: 'Inspiracja dnia',
-    message: 'Barcelona może być świetnym kierunkiem na kolejny city break.',
-    icon: 'bulb-outline',
-    color: '#F59E0B',
-    time: '2 godz. temu',
-  },
-];
-
 export default function NotificationsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme() ?? 'light';
   const currentColors = Colors[colorScheme];
 
-  const { markAllAsRead } = useNotifications();
+  const { notifications, markAllAsRead, markAsUnread } = useNotifications();
 
     useEffect(() => {
         markAllAsRead();
@@ -78,7 +59,7 @@ export default function NotificationsScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {MOCK_NOTIFICATIONS.map((item) => (
+        {notifications.map((item) => (
           <TouchableOpacity
             key={item.id}
             activeOpacity={0.85}
