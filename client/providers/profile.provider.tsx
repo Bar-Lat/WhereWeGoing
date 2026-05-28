@@ -3,6 +3,7 @@ import { useAuth } from '@/providers/auth.provider';
 import { getMyProfile, type UserProfile } from '@/services/profile.api';
 import { getCachedProfile, saveCachedProfile } from '@/services/profile.storage';
 import { downloadAvatarToCache } from '@/services/avatar.storage';
+import { useNetwork } from '@/providers/network.provider';
 
 type ProfileContextValue = {
   profile: UserProfile | null;
@@ -15,6 +16,7 @@ const ProfileContext = createContext<ProfileContextValue | undefined>(undefined)
 
 export const ProfileProvider = ({ children }: { children: React.ReactNode }) => {
   const { session } = useAuth();
+  const { isOffline } = useNetwork();
   const accessToken = session?.access_token ?? null;
   const sessionUserId = session?.user?.id ?? null;
 
@@ -24,6 +26,20 @@ export const ProfileProvider = ({ children }: { children: React.ReactNode }) => 
   const refreshProfile = useCallback(async () => {
     if (!accessToken) {
       setProfile(null);
+      setIsLoading(false);
+      return;
+    }
+
+    if (isOffline) {
+      setIsLoading(true);
+
+      if (sessionUserId) {
+        const cachedProfile = await getCachedProfile(sessionUserId);
+        setProfile(cachedProfile);
+      } else {
+        setProfile(null);
+      }
+
       setIsLoading(false);
       return;
     }
@@ -62,7 +78,7 @@ export const ProfileProvider = ({ children }: { children: React.ReactNode }) => 
     } finally {
       setIsLoading(false);
     }
-  }, [accessToken, sessionUserId]);
+  }, [accessToken, isOffline, sessionUserId]);
 
   useEffect(() => {
     refreshProfile();
