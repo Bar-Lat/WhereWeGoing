@@ -1,6 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { loginUser, logoutUser, refreshUserSession, type AuthSession } from '@/services/auth.api';
+import { ApiRequestError, loginUser, logoutUser, refreshUserSession, type AuthSession } from '@/services/auth.api';
 import { clearSession, getSession, saveSession } from '@/services/session.storage';
+import { clearCachedProfile } from '@/services/profile.storage';
+import { deleteCachedAvatar } from '@/services/avatar.storage';
 
 type AuthContextValue = {
   isBootstrapping: boolean;
@@ -11,6 +13,20 @@ type AuthContextValue = {
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+
+const isRefreshTokenInvalidError = (error: unknown) => {
+  if (!(error instanceof ApiRequestError)) {
+    return false;
+  }
+
+  if (error.status === 401 || error.status === 403) {
+    return true;
+  }
+
+  return /refresh token|jwt|token is invalid|invalid token|session not found|sesja wygasła/i.test(
+    error.message
+  );
+};
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [session, setSession] = useState<AuthSession | null>(null);
@@ -37,6 +53,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     const accessToken = currentSession?.access_token;
     const refreshToken = currentSession?.refresh_token;
+    const userId = currentSession?.user?.id ?? null;
 
     if (accessToken && refreshToken) {
       try {
@@ -44,6 +61,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       } catch {
         // Lokalny cleanup wykonujemy zawsze, nawet gdy backend nie odpowie.
       }
+    }
+
+    if (userId) {
+      await Promise.allSettled([
+        clearCachedProfile(userId),
+        deleteCachedAvatar(userId),
+        //clearTrips(userId)
+      ]);
     }
 
     sessionRef.current = null;
@@ -91,9 +116,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         sessionRef.current = response.session;
         setSession(response.session);
         await saveSession(response.session);
-      } catch {
-        await signOut('timer-refresh-failed');
-      }
+      } catch (error) {
+          if (isRefreshTokenInvalidError(error)) {
+            await signOut('timer-refresh-failed');
+            return;
+          }
+
+          // Brak internetu / timeout / błąd serwera: zostawiamy lokalną sesję.
+          scheduleRefresh(liveSession);
+        }
     }, refreshDelayMs);
   }, [clearRefreshTimer, signOut]);
 
@@ -132,7 +163,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           await saveSession(response.session);
           scheduleRefresh(response.session);
         }
-      } catch {
+      } catch (error) {
+        if (isRefreshTokenInvalidError(error)) {
+          await signOut('bootstrap-refresh-failed');
+          return;
+        }
+
+        // Brak internetu / timeout: używamy ostatniej lokalnej sesji.
         sessionRef.current = storedSession;
         setSession(storedSession);
         scheduleRefresh(storedSession);
