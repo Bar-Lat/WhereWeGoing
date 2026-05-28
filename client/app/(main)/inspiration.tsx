@@ -35,11 +35,10 @@ import type {
   InspirationOfferDto,
   OfferFilterDto,
   OfferSource,
-  TripRegion,
-  TripType,
 } from '@/types/inspiration';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
+type SortType = 'recommended' | 'price' | 'duration' | 'date';
 
 type FilterOption = {
   id: string;
@@ -52,27 +51,6 @@ const SOURCE_FILTERS: FilterOption[] = [
   { id: 'all', label: 'Wszystkie', icon: 'sparkles-outline', filters: { source: 'all' } },
   { id: 'ai', label: 'AI', icon: 'hardware-chip-outline', filters: { source: 'ai' } },
   { id: 'user', label: 'Użytkownicy', icon: 'people-outline', filters: { source: 'user' } },
-];
-
-const TRIP_TYPE_FILTERS: FilterOption[] = [
-  { id: 'all', label: 'Każdy typ', icon: 'compass-outline', filters: { tripType: 'all' } },
-  { id: 'sea', label: 'Morze', icon: 'water-outline', filters: { tripType: 'sea' } },
-  { id: 'mountains', label: 'Góry', icon: 'trail-sign-outline', filters: { tripType: 'mountains' } },
-  { id: 'city', label: 'City break', icon: 'business-outline', filters: { tripType: 'city' } },
-  { id: 'nature', label: 'Natura', icon: 'leaf-outline', filters: { tripType: 'nature' } },
-  { id: 'culture', label: 'Zwiedzanie', icon: 'map-outline', filters: { tripType: 'culture' } },
-  { id: 'active', label: 'Aktywnie', icon: 'walk-outline', filters: { tripType: 'active' } },
-];
-
-const REGION_FILTERS: FilterOption[] = [
-  { id: 'all', label: 'Wszędzie', icon: 'earth-outline', filters: { region: 'all' } },
-  { id: 'poland', label: 'Polska', icon: 'flag-outline', filters: { region: 'poland' } },
-  { id: 'europe', label: 'Europa', icon: 'airplane-outline', filters: { region: 'europe' } },
-  { id: 'asia', label: 'Azja', icon: 'globe-outline', filters: { region: 'asia' } },
-  { id: 'africa', label: 'Afryka', icon: 'sunny-outline', filters: { region: 'africa' } },
-  { id: 'north_america', label: 'Ameryka Płn.', icon: 'planet-outline', filters: { region: 'north_america' } },
-  { id: 'south_america', label: 'Ameryka Płd.', icon: 'planet-outline', filters: { region: 'south_america' } },
-  { id: 'world', label: 'Inne', icon: 'planet-outline', filters: { region: 'world' } },
 ];
 
 const BUDGET_FILTERS: FilterOption[] = [
@@ -89,6 +67,15 @@ const DURATION_FILTERS: FilterOption[] = [
   { id: 'week', label: 'Do tygodnia', icon: 'calendar-number-outline', filters: { durationType: 'week' } },
   { id: 'long', label: 'Dłużej', icon: 'calendar-clear-outline', filters: { durationType: 'long' } },
 ];
+
+const SORT_OPTIONS: FilterOption[] = [
+  { id: 'recommended', label: 'Polecane', icon: 'sparkles-outline' },
+  { id: 'price', label: 'Najtańsze', icon: 'cash-outline' },
+  { id: 'duration', label: 'Najkrótsze', icon: 'time-outline' },
+  { id: 'date', label: 'Najbliżej', icon: 'calendar-outline' },
+];
+
+const getOptionLabel = (options: FilterOption[], id: string) => options.find((option) => option.id === id)?.label ?? '';
 
 const formatPrice = (price: number | null) => {
   if (price === null) {
@@ -109,6 +96,13 @@ const formatDateRange = (startDate: string, endDate: string) => {
 
   return `${formatter.format(start)} - ${formatter.format(end)}`;
 };
+
+const getDateTime = (date: string) => {
+  const parsed = new Date(`${date}T00:00:00`).getTime();
+  return Number.isNaN(parsed) ? Number.MAX_SAFE_INTEGER : parsed;
+};
+
+const getComparablePrice = (price: number | null) => (price === null ? Number.MAX_SAFE_INTEGER : price);
 
 const getStatusLabel = (status: string, source: OfferSource) => {
   const safeStatus = status.toLowerCase();
@@ -140,11 +134,11 @@ export default function Inspiration() {
   const [selectedOffer, setSelectedOffer] = useState<InspirationOfferDto | null>(null);
   const [savedOfferIds, setSavedOfferIds] = useState<Set<string>>(new Set());
   const [activeSourceId, setActiveSourceId] = useState<OfferSource | 'all'>('all');
-  const [activeTripTypeId, setActiveTripTypeId] = useState<TripType | 'all'>('all');
-  const [activeRegionId, setActiveRegionId] = useState<TripRegion | 'all'>('all');
   const [activeBudgetId, setActiveBudgetId] = useState<BudgetLevel | 'all'>('all');
   const [activeDurationId, setActiveDurationId] = useState<DurationType | 'all'>('all');
+  const [sortType, setSortType] = useState<SortType>('recommended');
   const [showSavedOnly, setShowSavedOnly] = useState(false);
+  const [isFilterModalVisible, setIsFilterModalVisible] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -152,34 +146,76 @@ export default function Inspiration() {
   const [isCreatingTrip, setIsCreatingTrip] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const bottomPadding = 65 + (insets.bottom > 0 ? insets.bottom : 10) + 24;
+  const bottomPadding = 65 + (insets.bottom > 0 ? insets.bottom : 10) + 28;
   const savedCount = savedOfferIds.size;
 
   const activeFilters = useMemo(() => {
     const source = SOURCE_FILTERS.find((filter) => filter.id === activeSourceId)?.filters ?? {};
-    const type = TRIP_TYPE_FILTERS.find((filter) => filter.id === activeTripTypeId)?.filters ?? {};
-    const region = REGION_FILTERS.find((filter) => filter.id === activeRegionId)?.filters ?? {};
     const budget = BUDGET_FILTERS.find((filter) => filter.id === activeBudgetId)?.filters ?? {};
     const duration = DURATION_FILTERS.find((filter) => filter.id === activeDurationId)?.filters ?? {};
 
     return {
       ...source,
-      ...type,
-      ...region,
       ...budget,
       ...duration,
     };
-  }, [activeBudgetId, activeDurationId, activeRegionId, activeSourceId, activeTripTypeId]);
+  }, [activeBudgetId, activeDurationId, activeSourceId]);
+
+  const activeFilterBadges = useMemo(() => {
+    const badges: string[] = [];
+
+    if (activeSourceId !== 'all') {
+      badges.push(getOptionLabel(SOURCE_FILTERS, activeSourceId));
+    }
+
+    if (activeBudgetId !== 'all') {
+      badges.push(getOptionLabel(BUDGET_FILTERS, activeBudgetId));
+    }
+
+    if (activeDurationId !== 'all') {
+      badges.push(getOptionLabel(DURATION_FILTERS, activeDurationId));
+    }
+
+    if (showSavedOnly) {
+      badges.push('Ulubione');
+    }
+
+    if (sortType !== 'recommended') {
+      badges.push(`Sortuj: ${getOptionLabel(SORT_OPTIONS, sortType)}`);
+    }
+
+    return badges;
+  }, [activeBudgetId, activeDurationId, activeSourceId, showSavedOnly, sortType]);
+
+  const activeFilterCount = activeFilterBadges.length;
+  const hasAnyFilter = activeFilterCount > 0 || searchText.trim().length > 0;
 
   const offersWithSavedFlag = useMemo(
     () => offers.map((offer) => ({ ...offer, isSaved: savedOfferIds.has(offer.id) || offer.isSaved })),
     [offers, savedOfferIds]
   );
 
-  const visibleOffers = useMemo(
-    () => (showSavedOnly ? offersWithSavedFlag.filter((offer) => offer.isSaved) : offersWithSavedFlag),
-    [offersWithSavedFlag, showSavedOnly]
-  );
+  const visibleOffers = useMemo(() => {
+    const filteredOffers = showSavedOnly
+      ? offersWithSavedFlag.filter((offer) => offer.isSaved)
+      : offersWithSavedFlag;
+
+    const sortedOffers = [...filteredOffers];
+
+    if (sortType === 'price') {
+      sortedOffers.sort((a, b) => getComparablePrice(a.priceFrom) - getComparablePrice(b.priceFrom));
+    }
+
+    if (sortType === 'duration') {
+      sortedOffers.sort((a, b) => a.daysCount - b.daysCount);
+    }
+
+    if (sortType === 'date') {
+      sortedOffers.sort((a, b) => getDateTime(a.startDate) - getDateTime(b.startDate));
+    }
+
+    return sortedOffers;
+  }, [offersWithSavedFlag, showSavedOnly, sortType]);
 
   const featuredOffer = visibleOffers[0] ?? null;
 
@@ -219,6 +255,15 @@ export default function Inspiration() {
     return () => clearTimeout(timer);
   }, [loadOffers]);
 
+  const resetFilters = () => {
+    setActiveSourceId('all');
+    setActiveBudgetId('all');
+    setActiveDurationId('all');
+    setShowSavedOnly(false);
+    setSortType('recommended');
+    setSearchText('');
+  };
+
   const handleSelectOffer = async (offer: InspirationOfferDto) => {
     try {
       setSelectedOffer(offer);
@@ -253,7 +298,7 @@ export default function Inspiration() {
     }
 
     if (!session?.access_token) {
-      Alert.alert('Logowanie wymagane', 'Zaloguj się, aby utworzyć własną podróż z tej inspiracji.');
+      Alert.alert('Logowanie wymagane', 'Zaloguj się, aby utworzyć podróż na podstawie inspiracji.');
       return;
     }
 
@@ -269,15 +314,76 @@ export default function Inspiration() {
     }
   };
 
-  const renderFilterGroup = (
+  const renderFilterButton = () => (
+    <View style={styles.filterToolbar}>
+      <TouchableOpacity
+        activeOpacity={0.88}
+        style={[styles.filterButton, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}
+        onPress={() => setIsFilterModalVisible(true)}
+      >
+        <View style={styles.filterButtonIconBox}>
+          <Ionicons name="options-outline" size={18} color="#fff" />
+        </View>
+        <View style={styles.filterButtonTextBox}>
+          <Text style={[styles.filterButtonTitle, { color: currentColors.text }]}>Filtry</Text>
+          <Text style={[styles.filterButtonSubtitle, { color: currentColors.subtext }]}>Ustawienia wyników</Text>
+        </View>
+        {activeFilterCount > 0 ? (
+          <View style={styles.filterCounter}>
+            <Text style={styles.filterCounterText}>{activeFilterCount}</Text>
+          </View>
+        ) : (
+          <Ionicons name="chevron-forward" size={18} color={currentColors.subtext} />
+        )}
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        activeOpacity={0.88}
+        style={[
+          styles.favoriteQuickButton,
+          {
+            backgroundColor: showSavedOnly ? '#FF4D67' : currentColors.card,
+            borderColor: showSavedOnly ? '#FF4D67' : currentColors.border,
+          },
+        ]}
+        onPress={() => setShowSavedOnly((current) => !current)}
+      >
+        <Ionicons name={showSavedOnly ? 'heart' : 'heart-outline'} size={21} color={showSavedOnly ? '#fff' : '#FF4D67'} />
+      </TouchableOpacity>
+    </View>
+  );
+
+  const renderActiveFilters = () => {
+    if (activeFilterBadges.length === 0) {
+      return null;
+    }
+
+    return (
+      <View style={styles.activeFiltersWrap}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.activeFiltersScroll}>
+          {activeFilterBadges.map((badge) => (
+            <View key={badge} style={[styles.activeFilterChip, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}>
+              <Ionicons name="checkmark-circle" size={14} color={Colors.brand.blue} />
+              <Text style={[styles.activeFilterText, { color: currentColors.text }]}>{badge}</Text>
+            </View>
+          ))}
+          <TouchableOpacity style={styles.clearInlineButton} onPress={resetFilters}>
+            <Text style={styles.clearInlineButtonText}>Wyczyść</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+    );
+  };
+
+  const renderSheetFilterGroup = (
     title: string,
     options: FilterOption[],
     activeId: string,
     onSelect: (id: string) => void
   ) => (
-    <View style={styles.filterGroup}>
-      <Text style={[styles.filterGroupTitle, { color: currentColors.text }]}>{title}</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filtersScroll}>
+    <View style={styles.sheetGroup}>
+      <Text style={[styles.sheetGroupTitle, { color: currentColors.text }]}>{title}</Text>
+      <View style={styles.sheetOptionsGrid}>
         {options.map((filter) => {
           const isActive = activeId === filter.id;
           return (
@@ -285,20 +391,20 @@ export default function Inspiration() {
               key={filter.id}
               activeOpacity={0.85}
               style={[
-                styles.filterChip,
+                styles.sheetOption,
                 {
-                  backgroundColor: isActive ? Colors.brand.blue : currentColors.card,
+                  backgroundColor: isActive ? Colors.brand.blue : currentColors.background,
                   borderColor: isActive ? Colors.brand.blue : currentColors.border,
                 },
               ]}
               onPress={() => onSelect(filter.id)}
             >
               <Ionicons name={filter.icon} size={16} color={isActive ? '#fff' : currentColors.subtext} />
-              <Text style={[styles.filterChipText, { color: isActive ? '#fff' : currentColors.text }]}>{filter.label}</Text>
+              <Text style={[styles.sheetOptionText, { color: isActive ? '#fff' : currentColors.text }]}>{filter.label}</Text>
             </TouchableOpacity>
           );
         })}
-      </ScrollView>
+      </View>
     </View>
   );
 
@@ -317,7 +423,7 @@ export default function Inspiration() {
           onPress={() => handleSelectOffer(featuredOffer)}
         >
           <Image source={{ uri: featuredOffer.imageUrl }} style={styles.featuredImage} />
-          <LinearGradient colors={['transparent', 'rgba(0,0,0,0.88)']} style={styles.featuredOverlay} />
+          <LinearGradient colors={['transparent', 'rgba(0,0,0,0.9)']} style={styles.featuredOverlay} />
 
           <View style={styles.featuredBadgesRow}>
             <View style={styles.featuredTopBadge}>
@@ -331,7 +437,7 @@ export default function Inspiration() {
 
           <View style={styles.featuredBottom}>
             <Text style={styles.featuredLabel}>Polecana inspiracja</Text>
-            <Text style={styles.featuredTitle} numberOfLines={1}>{featuredOffer.destination}</Text>
+            <Text style={styles.featuredTitle} numberOfLines={2}>{featuredOffer.destination}</Text>
             <Text style={styles.featuredSubtitle} numberOfLines={2}>
               {featuredOffer.notes || `Propozycja na ${featuredOffer.daysCount} dni · ${featuredOffer.authorName}`}
             </Text>
@@ -342,10 +448,6 @@ export default function Inspiration() {
               <View style={styles.dateTag}>
                 <Ionicons name="calendar-outline" size={13} color="#fff" />
                 <Text style={styles.dateTagText}>{formatDateRange(featuredOffer.startDate, featuredOffer.endDate)}</Text>
-              </View>
-              <View style={styles.dateTag}>
-                <Ionicons name="compass-outline" size={13} color="#fff" />
-                <Text style={styles.dateTagText}>{featuredOffer.tripTypeLabel}</Text>
               </View>
             </View>
           </View>
@@ -371,16 +473,16 @@ export default function Inspiration() {
               <View style={styles.offerTagsRow}>
                 <View style={[styles.sourceBadge, offer.source === 'ai' ? styles.aiBadge : styles.userBadge]}>
                   <Ionicons name={offer.source === 'ai' ? 'hardware-chip-outline' : 'person-outline'} size={11} color="#fff" />
-                  <Text style={styles.sourceBadgeText}>{offer.source === 'ai' ? 'AI' : 'User'}</Text>
+                  <Text style={styles.sourceBadgeText}>{offer.source === 'ai' ? 'AI' : 'Użytkownik'}</Text>
                 </View>
-                <View style={[styles.typeBadge, { backgroundColor: currentColors.background }]}> 
-                  <Text style={[styles.typeBadgeText, { color: currentColors.subtext }]}>{offer.tripTypeLabel}</Text>
+                <View style={[styles.typeBadge, { backgroundColor: currentColors.background }]}>
+                  <Text style={[styles.typeBadgeText, { color: currentColors.subtext }]}>{offer.durationLabel}</Text>
                 </View>
               </View>
 
-              <Text style={[styles.offerTitle, { color: currentColors.text }]} numberOfLines={1}>{offer.destination}</Text>
+              <Text style={[styles.offerTitle, { color: currentColors.text }]} numberOfLines={2}>{offer.destination}</Text>
               <Text style={[styles.offerSubtitle, { color: currentColors.subtext }]} numberOfLines={1}>
-                {offer.regionLabel} · {offer.authorName}
+                {offer.authorName} · {getStatusLabel(offer.status, offer.source)}
               </Text>
             </View>
 
@@ -397,19 +499,19 @@ export default function Inspiration() {
           </View>
 
           <Text style={[styles.offerDescription, { color: currentColors.subtext }]} numberOfLines={2}>
-            {offer.notes || 'Gotowa propozycja podróży utworzona na podstawie istniejących planów w aplikacji.'}
+            {offer.notes || 'Gotowa propozycja podróży przygotowana jako inspiracja do kolejnego wyjazdu.'}
           </Text>
 
           <View style={styles.offerMetaRow}>
-            <View style={[styles.smallMetaPill, { backgroundColor: currentColors.background }]}> 
+            <View style={[styles.smallMetaPill, { backgroundColor: currentColors.background }]}>
               <Ionicons name="time-outline" size={13} color={currentColors.subtext} />
               <Text style={[styles.smallMetaText, { color: currentColors.subtext }]}>{offer.daysCount} dni</Text>
             </View>
-            <View style={[styles.smallMetaPill, { backgroundColor: currentColors.background }]}> 
+            <View style={[styles.smallMetaPill, { backgroundColor: currentColors.background }]}>
               <Ionicons name="cash-outline" size={13} color={currentColors.subtext} />
               <Text style={[styles.smallMetaText, { color: currentColors.subtext }]}>{formatPrice(offer.priceFrom)}</Text>
             </View>
-            <View style={[styles.smallMetaPill, { backgroundColor: currentColors.background }]}> 
+            <View style={[styles.smallMetaPill, { backgroundColor: currentColors.background }]}>
               <Ionicons name="calendar-outline" size={13} color={currentColors.subtext} />
               <Text style={[styles.smallMetaText, { color: currentColors.subtext }]}>{formatDateRange(offer.startDate, offer.endDate)}</Text>
             </View>
@@ -422,7 +524,7 @@ export default function Inspiration() {
   const modalOfferIsSaved = selectedOffer ? savedOfferIds.has(selectedOffer.id) || selectedOffer.isSaved : false;
 
   return (
-    <View style={[styles.container, { backgroundColor: currentColors.background }]}> 
+    <View style={[styles.container, { backgroundColor: currentColors.background }]}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: bottomPadding }}
@@ -439,20 +541,20 @@ export default function Inspiration() {
         />
 
         <View style={styles.introSection}>
-          <Text style={[styles.introTitle, { color: currentColors.text }]} maxFontSizeMultiplier={1.1}>
+          <Text style={[styles.introTitle, { color: currentColors.text }]} maxFontSizeMultiplier={1.08}>
             Znajdź inspirację na kolejny wyjazd
           </Text>
-          <Text style={[styles.introText, { color: currentColors.subtext }]} maxFontSizeMultiplier={1.1}>
-            Przeglądaj pomysły z planów użytkowników i propozycje wygenerowane przez AI.
+          <Text style={[styles.introText, { color: currentColors.subtext }]} maxFontSizeMultiplier={1.08}>
+            Przeglądaj gotowe pomysły na wyjazdy i zapisuj najlepsze propozycje.
           </Text>
         </View>
 
-        <View style={[styles.searchBox, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
+        <View style={[styles.searchBox, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}>
           <Ionicons name="search-outline" size={21} color={currentColors.subtext} />
           <TextInput
             value={searchText}
             onChangeText={setSearchText}
-            placeholder="Szukaj kierunku, kraju albo opisu"
+            placeholder="Szukaj kierunku albo opisu"
             placeholderTextColor={currentColors.subtext}
             style={[styles.searchInput, { color: currentColors.text }]}
           />
@@ -463,37 +565,16 @@ export default function Inspiration() {
           )}
         </View>
 
-        <View style={styles.savedToggleWrapper}>
-          <TouchableOpacity
-            activeOpacity={0.88}
-            style={[
-              styles.savedToggle,
-              {
-                backgroundColor: showSavedOnly ? '#FF4D67' : currentColors.card,
-                borderColor: showSavedOnly ? '#FF4D67' : currentColors.border,
-              },
-            ]}
-            onPress={() => setShowSavedOnly((current) => !current)}
-          >
-            <Ionicons name={showSavedOnly ? 'heart' : 'heart-outline'} size={18} color={showSavedOnly ? '#fff' : '#FF4D67'} />
-            <Text style={[styles.savedToggleText, { color: showSavedOnly ? '#fff' : currentColors.text }]}>
-              Ulubione {savedCount > 0 ? `(${savedCount})` : ''}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {renderFilterGroup('Źródło propozycji', SOURCE_FILTERS, activeSourceId, (id) => setActiveSourceId(id as OfferSource | 'all'))}
-        {renderFilterGroup('Typ podróży', TRIP_TYPE_FILTERS, activeTripTypeId, (id) => setActiveTripTypeId(id as TripType | 'all'))}
-        {renderFilterGroup('Kierunek', REGION_FILTERS, activeRegionId, (id) => setActiveRegionId(id as TripRegion | 'all'))}
-        {renderFilterGroup('Budżet', BUDGET_FILTERS, activeBudgetId, (id) => setActiveBudgetId(id as BudgetLevel | 'all'))}
-        {renderFilterGroup('Długość wyjazdu', DURATION_FILTERS, activeDurationId, (id) => setActiveDurationId(id as DurationType | 'all'))}
-
+        {renderFilterButton()}
+        {renderActiveFilters()}
         {renderFeaturedOffer()}
 
         <View style={styles.sectionHeaderRow}>
-          <View>
+          <View style={styles.sectionTitleBox}>
             <Text style={[styles.sectionHeading, { color: currentColors.text }]}>Propozycje ofert</Text>
-            <Text style={[styles.sectionSubheading, { color: currentColors.subtext }]}>Dopasowane do wybranych filtrów</Text>
+            <Text style={[styles.sectionSubheading, { color: currentColors.subtext }]}>
+              {showSavedOnly ? 'Twoje zapisane inspiracje' : 'Dopasowane do wybranych ustawień'}
+            </Text>
           </View>
           <Text style={[styles.countText, { color: currentColors.subtext }]}>{visibleOffers.length} wyników</Text>
         </View>
@@ -504,7 +585,7 @@ export default function Inspiration() {
             <Text style={[styles.centerStateText, { color: currentColors.subtext }]}>Ładowanie inspiracji...</Text>
           </View>
         ) : errorMessage ? (
-          <View style={[styles.emptyState, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
+          <View style={[styles.emptyState, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}>
             <Ionicons name="cloud-offline-outline" size={34} color={currentColors.subtext} />
             <Text style={[styles.emptyTitle, { color: currentColors.text }]}>Nie udało się pobrać danych</Text>
             <Text style={[styles.emptyText, { color: currentColors.subtext }]}>{errorMessage}</Text>
@@ -513,34 +594,111 @@ export default function Inspiration() {
             </TouchableOpacity>
           </View>
         ) : visibleOffers.length === 0 ? (
-          <View style={[styles.emptyState, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
+          <View style={[styles.emptyState, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}>
             <Ionicons name={showSavedOnly ? 'heart-outline' : 'compass-outline'} size={34} color={currentColors.subtext} />
             <Text style={[styles.emptyTitle, { color: currentColors.text }]}>
               {showSavedOnly ? 'Brak ulubionych' : 'Brak propozycji'}
             </Text>
-            <Text style={[styles.emptyText, { color: currentColors.subtext }]}> 
+            <Text style={[styles.emptyText, { color: currentColors.subtext }]}>
               {showSavedOnly
                 ? 'Kliknij serduszko przy ofercie, żeby zapisać ją na później.'
-                : 'W bazie nie ma jeszcze podróży pasujących do wybranych filtrów.'}
+                : 'Zmień filtry albo wpisz inny kierunek w wyszukiwarce.'}
             </Text>
+            {hasAnyFilter && (
+              <TouchableOpacity style={styles.retryButton} onPress={resetFilters}>
+                <Text style={styles.retryButtonText}>Wyczyść filtry</Text>
+              </TouchableOpacity>
+            )}
           </View>
         ) : (
           <View style={styles.offersList}>{visibleOffers.map(renderOfferCard)}</View>
         )}
       </ScrollView>
 
+      <Modal visible={isFilterModalVisible} transparent animationType="slide" onRequestClose={() => setIsFilterModalVisible(false)}>
+        <View style={styles.modalWrapper}>
+          <Pressable style={styles.modalBackdrop} onPress={() => setIsFilterModalVisible(false)} />
+          <View style={[styles.filterSheet, { backgroundColor: currentColors.card }]}>
+            <View style={styles.modalHandle} />
+            <View style={styles.filterSheetHeader}>
+              <View>
+                <Text style={[styles.filterSheetTitle, { color: currentColors.text }]}>Filtry i sortowanie</Text>
+                <Text style={[styles.filterSheetSubtitle, { color: currentColors.subtext }]}>Dopasuj propozycje do swoich planów</Text>
+              </View>
+              <TouchableOpacity style={[styles.sheetCloseButton, { backgroundColor: currentColors.background }]} onPress={() => setIsFilterModalVisible(false)}>
+                <Ionicons name="close" size={20} color={currentColors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.filterSheetContent}>
+              {renderSheetFilterGroup(
+                'Źródło propozycji',
+                SOURCE_FILTERS,
+                activeSourceId,
+                (id) => setActiveSourceId(id as OfferSource | 'all')
+              )}
+              {renderSheetFilterGroup(
+                'Budżet',
+                BUDGET_FILTERS,
+                activeBudgetId,
+                (id) => setActiveBudgetId(id as BudgetLevel | 'all')
+              )}
+              {renderSheetFilterGroup(
+                'Długość wyjazdu',
+                DURATION_FILTERS,
+                activeDurationId,
+                (id) => setActiveDurationId(id as DurationType | 'all')
+              )}
+              {renderSheetFilterGroup(
+                'Sortowanie',
+                SORT_OPTIONS,
+                sortType,
+                (id) => setSortType(id as SortType)
+              )}
+
+              <TouchableOpacity
+                activeOpacity={0.88}
+                style={[
+                  styles.sheetFavoriteRow,
+                  {
+                    backgroundColor: showSavedOnly ? 'rgba(255,77,103,0.14)' : currentColors.background,
+                    borderColor: showSavedOnly ? '#FF4D67' : currentColors.border,
+                  },
+                ]}
+                onPress={() => setShowSavedOnly((current) => !current)}
+              >
+                <View style={styles.sheetFavoriteTextBox}>
+                  <Text style={[styles.sheetFavoriteTitle, { color: currentColors.text }]}>Tylko ulubione</Text>
+                  <Text style={[styles.sheetFavoriteSubtitle, { color: currentColors.subtext }]}>Wyświetl zapisane propozycje</Text>
+                </View>
+                <Ionicons name={showSavedOnly ? 'heart' : 'heart-outline'} size={24} color="#FF4D67" />
+              </TouchableOpacity>
+            </ScrollView>
+
+            <View style={styles.filterSheetActions}>
+              <TouchableOpacity style={[styles.secondarySheetButton, { borderColor: currentColors.border }]} onPress={resetFilters}>
+                <Text style={[styles.secondarySheetButtonText, { color: currentColors.text }]}>Wyczyść</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.primarySheetButton} onPress={() => setIsFilterModalVisible(false)}>
+                <Text style={styles.primarySheetButtonText}>Pokaż wyniki</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <Modal visible={Boolean(selectedOffer)} transparent animationType="slide" onRequestClose={() => setSelectedOffer(null)}>
         <View style={styles.modalWrapper}>
           <Pressable style={styles.modalBackdrop} onPress={() => setSelectedOffer(null)} />
           {selectedOffer && (
-            <View style={[styles.modalCard, { backgroundColor: currentColors.card }]}> 
+            <View style={[styles.modalCard, { backgroundColor: currentColors.card }]}>
               <View style={styles.modalHandle} />
               <Image source={{ uri: selectedOffer.imageUrl }} style={styles.modalImage} />
               <TouchableOpacity style={styles.modalCloseButton} onPress={() => setSelectedOffer(null)}>
                 <Ionicons name="close" size={20} color="#fff" />
               </TouchableOpacity>
 
-              <View style={styles.modalContent}>
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalContent}>
                 <View style={styles.modalTitleRow}>
                   <View style={{ flex: 1 }}>
                     <View style={styles.modalTagsRow}>
@@ -548,12 +706,12 @@ export default function Inspiration() {
                         <Ionicons name={selectedOffer.source === 'ai' ? 'hardware-chip-outline' : 'person-outline'} size={11} color="#fff" />
                         <Text style={styles.sourceBadgeText}>{selectedOffer.source === 'ai' ? 'AI' : 'Użytkownik'}</Text>
                       </View>
-                      <View style={[styles.typeBadge, { backgroundColor: currentColors.background }]}> 
-                        <Text style={[styles.typeBadgeText, { color: currentColors.subtext }]}>{selectedOffer.tripTypeLabel}</Text>
+                      <View style={[styles.typeBadge, { backgroundColor: currentColors.background }]}>
+                        <Text style={[styles.typeBadgeText, { color: currentColors.subtext }]}>{selectedOffer.durationLabel}</Text>
                       </View>
                     </View>
                     <Text style={[styles.modalTitle, { color: currentColors.text }]}>{selectedOffer.destination}</Text>
-                    <Text style={[styles.modalAuthor, { color: currentColors.subtext }]}> 
+                    <Text style={[styles.modalAuthor, { color: currentColors.subtext }]}>
                       {selectedOffer.authorName} · {getStatusLabel(selectedOffer.status, selectedOffer.source)}
                     </Text>
                   </View>
@@ -574,12 +732,12 @@ export default function Inspiration() {
                 ) : null}
 
                 <View style={styles.modalStatsGrid}>
-                  <View style={[styles.modalStat, { backgroundColor: currentColors.background }]}> 
+                  <View style={[styles.modalStat, { backgroundColor: currentColors.background }]}>
                     <Ionicons name="time-outline" size={18} color={Colors.brand.blue} />
                     <Text style={[styles.modalStatValue, { color: currentColors.text }]}>{selectedOffer.daysCount} dni</Text>
                     <Text style={[styles.modalStatLabel, { color: currentColors.subtext }]}>{selectedOffer.durationLabel}</Text>
                   </View>
-                  <View style={[styles.modalStat, { backgroundColor: currentColors.background }]}> 
+                  <View style={[styles.modalStat, { backgroundColor: currentColors.background }]}>
                     <Ionicons name="cash-outline" size={18} color={Colors.brand.green} />
                     <Text style={[styles.modalStatValue, { color: currentColors.text }]}>{formatPrice(selectedOffer.priceFrom)}</Text>
                     <Text style={[styles.modalStatLabel, { color: currentColors.subtext }]}>{selectedOffer.budgetLabel}</Text>
@@ -587,20 +745,20 @@ export default function Inspiration() {
                 </View>
 
                 <View style={styles.modalStatsGrid}>
-                  <View style={[styles.modalStat, { backgroundColor: currentColors.background }]}> 
-                    <Ionicons name="earth-outline" size={18} color={Colors.brand.yellow} />
-                    <Text style={[styles.modalStatValue, { color: currentColors.text }]}>{selectedOffer.regionLabel}</Text>
-                    <Text style={[styles.modalStatLabel, { color: currentColors.subtext }]}>kierunek</Text>
-                  </View>
-                  <View style={[styles.modalStat, { backgroundColor: currentColors.background }]}> 
-                    <Ionicons name="calendar-outline" size={18} color={Colors.brand.blue} />
+                  <View style={[styles.modalStat, { backgroundColor: currentColors.background }]}>
+                    <Ionicons name="calendar-outline" size={18} color={Colors.brand.yellow} />
                     <Text style={[styles.modalStatValue, { color: currentColors.text }]}>{formatDateRange(selectedOffer.startDate, selectedOffer.endDate)}</Text>
                     <Text style={[styles.modalStatLabel, { color: currentColors.subtext }]}>termin</Text>
                   </View>
+                  <View style={[styles.modalStat, { backgroundColor: currentColors.background }]}>
+                    <Ionicons name="compass-outline" size={18} color={Colors.brand.blue} />
+                    <Text style={[styles.modalStatValue, { color: currentColors.text }]}>{selectedOffer.tripTypeLabel}</Text>
+                    <Text style={[styles.modalStatLabel, { color: currentColors.subtext }]}>typ wyjazdu</Text>
+                  </View>
                 </View>
 
-                <Text style={[styles.modalDescription, { color: currentColors.subtext }]}> 
-                  {selectedOffer.notes || 'Ta propozycja pochodzi z istniejących podróży zapisanych w bazie aplikacji. Możesz potraktować ją jako inspirację i utworzyć na jej podstawie własny plan.'}
+                <Text style={[styles.modalDescription, { color: currentColors.subtext }]}>
+                  {selectedOffer.notes || 'To gotowa inspiracja, którą możesz zapisać albo wykorzystać jako podstawę własnego planu podróży.'}
                 </Text>
 
                 <TouchableOpacity
@@ -614,11 +772,11 @@ export default function Inspiration() {
                   ) : (
                     <>
                       <Ionicons name="add-circle-outline" size={20} color="#fff" />
-                      <Text style={styles.createTripButtonText}>Utwórz podróż z tej oferty</Text>
+                      <Text style={styles.createTripButtonText}>Utwórz plan z inspiracji</Text>
                     </>
                   )}
                 </TouchableOpacity>
-              </View>
+              </ScrollView>
             </View>
           )}
         </View>
