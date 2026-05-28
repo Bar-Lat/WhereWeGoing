@@ -25,7 +25,6 @@ import { useCurrentUserProfile } from '@/hooks/useCurrentUserProfile';
 import { useProfile } from '@/providers/profile.provider';
 import type { FriendProfile } from '@/types/friends';
 import {
-  type AchievementLevel,
   type ProfileAchievement,
   type ProfileStats,
   getMyProfileAchievements,
@@ -37,9 +36,6 @@ import {
   removeFriend,
   searchFriendCandidates,
 } from '@/services/friends.api';
-import { syncUnlockedAchievements } from '@/services/achievementNotifications.storage';
-
-type AchievementTab = 'unlocked' | 'locked';
 
 const getInitialsFromName = (name: string, fallback = 'U') => {
   const parts = name.trim().split(' ').filter(Boolean);
@@ -75,36 +71,6 @@ const getAchievementPercent = (achievement: ProfileAchievement) => {
   }
 
   return Math.min(100, Math.round((achievement.progress / achievement.target) * 100));
-};
-
-const getAchievementLevelLabel = (level: AchievementLevel) => {
-  switch (level) {
-    case 'bronze':
-      return 'Brązowe';
-    case 'silver':
-      return 'Srebrne';
-    case 'gold':
-      return 'Złote';
-    case 'diamond':
-      return 'Diamentowe';
-    default:
-      return 'Osiągnięcie';
-  }
-};
-
-const getAchievementLevelColor = (level: AchievementLevel) => {
-  switch (level) {
-    case 'bronze':
-      return '#CD7F32';
-    case 'silver':
-      return '#94A3B8';
-    case 'gold':
-      return '#F59E0B';
-    case 'diamond':
-      return '#38BDF8';
-    default:
-      return Colors.brand.blue;
-  }
 };
 
 const ProfileAvatar = ({
@@ -152,9 +118,6 @@ export default function Profile() {
   const [avatarLoadError, setAvatarLoadError] = useState(false);
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   const [isFriendsPanelVisible, setIsFriendsPanelVisible] = useState(false);
-  const [isStatsPanelVisible, setIsStatsPanelVisible] = useState(false);
-  const [isAchievementsPanelVisible, setIsAchievementsPanelVisible] = useState(false);
-  const [achievementTab, setAchievementTab] = useState<AchievementTab>('unlocked');
   const [friends, setFriends] = useState<FriendProfile[]>([]);
   const [friendsCount, setFriendsCount] = useState(0);
   const [friendsLoading, setFriendsLoading] = useState(false);
@@ -168,25 +131,12 @@ export default function Profile() {
   const [achievements, setAchievements] = useState<ProfileAchievement[]>([]);
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [insightsError, setInsightsError] = useState<string | null>(null);
-  const [newAchievementNotice, setNewAchievementNotice] = useState<ProfileAchievement | null>(null);
 
   const accessToken = session?.access_token ?? null;
 
   useEffect(() => {
     setAvatarLoadError(false);
   }, [profile?.avatar]);
-
-  useEffect(() => {
-    if (!newAchievementNotice) {
-      return;
-    }
-
-    const timeout = setTimeout(() => {
-      setNewAchievementNotice(null);
-    }, 5500);
-
-    return () => clearTimeout(timeout);
-  }, [newAchievementNotice]);
 
   const avatarInitials = useMemo(() => {
     const fullName = `${profile?.firstName || ''} ${profile?.lastName || ''}`.trim();
@@ -205,10 +155,7 @@ export default function Profile() {
   const friendsPreview = useMemo(() => friends.slice(0, 4), [friends]);
   const statsFriendCount = profileStats?.friendsCount ?? friendsCount;
   const friendsCountLabel = statsFriendCount === 1 ? '1 osoba' : `${statsFriendCount} osób`;
-  const unlockedAchievements = achievements.filter((achievement) => achievement.isUnlocked);
-  const lockedAchievements = achievements.filter((achievement) => !achievement.isUnlocked);
-  const visibleAchievements = achievementTab === 'unlocked' ? unlockedAchievements : lockedAchievements;
-  const achievementsProgressLabel = `${unlockedAchievements.length}/${achievements.length || 0}`;
+  const unlockedAchievements = achievements.filter((achievement) => achievement.isUnlocked).length;
 
   const loadFriends = useCallback(
     async (mode: 'initial' | 'refresh' = 'initial') => {
@@ -253,27 +200,14 @@ export default function Profile() {
         getMyProfileStats(accessToken),
         getMyProfileAchievements(accessToken),
       ]);
-      const nextAchievements = achievementsResponse.achievements;
       setProfileStats(statsResponse.stats);
-      setAchievements(nextAchievements);
-
-      if (profile?.id) {
-        const newUnlockedIds = await syncUnlockedAchievements(
-          profile.id,
-          nextAchievements.filter((achievement) => achievement.isUnlocked).map((achievement) => achievement.id)
-        );
-        const newestAchievement = nextAchievements.find((achievement) => newUnlockedIds.includes(achievement.id));
-
-        if (newestAchievement) {
-          setNewAchievementNotice(newestAchievement);
-        }
-      }
+      setAchievements(achievementsResponse.achievements);
     } catch (error) {
       setInsightsError(error instanceof Error ? error.message : 'Nie udało się pobrać danych profilu');
     } finally {
       setInsightsLoading(false);
     }
-  }, [accessToken, profile?.id]);
+  }, [accessToken]);
 
   useEffect(() => {
     loadFriends();
@@ -431,20 +365,6 @@ export default function Profile() {
         icon: 'location-outline',
         color: '#8B5CF6',
       },
-      {
-        key: 'planned',
-        label: 'Aktywne plany',
-        value: String(profileStats?.plannedTripsCount ?? 0),
-        icon: 'briefcase-outline',
-        color: '#EC4899',
-      },
-      {
-        key: 'budget',
-        label: 'Budżet',
-        value: formatBudget(profileStats?.totalBudget ?? 0),
-        icon: 'wallet-outline',
-        color: '#0EA5E9',
-      },
     ],
     [profileStats, statsFriendCount]
   );
@@ -486,9 +406,8 @@ export default function Profile() {
 
   const renderAchievement = (achievement: ProfileAchievement) => {
     const percent = getAchievementPercent(achievement);
-    const levelColor = getAchievementLevelColor(achievement.level);
     const iconColor = achievement.isUnlocked ? '#FFFFFF' : currentColors.subtext;
-    const iconBackground = achievement.isUnlocked ? levelColor : 'rgba(148,163,184,0.16)';
+    const iconBackground = achievement.isUnlocked ? Colors.brand.green : 'rgba(148,163,184,0.16)';
 
     return (
       <View
@@ -506,26 +425,20 @@ export default function Profile() {
             <Text style={[styles.achievementTitle, { color: currentColors.text }]} numberOfLines={1}>
               {achievement.title}
             </Text>
-            <View style={[styles.levelBadge, { backgroundColor: `${levelColor}22` }]}> 
-              <Text style={[styles.levelBadgeText, { color: levelColor }]}>{getAchievementLevelLabel(achievement.level)}</Text>
-            </View>
+            <Text style={[styles.achievementProgressText, { color: currentColors.subtext }]}>
+              {Math.min(achievement.progress, achievement.target)}/{achievement.target}
+            </Text>
           </View>
           <Text style={[styles.achievementDescription, { color: currentColors.subtext }]} numberOfLines={2}>
             {achievement.description}
           </Text>
-          <View style={styles.progressHeader}>
-            <Text style={[styles.achievementProgressText, { color: currentColors.subtext }]}>Postęp</Text>
-            <Text style={[styles.achievementProgressText, { color: currentColors.subtext }]}> 
-              {achievement.progressLabel ?? `${Math.min(achievement.progress, achievement.target)}/${achievement.target}`}
-            </Text>
-          </View>
           <View style={[styles.progressBar, { backgroundColor: colorScheme === 'dark' ? '#2C3036' : '#E9ECEF' }]}> 
             <View
               style={[
                 styles.progressFill,
                 {
                   width: `${percent}%`,
-                  backgroundColor: achievement.isUnlocked ? levelColor : Colors.brand.blue,
+                  backgroundColor: achievement.isUnlocked ? Colors.brand.green : Colors.brand.blue,
                 },
               ]}
             />
@@ -534,21 +447,6 @@ export default function Profile() {
       </View>
     );
   };
-
-  const renderPanelHeader = (title: string, subtitle: string, onClose: () => void) => (
-    <View style={[styles.modalHeader, { paddingTop: insets.top + 14, borderBottomColor: currentColors.border }]}> 
-      <View style={styles.modalTitleBox}>
-        <Text style={[styles.modalTitle, { color: currentColors.text }]}>{title}</Text>
-        <Text style={[styles.modalSubtitle, { color: currentColors.subtext }]}>{subtitle}</Text>
-      </View>
-      <TouchableOpacity
-        style={[styles.closeButton, { backgroundColor: currentColors.card }]}
-        onPress={onClose}
-      >
-        <Ionicons name="close" size={24} color={currentColors.text} />
-      </TouchableOpacity>
-    </View>
-  );
 
   return (
     <View style={[styles.container, { backgroundColor: currentColors.background }]}> 
@@ -591,45 +489,65 @@ export default function Profile() {
               <Text style={[styles.userEmail, { color: currentColors.subtext }]}>{emailLabel}</Text>
             </View>
 
-            {newAchievementNotice && (
-              <TouchableOpacity
-                activeOpacity={0.9}
-                style={styles.achievementNotice}
-                onPress={() => {
-                  setIsAchievementsPanelVisible(true);
-                  setAchievementTab('unlocked');
-                }}
-              >
-                <View style={styles.noticeIconBox}>
-                  <Ionicons name="trophy" size={20} color="#FFFFFF" />
+            <View style={styles.sectionTitleRowMain}>
+              <View>
+                <Text style={[styles.sectionTitleMain, { color: currentColors.text }]}>Moje statystyki</Text>
+                <Text style={[styles.sectionSubtitleMain, { color: currentColors.subtext }]}>Krótki podgląd aktywności w aplikacji</Text>
+              </View>
+              {insightsLoading && <ActivityIndicator size="small" color={Colors.brand.blue} />}
+            </View>
+
+            <View style={styles.statsGrid}>
+              {statCards.map((stat) => (
+                <View key={stat.key} style={[styles.statCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
+                  <View style={[styles.statIconBox, { backgroundColor: stat.color }]}> 
+                    <Ionicons name={stat.icon as any} size={20} color="#FFFFFF" />
+                  </View>
+                  <Text style={[styles.statValue, { color: currentColors.text }]}>{stat.value}</Text>
+                  <Text style={[styles.statLabel, { color: currentColors.subtext }]}>{stat.label}</Text>
                 </View>
-                <View style={styles.noticeTextBox}>
-                  <Text style={styles.noticeTitle}>Nowe osiągnięcie</Text>
-                  <Text style={styles.noticeText} numberOfLines={1}>{newAchievementNotice.title}</Text>
+              ))}
+            </View>
+
+            <View style={[styles.budgetCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
+              <View style={styles.budgetLeft}>
+                <View style={styles.budgetIconBox}>
+                  <Ionicons name="wallet-outline" size={20} color="#FFFFFF" />
                 </View>
-                <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
+                <View style={styles.budgetTextBox}>
+                  <Text style={[styles.budgetTitle, { color: currentColors.text }]}>Łączny budżet podróży</Text>
+                  <Text style={[styles.budgetSubtitle, { color: currentColors.subtext }]}>Suma budżetów z Twoich planów</Text>
+                </View>
+              </View>
+              <Text style={[styles.budgetValue, { color: currentColors.text }]}>{formatBudget(profileStats?.totalBudget ?? 0)}</Text>
+            </View>
+
+            {insightsError && (
+              <TouchableOpacity style={styles.inlineError} onPress={loadProfileInsights} activeOpacity={0.85}>
+                <Ionicons name="warning-outline" size={18} color="#EF4444" />
+                <Text style={styles.inlineErrorText}>Odśwież statystyki</Text>
               </TouchableOpacity>
             )}
 
             <TouchableOpacity
               activeOpacity={0.88}
-              style={[styles.summaryCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}
+              style={[styles.friendsCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}
               onPress={() => setIsFriendsPanelVisible(true)}
             >
-              <View style={styles.summaryCardHeader}>
-                <View style={styles.summaryTitleRow}>
-                  <View style={[styles.summaryIconBox, { backgroundColor: Colors.brand.blue }]}> 
+              <View style={styles.friendsCardHeader}>
+                <View style={styles.friendsCardTitleRow}>
+                  <View style={styles.friendsIconBox}>
                     <Ionicons name="people" size={22} color="#FFFFFF" />
                   </View>
-                  <View style={styles.summaryTextBox}>
-                    <Text style={[styles.summaryTitle, { color: currentColors.text }]}>Moi znajomi</Text>
-                    <Text style={[styles.summarySubtitle, { color: currentColors.subtext }]}>Zarządzaj osobami do wspólnych planów</Text>
+                  <View style={styles.friendsCardTitleText}>
+                    <Text style={[styles.friendsCardTitle, { color: currentColors.text }]}>Moi znajomi</Text>
+                    <Text style={[styles.friendsCardSubtitle, { color: currentColors.subtext }]}>Zarządzaj osobami do wspólnych planów</Text>
                   </View>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color={currentColors.subtext} />
               </View>
 
-              <View style={styles.summaryBottomRow}>
+              <View style={styles.friendsCardBottom}>
                 <View style={styles.friendsPreviewStack}>
                   {friendsLoading ? (
                     <ActivityIndicator size="small" color={Colors.brand.blue} />
@@ -659,95 +577,31 @@ export default function Profile() {
                     </View>
                   )}
                 </View>
-                <Text style={[styles.summaryValue, { color: currentColors.text }]}>{friendsCountLabel}</Text>
+                <Text style={[styles.friendsCountText, { color: currentColors.text }]}>{friendsCountLabel}</Text>
               </View>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              activeOpacity={0.88}
-              style={[styles.summaryCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}
-              onPress={() => setIsStatsPanelVisible(true)}
-            >
-              <View style={styles.summaryCardHeader}>
-                <View style={styles.summaryTitleRow}>
-                  <View style={[styles.summaryIconBox, { backgroundColor: Colors.brand.green }]}> 
-                    <Ionicons name="bar-chart" size={22} color="#FFFFFF" />
-                  </View>
-                  <View style={styles.summaryTextBox}>
-                    <Text style={[styles.summaryTitle, { color: currentColors.text }]}>Moje statystyki</Text>
-                    <Text style={[styles.summarySubtitle, { color: currentColors.subtext }]}>Podróże, aktywności i budżet w jednym miejscu</Text>
-                  </View>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color={currentColors.subtext} />
+            <View style={styles.sectionTitleRowMain}>
+              <View>
+                <Text style={[styles.sectionTitleMain, { color: currentColors.text }]}>Osiągnięcia</Text>
+                <Text style={[styles.sectionSubtitleMain, { color: currentColors.subtext }]}>Odblokowano {unlockedAchievements}/{achievements.length || 6}</Text>
               </View>
+            </View>
 
-              <View style={styles.miniStatsRow}>
-                <View style={styles.miniStatItem}>
-                  <Text style={[styles.miniStatValue, { color: currentColors.text }]}>{profileStats?.tripsCount ?? 0}</Text>
-                  <Text style={[styles.miniStatLabel, { color: currentColors.subtext }]}>podróże</Text>
-                </View>
-                <View style={styles.miniStatItem}>
-                  <Text style={[styles.miniStatValue, { color: currentColors.text }]}>{profileStats?.activitiesCount ?? 0}</Text>
-                  <Text style={[styles.miniStatLabel, { color: currentColors.subtext }]}>aktywności</Text>
-                </View>
-                <View style={styles.miniStatItem}>
-                  <Text style={[styles.miniStatValue, { color: currentColors.text }]}>{formatBudget(profileStats?.totalBudget ?? 0)}</Text>
-                  <Text style={[styles.miniStatLabel, { color: currentColors.subtext }]}>budżet</Text>
-                </View>
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              activeOpacity={0.88}
-              style={[styles.summaryCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}
-              onPress={() => setIsAchievementsPanelVisible(true)}
-            >
-              <View style={styles.summaryCardHeader}>
-                <View style={styles.summaryTitleRow}>
-                  <View style={[styles.summaryIconBox, { backgroundColor: '#F59E0B' }]}> 
-                    <Ionicons name="trophy" size={22} color="#FFFFFF" />
-                  </View>
-                  <View style={styles.summaryTextBox}>
-                    <Text style={[styles.summaryTitle, { color: currentColors.text }]}>Osiągnięcia</Text>
-                    <Text style={[styles.summarySubtitle, { color: currentColors.subtext }]}>Odblokowane cele i kolejne wyzwania</Text>
-                  </View>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color={currentColors.subtext} />
-              </View>
-
-              <View style={styles.summaryBottomRow}>
-                <View style={styles.achievementPreviewStack}>
-                  {unlockedAchievements.slice(0, 4).map((achievement, index) => (
-                    <View
-                      key={achievement.id}
-                      style={[
-                        styles.previewAchievementIcon,
-                        {
-                          marginLeft: index === 0 ? 0 : -8,
-                          backgroundColor: getAchievementLevelColor(achievement.level),
-                          borderColor: currentColors.card,
-                        },
-                      ]}
-                    >
-                      <Ionicons name={achievement.icon as any} size={16} color="#FFFFFF" />
-                    </View>
-                  ))}
-                  {unlockedAchievements.length === 0 && (
-                    <View style={[styles.emptyPreviewIcon, { borderColor: currentColors.border }]}> 
-                      <Ionicons name="trophy-outline" size={18} color={currentColors.subtext} />
-                    </View>
+            <View style={styles.achievementsList}>
+              {achievements.length > 0 ? (
+                achievements.map(renderAchievement)
+              ) : (
+                <View style={[styles.emptyAchievementsCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
+                  {insightsLoading ? (
+                    <ActivityIndicator size="small" color={Colors.brand.blue} />
+                  ) : (
+                    <Ionicons name="trophy-outline" size={28} color={currentColors.subtext} />
                   )}
+                  <Text style={[styles.emptyStateText, { color: currentColors.subtext }]}>Osiągnięcia pojawią się po załadowaniu danych profilu.</Text>
                 </View>
-                <Text style={[styles.summaryValue, { color: currentColors.text }]}>{achievementsProgressLabel}</Text>
-              </View>
-            </TouchableOpacity>
-
-            {insightsError && (
-              <TouchableOpacity style={styles.inlineError} onPress={loadProfileInsights} activeOpacity={0.85}>
-                <Ionicons name="warning-outline" size={18} color="#EF4444" />
-                <Text style={styles.inlineErrorText}>Odśwież dane profilu</Text>
-              </TouchableOpacity>
-            )}
+              )}
+            </View>
 
             <View style={[styles.menuContainer, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
               {menuItems.map((item, index) => {
@@ -794,7 +648,18 @@ export default function Profile() {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={[styles.modalContainer, { backgroundColor: currentColors.background }]}
         >
-          {renderPanelHeader('Moi znajomi', 'Dodawaj osoby do wspólnego planowania', () => setIsFriendsPanelVisible(false))}
+          <View style={[styles.modalHeader, { paddingTop: insets.top + 14, borderBottomColor: currentColors.border }]}> 
+            <View style={styles.modalTitleBox}>
+              <Text style={[styles.modalTitle, { color: currentColors.text }]}>Moi znajomi</Text>
+              <Text style={[styles.modalSubtitle, { color: currentColors.subtext }]}>Dodawaj osoby do wspólnego planowania</Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.closeButton, { backgroundColor: currentColors.card }]}
+              onPress={() => setIsFriendsPanelVisible(false)}
+            >
+              <Ionicons name="close" size={24} color={currentColors.text} />
+            </TouchableOpacity>
+          </View>
 
           <ScrollView
             contentContainerStyle={[styles.modalContent, { paddingBottom: insets.bottom + 28 }]}
@@ -893,112 +758,6 @@ export default function Profile() {
         </KeyboardAvoidingView>
       </Modal>
 
-      <Modal
-        visible={isStatsPanelVisible}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setIsStatsPanelVisible(false)}
-      >
-        <View style={[styles.modalContainer, { backgroundColor: currentColors.background }]}> 
-          {renderPanelHeader('Moje statystyki', 'Pełny przegląd Twojej aktywności', () => setIsStatsPanelVisible(false))}
-          <ScrollView contentContainerStyle={[styles.modalContent, { paddingBottom: insets.bottom + 28 }]}> 
-            <View style={[styles.statsHeroCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
-              <View style={styles.statsHeroIcon}>
-                <Ionicons name="analytics-outline" size={28} color="#FFFFFF" />
-              </View>
-              <View style={styles.statsHeroTextBox}>
-                <Text style={[styles.statsHeroTitle, { color: currentColors.text }]}>Twoje podróżnicze podsumowanie</Text>
-                <Text style={[styles.statsHeroSubtitle, { color: currentColors.subtext }]}>Dane są liczone z utworzonych podróży, dni planu, aktywności i listy znajomych.</Text>
-              </View>
-            </View>
-
-            {insightsLoading ? (
-              <View style={styles.emptyStateLarge}>
-                <ActivityIndicator size="large" color={Colors.brand.blue} />
-                <Text style={[styles.emptyStateText, { color: currentColors.subtext }]}>Ładowanie statystyk...</Text>
-              </View>
-            ) : (
-              <View style={styles.statsGrid}>
-                {statCards.map((stat) => (
-                  <View key={stat.key} style={[styles.statCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
-                    <View style={[styles.statIconBox, { backgroundColor: stat.color }]}> 
-                      <Ionicons name={stat.icon as any} size={20} color="#FFFFFF" />
-                    </View>
-                    <Text style={[styles.statValue, { color: currentColors.text }]} numberOfLines={1}>{stat.value}</Text>
-                    <Text style={[styles.statLabel, { color: currentColors.subtext }]}>{stat.label}</Text>
-                  </View>
-                ))}
-              </View>
-            )}
-
-            <TouchableOpacity style={styles.refreshPanelButton} onPress={loadProfileInsights} activeOpacity={0.88}>
-              <Ionicons name="refresh" size={18} color="#FFFFFF" />
-              <Text style={styles.refreshPanelButtonText}>Odśwież statystyki</Text>
-            </TouchableOpacity>
-          </ScrollView>
-        </View>
-      </Modal>
-
-      <Modal
-        visible={isAchievementsPanelVisible}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setIsAchievementsPanelVisible(false)}
-      >
-        <View style={[styles.modalContainer, { backgroundColor: currentColors.background }]}> 
-          {renderPanelHeader('Osiągnięcia', 'Odblokowane cele i wyzwania na później', () => setIsAchievementsPanelVisible(false))}
-          <ScrollView contentContainerStyle={[styles.modalContent, { paddingBottom: insets.bottom + 28 }]}> 
-            <View style={[styles.achievementsHeroCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
-              <View style={styles.achievementsHeroIcon}>
-                <Ionicons name="trophy" size={26} color="#FFFFFF" />
-              </View>
-              <View style={styles.achievementsHeroTextBox}>
-                <Text style={[styles.statsHeroTitle, { color: currentColors.text }]}>Postęp osiągnięć</Text>
-                <Text style={[styles.statsHeroSubtitle, { color: currentColors.subtext }]}>Odblokowano {achievementsProgressLabel}. Trudniejsze cele zostaną zdobyte z czasem.</Text>
-              </View>
-            </View>
-
-            <View style={[styles.tabsContainer, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
-              <TouchableOpacity
-                style={[styles.tabButton, achievementTab === 'unlocked' && styles.activeTabButton]}
-                onPress={() => setAchievementTab('unlocked')}
-              >
-                <Text style={[styles.tabText, { color: achievementTab === 'unlocked' ? '#FFFFFF' : currentColors.text }]}>Odblokowane</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.tabButton, achievementTab === 'locked' && styles.activeTabButton]}
-                onPress={() => setAchievementTab('locked')}
-              >
-                <Text style={[styles.tabText, { color: achievementTab === 'locked' ? '#FFFFFF' : currentColors.text }]}>Nieodblokowane</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.achievementsList}>
-              {insightsLoading ? (
-                <View style={[styles.emptyAchievementsCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
-                  <ActivityIndicator size="small" color={Colors.brand.blue} />
-                  <Text style={[styles.emptyStateText, { color: currentColors.subtext }]}>Ładowanie osiągnięć...</Text>
-                </View>
-              ) : visibleAchievements.length > 0 ? (
-                visibleAchievements.map(renderAchievement)
-              ) : (
-                <View style={[styles.emptyAchievementsCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
-                  <Ionicons name={achievementTab === 'unlocked' ? 'trophy-outline' : 'lock-closed-outline'} size={28} color={currentColors.subtext} />
-                  <Text style={[styles.emptyStateTitle, { color: currentColors.text }]}>
-                    {achievementTab === 'unlocked' ? 'Brak odblokowanych osiągnięć' : 'Brak kolejnych wyzwań'}
-                  </Text>
-                  <Text style={[styles.emptyStateText, { color: currentColors.subtext }]}> 
-                    {achievementTab === 'unlocked'
-                      ? 'Korzystaj z aplikacji, twórz podróże i dodawaj aktywności.'
-                      : 'Wszystkie osiągnięcia z tej listy są już odblokowane.'}
-                  </Text>
-                </View>
-              )}
-            </View>
-          </ScrollView>
-        </View>
-      </Modal>
-
       <EditProfileModal
         visible={isEditModalVisible}
         accessToken={accessToken}
@@ -1076,104 +835,173 @@ const styles = StyleSheet.create({
   },
   userName: {
     fontSize: 24,
-    lineHeight: 30,
     fontWeight: '800',
     marginBottom: 2,
     textAlign: 'center',
   },
   userEmail: {
     fontSize: 15,
-    lineHeight: 21,
     fontWeight: '500',
     textAlign: 'center',
   },
-  achievementNotice: {
-    borderRadius: 22,
-    padding: 15,
-    marginBottom: 16,
-    backgroundColor: Colors.brand.green,
+  sectionTitleRowMain: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
     gap: 12,
+    marginBottom: 12,
+    marginTop: 4,
   },
-  noticeIconBox: {
+  sectionTitleMain: {
+    fontSize: 20,
+    lineHeight: 26,
+    fontWeight: '900',
+  },
+  sectionSubtitleMain: {
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 2,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: 12,
+  },
+  statCard: {
+    width: '48%',
+    borderWidth: 1,
+    borderRadius: 22,
+    padding: 16,
+    minHeight: 128,
+    justifyContent: 'space-between',
+  },
+  statIconBox: {
     width: 42,
     height: 42,
     borderRadius: 15,
-    backgroundColor: 'rgba(255,255,255,0.18)',
     justifyContent: 'center',
     alignItems: 'center',
+    marginBottom: 14,
   },
-  noticeTextBox: {
-    flex: 1,
-    minWidth: 0,
+  statValue: {
+    fontSize: 26,
+    lineHeight: 32,
+    fontWeight: '900',
   },
-  noticeTitle: {
-    color: '#FFFFFF',
+  statLabel: {
     fontSize: 13,
     lineHeight: 18,
-    fontWeight: '800',
+    fontWeight: '700',
+    marginTop: 2,
   },
-  noticeText: {
-    color: '#FFFFFF',
+  budgetCard: {
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 16,
+    marginBottom: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 14,
+  },
+  budgetLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 12,
+  },
+  budgetIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: Colors.brand.blue,
+  },
+  budgetTextBox: {
+    flex: 1,
+  },
+  budgetTitle: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '900',
+  },
+  budgetSubtitle: {
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 2,
+  },
+  budgetValue: {
     fontSize: 16,
     lineHeight: 22,
     fontWeight: '900',
+    textAlign: 'right',
   },
-  summaryCard: {
+  inlineError: {
+    minHeight: 44,
+    borderRadius: 16,
+    backgroundColor: 'rgba(239,68,68,0.1)',
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 16,
+  },
+  inlineErrorText: {
+    color: '#EF4444',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  friendsCard: {
     borderRadius: 22,
     borderWidth: 1,
     padding: 18,
-    marginBottom: 16,
+    marginBottom: 18,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.08,
     shadowRadius: 14,
     elevation: 3,
   },
-  summaryCardHeader: {
+  friendsCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 14,
   },
-  summaryTitleRow: {
+  friendsCardTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
     gap: 14,
   },
-  summaryIconBox: {
+  friendsIconBox: {
     width: 46,
     height: 46,
     borderRadius: 16,
+    backgroundColor: Colors.brand.blue,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  summaryTextBox: {
+  friendsCardTitleText: {
     flex: 1,
-    minWidth: 0,
   },
-  summaryTitle: {
+  friendsCardTitle: {
     fontSize: 18,
     lineHeight: 23,
     fontWeight: '900',
     marginBottom: 4,
   },
-  summarySubtitle: {
+  friendsCardSubtitle: {
     fontSize: 13,
     lineHeight: 18,
   },
-  summaryBottomRow: {
+  friendsCardBottom: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: 18,
-  },
-  summaryValue: {
-    fontSize: 15,
-    lineHeight: 20,
-    fontWeight: '800',
   },
   friendsPreviewStack: {
     flexDirection: 'row',
@@ -1192,54 +1020,71 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  miniStatsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 10,
-    marginTop: 18,
+  friendsCountText: {
+    fontSize: 15,
+    fontWeight: '800',
   },
-  miniStatItem: {
-    flex: 1,
-    minWidth: 0,
+  achievementsList: {
+    gap: 12,
+    marginBottom: 18,
   },
-  miniStatValue: {
-    fontSize: 16,
-    lineHeight: 21,
-    fontWeight: '900',
-  },
-  miniStatLabel: {
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: 2,
-    fontWeight: '700',
-  },
-  achievementPreviewStack: {
+  achievementCard: {
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 15,
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 38,
+    gap: 13,
   },
-  previewAchievementIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: 2,
+  achievementIconBox: {
+    width: 46,
+    height: 46,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  inlineError: {
-    minHeight: 44,
-    borderRadius: 16,
-    backgroundColor: 'rgba(239,68,68,0.1)',
-    paddingHorizontal: 14,
+  achievementContent: {
+    flex: 1,
+    minWidth: 0,
+  },
+  achievementTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 16,
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 3,
   },
-  inlineErrorText: {
-    color: '#EF4444',
-    fontSize: 13,
+  achievementTitle: {
+    flex: 1,
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '900',
+  },
+  achievementProgressText: {
+    fontSize: 12,
+    lineHeight: 17,
     fontWeight: '800',
+  },
+  achievementDescription: {
+    fontSize: 12,
+    lineHeight: 17,
+    marginBottom: 9,
+  },
+  progressBar: {
+    height: 7,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 10,
+  },
+  emptyAchievementsCard: {
+    borderWidth: 1,
+    borderRadius: 22,
+    padding: 24,
+    alignItems: 'center',
+    gap: 10,
   },
   menuContainer: {
     borderRadius: 20,
@@ -1331,13 +1176,11 @@ const styles = StyleSheet.create({
   },
   profileCodeTitle: {
     fontSize: 16,
-    lineHeight: 21,
     fontWeight: '900',
     marginBottom: 4,
   },
   profileCodeValue: {
     fontSize: 13,
-    lineHeight: 18,
     fontWeight: '600',
   },
   shareCodeButton: {
@@ -1381,7 +1224,6 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 19,
-    lineHeight: 25,
     fontWeight: '900',
   },
   listCard: {
@@ -1404,7 +1246,6 @@ const styles = StyleSheet.create({
   },
   friendName: {
     fontSize: 15,
-    lineHeight: 20,
     fontWeight: '900',
     marginBottom: 4,
   },
@@ -1424,204 +1265,6 @@ const styles = StyleSheet.create({
   friendActionText: {
     fontSize: 13,
     fontWeight: '900',
-  },
-  statsHeroCard: {
-    borderWidth: 1,
-    borderRadius: 24,
-    padding: 18,
-    marginBottom: 16,
-    flexDirection: 'row',
-    gap: 14,
-    alignItems: 'center',
-  },
-  statsHeroIcon: {
-    width: 54,
-    height: 54,
-    borderRadius: 19,
-    backgroundColor: Colors.brand.green,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  statsHeroTextBox: {
-    flex: 1,
-    minWidth: 0,
-  },
-  statsHeroTitle: {
-    fontSize: 17,
-    lineHeight: 23,
-    fontWeight: '900',
-    marginBottom: 4,
-  },
-  statsHeroSubtitle: {
-    fontSize: 13,
-    lineHeight: 19,
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 16,
-  },
-  statCard: {
-    width: '48%',
-    borderWidth: 1,
-    borderRadius: 22,
-    padding: 16,
-    minHeight: 130,
-    justifyContent: 'space-between',
-  },
-  statIconBox: {
-    width: 42,
-    height: 42,
-    borderRadius: 15,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  statValue: {
-    fontSize: 24,
-    lineHeight: 30,
-    fontWeight: '900',
-  },
-  statLabel: {
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: '700',
-    marginTop: 2,
-  },
-  refreshPanelButton: {
-    height: 50,
-    borderRadius: 18,
-    backgroundColor: Colors.brand.blue,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  refreshPanelButtonText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '900',
-  },
-  achievementsHeroCard: {
-    borderWidth: 1,
-    borderRadius: 24,
-    padding: 18,
-    marginBottom: 16,
-    flexDirection: 'row',
-    gap: 14,
-    alignItems: 'center',
-  },
-  achievementsHeroIcon: {
-    width: 54,
-    height: 54,
-    borderRadius: 19,
-    backgroundColor: '#F59E0B',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  achievementsHeroTextBox: {
-    flex: 1,
-    minWidth: 0,
-  },
-  tabsContainer: {
-    borderWidth: 1,
-    borderRadius: 18,
-    padding: 4,
-    flexDirection: 'row',
-    marginBottom: 16,
-  },
-  tabButton: {
-    flex: 1,
-    height: 42,
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  activeTabButton: {
-    backgroundColor: Colors.brand.blue,
-  },
-  tabText: {
-    fontSize: 14,
-    fontWeight: '900',
-  },
-  achievementsList: {
-    gap: 12,
-  },
-  achievementCard: {
-    borderRadius: 22,
-    borderWidth: 1,
-    padding: 15,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 13,
-  },
-  achievementIconBox: {
-    width: 46,
-    height: 46,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  achievementContent: {
-    flex: 1,
-    minWidth: 0,
-  },
-  achievementTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-    marginBottom: 5,
-  },
-  achievementTitle: {
-    flex: 1,
-    fontSize: 15,
-    lineHeight: 20,
-    fontWeight: '900',
-  },
-  levelBadge: {
-    borderRadius: 999,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-  },
-  levelBadgeText: {
-    fontSize: 10,
-    lineHeight: 13,
-    fontWeight: '900',
-  },
-  achievementDescription: {
-    fontSize: 12,
-    lineHeight: 17,
-    marginBottom: 10,
-  },
-  progressHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 6,
-  },
-  achievementProgressText: {
-    fontSize: 12,
-    lineHeight: 17,
-    fontWeight: '800',
-  },
-  progressBar: {
-    height: 7,
-    borderRadius: 10,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 10,
-  },
-  emptyAchievementsCard: {
-    borderWidth: 1,
-    borderRadius: 22,
-    padding: 24,
-    alignItems: 'center',
-    gap: 10,
   },
   emptyStateSmall: {
     paddingVertical: 28,
