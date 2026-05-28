@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   ActivityIndicator,
   Image,
   StyleSheet,
@@ -54,19 +55,38 @@ export default function Profile() {
   const userNameLabel = `${profile?.firstName || ''} ${profile?.lastName || ''}`.trim() || 'Imię Nazwisko';
   const emailLabel = profile?.email || 'Brak adresu e-mail';
 
-  const menuItems = [
-    { label: 'Edytuj profil', icon: 'person-outline' },
-    { label: 'Moje statystyki', icon: 'bar-chart-outline' },
-    { label: 'Osiągnięcia', icon: 'trophy-outline' },
-    { label: 'Zaproś znajomych', icon: 'share-social-outline' },
-    { label: isOffline ? 'Tryb online' : 'Tryb offline', icon: isOffline ? 'cloud-outline' : 'cloud-offline-outline' },
-    { label: 'Wyloguj się', icon: 'log-out-outline' },
-  ] as const;
+  useEffect(() => {
+    if (isOffline) {
+      setIsEditModalVisible(false);
+    }
+  }, [isOffline]);
+
+  const menuItems = useMemo(() => {
+    const items = [
+      { label: 'Edytuj profil', icon: 'person-outline' },
+      { label: 'Moje statystyki', icon: 'bar-chart-outline' },
+      { label: 'Osiągnięcia', icon: 'trophy-outline' },
+      { label: 'Zaproś znajomych', icon: 'share-social-outline' },
+      { label: isOffline ? 'Tryb online' : 'Tryb offline', icon: isOffline ? 'cloud-outline' : 'cloud-offline-outline' },
+      { label: 'Wyloguj się', icon: 'log-out-outline' },
+    ] as const;
+
+    return isOffline ? items.filter((item) => item.label !== 'Edytuj profil') : items;
+  }, [isOffline]);
+
+  const openEditProfile = useCallback(() => {
+    if (isOffline) {
+      Alert.alert('Brak internetu', 'Edycja profilu jest dostępna tylko online.');
+      return;
+    }
+
+    setIsEditModalVisible(true);
+  }, [isOffline]);
 
   const onMenuItemPress = useCallback(
     (label: typeof menuItems[number]['label']) => {
       if (label === 'Edytuj profil') {
-        setIsEditModalVisible(true);
+        openEditProfile();
         return;
       }
       if (label === 'Tryb offline' || label === 'Tryb online') {
@@ -77,7 +97,7 @@ export default function Profile() {
         signOut('manual');
       }
     },
-    [signOut, toggleOffline, isOffline]
+    [openEditProfile, signOut, toggleOffline]
   );
 
   return (
@@ -110,13 +130,14 @@ export default function Profile() {
                     <Text style={styles.avatarText}>{avatarInitials}</Text>
                   </View>
                 )}
-                {/* Opcjonalna plakietka edycji na awatarze */}
-                <TouchableOpacity 
-                  style={[styles.editBadge, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}
-                  onPress={() => setIsEditModalVisible(true)}
-                >
-                  <Ionicons name="pencil" size={14} color={currentColors.text} />
-                </TouchableOpacity>
+                {!isOffline && (
+                  <TouchableOpacity 
+                    style={[styles.editBadge, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}
+                    onPress={openEditProfile}
+                  >
+                    <Ionicons name="pencil" size={14} color={currentColors.text} />
+                  </TouchableOpacity>
+                )}
               </View>
 
               <Text style={[styles.userName, { color: currentColors.text }]}>{userNameLabel}</Text>
