@@ -24,6 +24,8 @@ interface ScreenHeaderProps {
   showProfile?: boolean;
   onProfilePress?: () => void;
   userAvatarUrl?: string | null;
+
+  hasUnreadNotifications?: boolean;
 }
 
 export default function ScreenHeader({ 
@@ -35,7 +37,8 @@ export default function ScreenHeader({
   onNotificationPress,
   showProfile = true,
   onProfilePress,
-  userAvatarUrl
+  userAvatarUrl,
+  hasUnreadNotifications = false,
 }: ScreenHeaderProps) {
   const insets = useSafeAreaInsets();
   const { isOffline } = useNetwork();
@@ -62,7 +65,7 @@ export default function ScreenHeader({
             {showNotifications && (
               <TouchableOpacity style={styles.iconCircle} onPress={onNotificationPress}>
                 <Ionicons name="notifications-outline" size={22} color="white" />
-                <View style={styles.notificationDot} />
+                {hasUnreadNotifications && <View style={styles.notificationDot} />}
               </TouchableOpacity>
             )}
             <TouchableOpacity onPress={onProfilePress}>

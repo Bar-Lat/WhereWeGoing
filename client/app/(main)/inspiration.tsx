@@ -12,6 +12,7 @@ import { Colors } from '@/styles/colors';
 import { styles } from '@/styles/inspiration.styles';
 import ScreenHeader from '../../components/ScreenHeader';
 import { useCurrentUserProfile } from '@/hooks/useCurrentUserProfile';
+import { useNotifications } from '@/providers/notifications.provider';
 
 // --- MOCK DATA ---
 const CATEGORIES = [
@@ -44,6 +45,8 @@ export default function Inspiration() {
   
   const bottomPadding = 65 + (insets.bottom > 0 ? insets.bottom : 10) + 20;
 
+  const { hasUnreadNotifications } = useNotifications();
+
   return (
     <View style={[styles.container, { backgroundColor: currentColors.background }]}>
       
@@ -59,6 +62,7 @@ export default function Inspiration() {
           onNotificationPress={() => router.push('/notifications')}
           onProfilePress={() => router.push('/(main)/profile')}
           userAvatarUrl={userAvatarUrl}
+          hasUnreadNotifications={hasUnreadNotifications}
         />
         
         <View style={styles.heroSection}>

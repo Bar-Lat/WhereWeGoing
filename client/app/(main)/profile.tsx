@@ -20,6 +20,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useCurrentUserProfile } from '@/hooks/useCurrentUserProfile';
 import { useProfile } from '@/providers/profile.provider';
 import {useNetwork} from '@/providers/network.provider'
+import { useNotifications } from '@/providers/notifications.provider';
 
 export default function Profile() {
   const insets = useSafeAreaInsets();
@@ -34,6 +35,8 @@ export default function Profile() {
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   
   const {isOffline, toggleOffline} = useNetwork();
+
+  const { hasUnreadNotifications } = useNotifications();
 
   const accessToken = session?.access_token ?? null;
 
@@ -110,6 +113,7 @@ export default function Profile() {
         title="Mój Profil" 
         showProfile={false} 
         onNotificationPress={() => router.push('/notifications')}
+        hasUnreadNotifications={hasUnreadNotifications}
       />
 
       <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPadding }]}>

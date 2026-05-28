@@ -8,6 +8,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import {NetworkProvider} from '@/providers/network.provider'
 import OfflineBanner from '@/components/OfflineBanner'
+import { NotificationsProvider } from '@/providers/notifications.provider';
 
 
 function AppNavigator() {
@@ -64,12 +65,14 @@ function AppNavigator() {
 
 export default function RootLayout() {
     return (
-        <AuthProvider>
-            <NetworkProvider>
-                <ProfileProvider>
-                    <AppNavigator />
-                </ProfileProvider>
-            </NetworkProvider>
-        </AuthProvider>
+        <NotificationsProvider>
+            <AuthProvider>
+                <NetworkProvider>
+                    <ProfileProvider>
+                        <AppNavigator />
+                    </ProfileProvider>
+                </NetworkProvider>
+            </AuthProvider>
+        </NotificationsProvider>
     );
 }

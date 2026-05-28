@@ -1,4 +1,5 @@
-import React from 'react';
+import React, {useEffect} from 'react';
+import { useNotifications } from '@/providers/notifications.provider';
 import {
   ScrollView,
   StyleSheet,
@@ -36,6 +37,12 @@ export default function NotificationsScreen() {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme() ?? 'light';
   const currentColors = Colors[colorScheme];
+
+  const { markAllAsRead } = useNotifications();
+
+    useEffect(() => {
+        markAllAsRead();
+    }, [markAllAsRead]);
 
   return (
     <View style={[styles.container, { backgroundColor: currentColors.background }]}>

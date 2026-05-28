@@ -12,6 +12,7 @@ import { styles } from '@/styles/home.styles';
 import ScreenHeader from '../../components/ScreenHeader';
 import { useCurrentUserProfile } from '@/hooks/useCurrentUserProfile';
 import { useNetwork } from '@/providers/network.provider';
+import { useNotifications } from '@/providers/notifications.provider';
 
 const MOCK_TRIP = {
   destination: "Paryż",
@@ -36,6 +37,7 @@ export default function Home() {
   const { userAvatarUrl, userInitials } = useCurrentUserProfile();
 
   const { isOffline } = useNetwork();
+  const { hasUnreadNotifications } = useNotifications();
   
   const bottomPadding = 65 + (insets.bottom > 0 ? insets.bottom : 10) + 20;
 
@@ -56,6 +58,7 @@ export default function Home() {
           onNotificationPress={() => router.push('/notifications')}
           onProfilePress={() => router.push('/(main)/profile')}
           userAvatarUrl={userAvatarUrl}
+          hasUnreadNotifications={hasUnreadNotifications}
         />
 
         {/* --- NACHODZĄCA KARTA --- */}
