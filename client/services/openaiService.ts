@@ -2,10 +2,16 @@ import { TripFormData, TripPlan } from '@/stores/tripStore';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000/api';
 
-export async function generateTripPlan(formData: TripFormData): Promise<TripPlan> {
+export async function generateTripPlan(
+  formData: TripFormData,
+  accessToken?: string
+): Promise<TripPlan> {
   const response = await fetch(`${API_URL}/trip/generate`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    },
     body: JSON.stringify(formData),
   });
 
