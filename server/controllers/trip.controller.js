@@ -1,4 +1,7 @@
 const { supabaseDbClient, supabaseAuthClient } = require('../configs/supabaseClient');
+const { createTrip } = require('../repositories/trip.repository');
+const { createTripDays } = require('../repositories/tripDays.repository');
+const { createActivities } = require('../repositories/activities.repository');
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
@@ -75,19 +78,36 @@ Każdy dzień powinien mieć dokładnie ${attractionsPerDay} atrakcji (nie licz�
 Zadbaj żeby suma estimatedDayCost ze wszystkich dni była zbliżona do budżetu ${data.budget} PLN.`;
 };
 
+const toISO = (ddmmyyyy) => {
+  const [day, month, year] = ddmmyyyy.split('.');
+  return `${year}-${month}-${day}`;
+};
+
 const generateTripPlan = async (req, res, next) => {
   try {
     if (!GROQ_API_KEY) {
       return res.status(500).json({ message: 'Brak klucza GROQ_API_KEY na serwerze' });
     }
 
-    const { destination, departureDate, returnDate, travelers, budget, interests, transport, attractionsPerDay } = req.body;
+    const { destination, departureDate, returnDate, travelers, budget } = req.body;
 
     if (!destination || !departureDate || !returnDate || !travelers || !budget) {
       return res.status(400).json({ message: 'Brakujące dane formularza' });
     }
 
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    const accessToken = req.headers.authorization?.slice(7);
+    let ownerId = null;
+
+    if (accessToken) {
+      const { data, error } = await supabaseAuthClient.auth.getUser(accessToken);
+      ownerId = data?.user?.id ?? null;
+
+      if (error) {
+        console.log('getUser error:', error.message);
+      }
+    }
+
+    const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -110,15 +130,15 @@ const generateTripPlan = async (req, res, next) => {
       }),
     });
 
-    if (!response.ok) {
-      const err = await response.json();
+    if (!groqResponse.ok) {
+      const err = await groqResponse.json();
       return res.status(502).json({
-        message: err.error?.message ?? `Groq error: ${response.status}`,
+        message: err.error?.message ?? `Groq error: ${groqResponse.status}`,
       });
     }
 
-    const data = await response.json();
-    const content = data.choices[0].message.content;
+    const groqData = await groqResponse.json();
+    const content = groqData.choices[0].message.content;
 
     let tripPlan;
     try {
@@ -127,7 +147,77 @@ const generateTripPlan = async (req, res, next) => {
       return res.status(502).json({ message: 'Nie udało się sparsować odpowiedzi AI' });
     }
 
-    return res.status(200).json({ tripPlan });
+    let savedTrip = null;
+
+    if (ownerId) {
+      const tripRow = {
+        owner_id: ownerId,
+        destination,
+        start_date: toISO(departureDate),
+        end_date: toISO(returnDate),
+        total_budget: budget,
+        status: 'planned',
+        image_url: '',
+        notes: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data: trip, error: tripError } = await createTrip(tripRow);
+
+      if (tripError) {
+        console.error('Nie udało się zapisać wycieczki:', tripError.message);
+      } else {
+        savedTrip = trip;
+
+        const tripDays = tripPlan.days.map((day) => ({
+          trip_id: trip.id,
+          day_number: day.day,
+          date: toISO(day.date),
+          title: day.title ?? null,
+        }));
+
+        const { data: savedDays, error: daysError } = await createTripDays(tripDays);
+
+        if (daysError) {
+          console.error('Nie udało się zapisać dni wycieczki:', daysError.message);
+        } else {
+          const activities = [];
+
+          tripPlan.days.forEach((day, dayIndex) => {
+            const savedDay = savedDays[dayIndex];
+            if (!savedDay) {
+              return;
+            }
+
+            day.activities.forEach((act, actIndex) => {
+              const timeStr = `${toISO(day.date)}T${act.time ?? '09:00'}:00`;
+
+              activities.push({
+                day_id: savedDay.id,
+                time: timeStr,
+                name: act.name ?? null,
+                type: act.category ?? 'inne',
+                description: act.description ?? null,
+                location: act.location ?? null,
+                coordinates: null,
+                cost: act.estimatedCost ?? null,
+                duration_minutes: null,
+                order_index: actIndex,
+              });
+            });
+          });
+
+          const { error: activitiesError } = await createActivities(activities);
+
+          if (activitiesError) {
+            console.error('Nie udało się zapisać aktywności:', activitiesError.message);
+          }
+        }
+      }
+    }
+
+    return res.status(200).json({ tripPlan, tripId: savedTrip?.id ?? null });
   } catch (err) {
     return next(err);
   }
@@ -165,6 +255,17 @@ const resolveAuthenticatedUser = async (req, res) => {
   return data.user;
 };
 
+const toNumber = (value) => {
+  if (typeof value === 'number' && !Number.isNaN(value)) {
+    return value;
+  }
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
 const getTripHistory = async (req, res, next) => {
   try {
     const user = await resolveAuthenticatedUser(req, res);
@@ -172,68 +273,52 @@ const getTripHistory = async (req, res, next) => {
       return;
     }
 
-    console.log('📍 getTripHistory: Pobieranie historii dla użytkownika:', user.id);
-
     const { data: participantRows, error: participantError } = await supabaseDbClient
       .from('trip_participants')
       .select('trip_id')
       .eq('user_id', user.id);
 
     if (participantError) {
-      console.error('❌ Błąd przy pobraniu trip_participants:', participantError);
       return res.status(500).json({ message: 'Nie udało się pobrać uczestnictwa użytkownika.' });
     }
-
-    console.log('✅ trip_participants:', participantRows);
 
     const tripIds = (participantRows || [])
       .map((row) => row.trip_id)
       .filter((id) => typeof id === 'string');
 
-    console.log('📍 tripIds:', tripIds);
-
     if (tripIds.length === 0) {
-      console.log('⚠️  Użytkownik nie ma żadnych wycieczek');
       return res.status(200).json({ message: 'Historia podróży pobrana poprawnie.', trips: [] });
     }
 
     const { data: tripsData, error: tripsError } = await supabaseDbClient
       .from('trips')
-      .select('id, destination, departure_date, return_date, total, budget, image_url')
+      .select('id, destination, start_date, end_date, total_budget, image_url')
       .in('id', tripIds);
 
     if (tripsError) {
-      console.error('❌ Błąd przy pobraniu trips:', tripsError);
       return res.status(500).json({ message: 'Nie udało się pobrać wycieczek do historii.' });
     }
-
-    console.log('✅ trips:', tripsData);
 
     const validTrips = (tripsData || [])
       .filter((trip) => trip && trip.id)
       .map((trip) => ({
         id: trip.id,
         destination: trip.destination || 'Brak celu',
-        startDate: trip.departure_date || trip.start_date || null,
-        endDate: trip.return_date || trip.end_date || null,
-        total: typeof trip.total === 'number' ? trip.total : trip.total ? Number(trip.total) : null,
-        budget: typeof trip.budget === 'number' ? trip.budget : trip.budget ? Number(trip.budget) : null,
+        startDate: trip.start_date || null,
+        endDate: trip.end_date || null,
+        total: null,
+        budget: toNumber(trip.total_budget),
         imageUrl: trip.image_url || null,
       }));
 
-    console.log('📍 validTrips:', validTrips);
-
     const { data: dayRows, error: dayError } = await supabaseDbClient
       .from('trip_days')
-      .select('id, trip_id, day_number, order_index')
+      .select('id, trip_id, day_number, date, title')
       .in('trip_id', tripIds);
 
     if (dayError) {
-      console.error('❌ Błąd przy pobraniu trip_days:', dayError);
       return res.status(500).json({ message: 'Nie udało się pobrać dni podróży.' });
     }
-
-    console.log('✅ trip_days:', dayRows);
 
     const dayIds = (dayRows || [])
       .map((row) => row.id)
@@ -248,11 +333,9 @@ const getTripHistory = async (req, res, next) => {
         .order('order_index', { ascending: true });
 
       if (activityError) {
-        console.error('❌ Błąd przy pobraniu activities:', activityError);
         return res.status(500).json({ message: 'Nie udało się pobrać aktywności.' });
       }
 
-      console.log('✅ activities:', rawActivities);
       activitiesData.push(...(rawActivities || []));
     }
 
@@ -262,22 +345,31 @@ const getTripHistory = async (req, res, next) => {
         dayId: row.id,
         tripId: row.trip_id,
         dayNumber: typeof row.day_number === 'number' ? row.day_number : null,
-        orderIndex: typeof row.order_index === 'number' ? row.order_index : null,
+        date: typeof row.date === 'string' ? row.date : null,
         activities: [],
       });
     });
+
+    const spentByTripId = new Map();
 
     (activitiesData || []).forEach((activity) => {
       const day = daysById.get(activity.day_id);
       if (!day) {
         return;
       }
+
+      const cost = toNumber(activity.cost);
+      if (cost !== null) {
+        spentByTripId.set(day.tripId, (spentByTripId.get(day.tripId) || 0) + cost);
+      }
+
       day.activities.push({
         id: activity.id,
+        dayId: activity.day_id,
         name: activity.name || 'Aktywność',
         time: typeof activity.time === 'string' ? activity.time : null,
-        cost: typeof activity.cost === 'number' ? activity.cost : activity.cost ? Number(activity.cost) : null,
-        duration_minutes: typeof activity.duration_minutes === 'number' ? activity.duration_minutes : activity.duration_minutes ? Number(activity.duration_minutes) : null,
+        cost,
+        duration_minutes: toNumber(activity.duration_minutes),
         order_index: typeof activity.order_index === 'number' ? activity.order_index : null,
       });
     });
@@ -296,14 +388,12 @@ const getTripHistory = async (req, res, next) => {
           if (a.dayNumber !== null && b.dayNumber !== null) {
             return a.dayNumber - b.dayNumber;
           }
-          if (a.orderIndex !== null && b.orderIndex !== null) {
-            return a.orderIndex - b.orderIndex;
-          }
           return 0;
         })
         .map((day) => ({
           dayId: day.dayId,
           dayNumber: day.dayNumber,
+          date: day.date,
           activities: day.activities.sort((a, b) => {
             if (a.order_index !== null && b.order_index !== null) {
               return a.order_index - b.order_index;
@@ -312,16 +402,17 @@ const getTripHistory = async (req, res, next) => {
           }),
         }));
 
+      const spentTotal = spentByTripId.get(trip.id);
+
       return {
         ...trip,
+        total: spentTotal !== undefined ? spentTotal : null,
         days,
       };
     });
 
-    console.log('📍 Finalna odpowiedź trips:', trips);
     return res.status(200).json({ message: 'Historia podróży pobrana poprawnie.', trips });
   } catch (err) {
-    console.error('❌ Błąd w getTripHistory:', err);
     return next(err);
   }
 };

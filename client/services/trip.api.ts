@@ -14,6 +14,7 @@ export type TripHistoryActivity = {
 export type TripHistoryDay = {
   dayId: string;
   dayNumber: number | null;
+  date: string | null;
   activities: TripHistoryActivity[];
 };
 
