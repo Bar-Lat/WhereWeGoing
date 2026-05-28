@@ -1,76 +1,98 @@
-import { StyleSheet, Dimensions } from 'react-native';
-
-const { width } = Dimensions.get('window');
+import { StyleSheet } from 'react-native';
 
 export const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  container: { 
+    flex: 1 
   },
-  scrollContent: {
+  scrollContent: { 
     paddingHorizontal: 20,
-    paddingTop: 20,
+    // gap pozwala na łatwe robienie przerw między kartami w liście
+    gap: 20, 
   },
-  sectionHeader: {
-    marginBottom: 16,
-    marginTop: 10,
+
+  // --- ZAPOŻYCZONY STYL KARTY HERO Z EKRANU GŁÓWNEGO ---
+  heroCard: { 
+    height: 210, 
+    borderRadius: 24, 
+    overflow: 'hidden', 
+    elevation: 8, 
+    shadowColor: '#000', 
+    shadowOffset: { width: 0, height: 6 }, 
+    shadowOpacity: 0.15, 
+    shadowRadius: 10 
   },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+  heroImage: { 
+    width: '100%', 
+    height: '100%' 
   },
-  // Karta podróży
-  tripCard: {
-    borderRadius: 24,
-    marginBottom: 20,
-    overflow: 'hidden',
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
+  heroOverlay: { 
+    ...StyleSheet.absoluteFillObject, 
+    backgroundColor: 'rgba(0,0,0,0.35)' 
   },
-  tripImage: {
-    width: '100%',
-    height: 160,
+  heroBottom: { 
+    position: 'absolute', 
+    bottom: 20, 
+    left: 20, 
+    right: 20 
   },
-  tripInfo: {
-    padding: 16,
+  heroSubtitleRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 6, 
+    marginBottom: 6 
   },
-  tripHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 8,
+  heroSubtitle: { 
+    color: 'rgba(255,255,255,0.9)', 
+    fontSize: 13, 
+    fontWeight: '500' 
   },
-  destination: {
-    fontSize: 18,
-    fontWeight: 'bold',
+  heroMainRow: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center' 
   },
-  dateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+  heroDestination: { 
+    color: 'white', 
+    fontSize: 26, 
+    fontWeight: '800', 
+    marginBottom: 4 
   },
-  dateText: {
-    fontSize: 13,
+  heroDates: { 
+    color: 'rgba(255,255,255,0.8)', 
+    fontSize: 13 
   },
-  // Status badge
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+  heroArrow: { 
+    width: 38, 
+    height: 38, 
+    borderRadius: 19, 
+    backgroundColor: 'rgba(255,255,255,0.25)', 
+    justifyContent: 'center', 
+    alignItems: 'center' 
   },
-  statusText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: 'white',
+  
+  // Badge ze statusem
+  daysBadge: { 
+    position: 'absolute', 
+    top: 16, 
+    right: 16, 
+    backgroundColor: 'rgba(255,255,255,0.25)', 
+    paddingHorizontal: 12, 
+    paddingVertical: 6, 
+    borderRadius: 20, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 6 
   },
-  // Statystyki na karcie (np. ile osób, jaki budżet)
-  tripStats: {
-    flexDirection: 'row',
-    marginTop: 12,
-    gap: 15,
-    paddingTop: 12,
-    borderTopWidth: 1,
-  }
+  daysBadgeText: { 
+    color: 'white', 
+    fontSize: 12, 
+    fontWeight: '700' 
+  },
+  pulseDot: { 
+    width: 8, 
+    height: 8, 
+    borderRadius: 4, 
+    // Domyślny kolor, ale nadpisujemy go inline z getTripStatusInfo
+    backgroundColor: '#34C759' 
+  },
 });

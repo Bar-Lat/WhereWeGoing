@@ -1,9 +1,20 @@
 const { supabaseAuthClient } = require('../configs/supabaseClient');
-const { createTrip } = require('../repositories/trip.repository');
+const { createTrip, getTripById, updateTripById } = require('../repositories/trip.repository'); // <-- DODANO getTripById
 const { createTripDays } = require('../repositories/tripDays.repository');
 const { createActivities } = require('../repositories/activities.repository');
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
+
+// Pomocnik do wyciągania userId z tokena bezpośrednio w tym kontrolerze
+const getUserIdFromRequest = async (req) => {
+  const accessToken = req.headers.authorization?.slice(7);
+  if (!accessToken) return null;
+
+  const { data, error } = await supabaseAuthClient.auth.getUser(accessToken);
+  if (error || !data?.user?.id) return null;
+
+  return data.user.id;
+};
 
 const INTEREST_LABELS = {
   sightseeing: 'zwiedzanie zabytków',
@@ -78,9 +89,11 @@ Każdy dzień powinien mieć dokładnie ${attractionsPerDay} atrakcji (nie licz�
 Zadbaj żeby suma estimatedDayCost ze wszystkich dni była zbliżona do budżetu ${data.budget} PLN.`;
 };
 
-// Pomocnik: dd.mm.rrrr → YYYY-MM-DD
 const toISO = (ddmmyyyy) => {
-  const [day, month, year] = ddmmyyyy.split('.');
+  if (!ddmmyyyy || typeof ddmmyyyy !== 'string') return null;
+  const parts = ddmmyyyy.split('.');
+  if (parts.length !== 3) return null;
+  const [day, month, year] = parts;
   return `${year}-${month}-${day}`;
 };
 
@@ -96,19 +109,14 @@ const generateTripPlan = async (req, res, next) => {
       return res.status(400).json({ message: 'Brakujące dane formularza' });
     }
 
-    // Pobierz użytkownika z tokena
     const accessToken = req.headers.authorization?.slice(7);
     let ownerId = null;
 
     if (accessToken) {
       const { data, error } = await supabaseAuthClient.auth.getUser(accessToken);
-      console.log('=== getUser result ===');
-      console.log('user id:', data?.user?.id);
-      console.log('error:', error?.message);
       ownerId = data?.user?.id ?? null;
     }
 
-    // Wywołaj Groq
     const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -149,7 +157,6 @@ const generateTripPlan = async (req, res, next) => {
       return res.status(502).json({ message: 'Nie udało się sparsować odpowiedzi AI' });
     }
 
-    // Zapis do bazy jeśli użytkownik jest zalogowany
     let savedTrip = null;
 
     if (ownerId) {
@@ -161,7 +168,7 @@ const generateTripPlan = async (req, res, next) => {
         total_budget: budget,
         status: 'planned',
         image_url: '',
-        notes: null,
+        notes: JSON.stringify(tripPlan),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -172,9 +179,7 @@ const generateTripPlan = async (req, res, next) => {
         console.error('⚠️ Nie udało się zapisać wycieczki:', tripError.message);
       } else {
         savedTrip = trip;
-        console.log('✅ Wycieczka zapisana, id:', trip.id);
 
-        // Zapis dni
         const tripDays = tripPlan.days.map((day) => ({
           trip_id: trip.id,
           day_number: day.day,
@@ -187,9 +192,6 @@ const generateTripPlan = async (req, res, next) => {
         if (daysError) {
           console.error('⚠️ Nie udało się zapisać dni wycieczki:', daysError.message);
         } else {
-          console.log('✅ Dni wycieczki zapisane, count:', tripDays.length);
-
-          // Zapis aktywności
           const activities = [];
 
           tripPlan.days.forEach((day, dayIndex) => {
@@ -218,8 +220,6 @@ const generateTripPlan = async (req, res, next) => {
 
           if (activitiesError) {
             console.error('⚠️ Nie udało się zapisać aktywności:', activitiesError.message);
-          } else {
-            console.log('✅ Aktywności zapisane, count:', activities.length);
           }
         }
       }
@@ -231,4 +231,93 @@ const generateTripPlan = async (req, res, next) => {
   }
 };
 
-module.exports = { generateTripPlan };
+const updateTripHandler = async (req, res, next) => {
+  try {
+    const ownerId = await getUserIdFromRequest(req);
+    if (!ownerId) {
+      return res.status(401).json({ message: 'Brak autoryzacji' });
+    }
+
+    const { id } = req.params;
+    const { tripPlan } = req.body;
+
+    if (!tripPlan) {
+      return res.status(400).json({ message: 'Brak danych do zapisu' });
+    }
+
+    const { data: trip, error: fetchError } = await getTripById(id);
+    if (fetchError || !trip) return res.status(404).json({ message: 'Wycieczka nie znaleziona' });
+    if (trip.owner_id !== ownerId) return res.status(403).json({ message: 'Brak dostępu do tej wycieczki' });
+
+    // 1. Aktualizacja głównej tabeli (trips)
+    const updateData = {
+      notes: JSON.stringify(tripPlan),
+      total_budget: tripPlan.estimatedTotalCost || trip.total_budget,
+      updated_at: new Date().toISOString()
+    };
+
+    const { error: updateError } = await updateTripById(id, updateData);
+    if (updateError) {
+      return res.status(500).json({ message: updateError.message });
+    }
+
+    // 2. SYNCHRONIZACJA TABEL RELACYJNYCH (Twardy reset)
+    const { supabaseDbClient } = require('../configs/supabaseClient');
+    
+    // a) Pobieramy stare dni i czyścimy bazę
+    const { data: oldDays } = await supabaseDbClient.from('trip_days').select('id').eq('trip_id', id);
+    if (oldDays && oldDays.length > 0) {
+      const oldDayIds = oldDays.map(d => d.id);
+      await supabaseDbClient.from('activities').delete().in('day_id', oldDayIds);
+      await supabaseDbClient.from('trip_days').delete().eq('trip_id', id);
+    }
+
+    // b) Wstawiamy od nowa w 100% uaktualnione dane z aplikacji
+    if (tripPlan.days && tripPlan.days.length > 0) {
+      const newTripDays = tripPlan.days.map((day) => ({
+        trip_id: id,
+        day_number: day.day,
+        date: toISO(day.date),
+        title: day.title ?? null,
+      }));
+
+      const { data: savedDays, error: daysError } = await createTripDays(newTripDays);
+      
+      if (!daysError && savedDays) {
+        const activities = [];
+        
+        tripPlan.days.forEach((day, dayIndex) => {
+          const savedDay = savedDays[dayIndex];
+          if (!savedDay) return;
+
+          day.activities.forEach((act, actIndex) => {
+            // Zabezpieczenie przed pustym czasem
+            const timeStr = act.time ? `${toISO(day.date)}T${act.time}:00` : null;
+            
+            activities.push({
+              day_id: savedDay.id,
+              time: timeStr,
+              name: act.name ?? null,
+              type: act.category ?? 'inne',
+              description: act.description ?? null,
+              location: act.location ?? null,
+              cost: act.estimatedCost ?? null,
+              order_index: actIndex,
+            });
+          });
+        });
+
+        if (activities.length > 0) {
+          await createActivities(activities);
+        }
+      }
+    }
+
+    return res.status(200).json({ message: 'Pełna synchronizacja wycieczki zakończona sukcesem' });
+  } catch (err) {
+    console.error("Błąd aktualizacji:", err);
+    return next(err);
+  }
+};
+
+module.exports = { generateTripPlan, updateTripHandler };

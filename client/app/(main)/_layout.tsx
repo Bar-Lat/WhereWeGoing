@@ -1,3 +1,4 @@
+import React, { useEffect, useState } from 'react';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { View, Text, StyleSheet, useColorScheme } from 'react-native';
@@ -6,17 +7,38 @@ import { Colors } from '@/styles/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSegments } from 'expo-router';
 
+// ─── IMPORTY AUTORYZACJI I API ───
+import { useAuth } from '@/providers/auth.provider';
+import { getMyTrips } from '@/services/trip.api';
+
 export default function MainLayout() {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme() ?? 'light';
   const currentColors = Colors[colorScheme];
   
-  const activeTrips = 2; // Symulacja powiadomienia
   const bottomPadding = insets.bottom > 0 ? insets.bottom : 10;
   const barHeight = 65 + bottomPadding;
   
   const segments = useSegments();
   const isOnCreate = segments.some(s => s === 'create');
+  
+  // ─── STAN DLA LICZNIKA WYCIECZEK ───
+  const { session } = useAuth();
+  const [activeTrips, setActiveTrips] = useState(0);
+
+  useEffect(() => {
+    const fetchTripsCount = async () => {
+      if (!session?.access_token) return;
+      try {
+        const trips = await getMyTrips(session.access_token);
+        setActiveTrips(trips?.length || 0);
+      } catch (error) {
+        console.error('Błąd pobierania liczby wycieczek do layoutu:', error);
+      }
+    };
+
+    fetchTripsCount();
+  }, [session?.access_token]);
   
   return (
     <Tabs
@@ -31,7 +53,6 @@ export default function MainLayout() {
           borderTopColor: currentColors.border, 
           borderTopWidth: 1,
           
-          // UŻYWAMY NASZYCH OBLICZEŃ TUTAJ:
           height: barHeight,
           paddingBottom: bottomPadding,
           paddingTop: 10,
@@ -72,7 +93,6 @@ export default function MainLayout() {
       />
 
       {/* 3. ŚRODKOWY PRZYCISK Z TWOIM GRADIENTEM */}
-      
       <Tabs.Screen
         name="create"
         options={{
@@ -100,14 +120,12 @@ export default function MainLayout() {
           tabBarIcon: ({ color, focused }) => (
             <View>
               <Ionicons name={focused ? "briefcase" : "briefcase-outline"} size={24} color={color} />
+              
               {activeTrips > 0 && (
                 <View style={[styles.badge, { borderColor: currentColors.card }]}>
-                  <Text style={styles.badgeText}>{activeTrips}</Text>
-                </View>
-              )}
-              {activeTrips > 99 && (
-                <View style={[styles.badge, { borderColor: currentColors.card }]}>
-                  <Text style={styles.badgeText}>{99+'+'}</Text>
+                  <Text style={styles.badgeText}>
+                    {activeTrips > 99 ? '99+' : activeTrips}
+                  </Text>
                 </View>
               )}
             </View>
@@ -123,6 +141,14 @@ export default function MainLayout() {
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? "person" : "person-outline"} size={24} color={color} />
           ),
+        }}
+      />
+
+      {/* 6. UKRYTE SZCZEGÓŁY WYCIECZKI */}
+      <Tabs.Screen
+        name="trip-details"
+        options={{
+          href: null, // To całkowicie usuwa przycisk z dolnego paska nawigacji
         }}
       />
     </Tabs>
@@ -158,7 +184,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1.5,
-    // borderColor jest nadawane dynamicznie w komponencie!
   },
   badgeText: {
     color: '#FFFFFF',

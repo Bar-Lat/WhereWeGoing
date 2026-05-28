@@ -1,5 +1,5 @@
 const express = require('express');
-const { generateTripPlan } = require('../controllers/trip.controller');
+const { generateTripPlan, updateTripHandler } = require('../controllers/trip.controller');
 const { getTrips, getTripByIdHandler, deleteTripHandler } = require('../controllers/trips.controller');
 
 const router = express.Router();
@@ -15,5 +15,8 @@ router.get('/:id', getTripByIdHandler);
 
 // Usunięcie wycieczki
 router.delete('/:id', deleteTripHandler);
+
+// Aktualizacja wycieczki
+router.put('/:id', updateTripHandler);
 
 module.exports = router;

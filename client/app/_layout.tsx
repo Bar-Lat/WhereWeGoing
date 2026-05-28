@@ -3,7 +3,6 @@ import React, { useEffect } from 'react';
 import { ActivityIndicator, View, useColorScheme } from 'react-native';
 import { AuthProvider, useAuth } from '@/providers/auth.provider';
 import { ProfileProvider } from '@/providers/profile.provider';
-import DevMenu from '../components/DevMenu';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
@@ -53,8 +52,7 @@ function AppNavigator() {
                 <Stack.Screen name="trip-result" options={{ animation: 'slide_from_right' }} />
             </Stack>
 
-            {/* Nasz pomocnik deweloperski dostępny w każdym miejscu aplikacji */}
-            <DevMenu />
+
         </SafeAreaProvider>
     );
 }

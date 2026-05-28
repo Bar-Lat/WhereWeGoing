@@ -41,9 +41,18 @@ const deleteTripById = async (tripId) => {
   return { error };
 };
 
+const updateTripById = async (id, updateData) => {
+  return await supabaseDbClient
+    .from('trips')
+    .update(updateData)
+    .eq('id', id)
+    .select(); // Zwracamy zaktualizowany wiersz
+};
+
 module.exports = {
   createTrip,
   getTripsByOwnerId,
   getTripById,
   deleteTripById,
+  updateTripById,
 };
