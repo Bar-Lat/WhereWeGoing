@@ -56,7 +56,7 @@ export default function Inspiration() {
         <ScreenHeader 
           variant="inspiration"
           userInitials={userInitials}
-          onNotificationPress={() => console.log('Powiadomienia')}
+          onNotificationPress={() => router.push('/notifications')}
           onProfilePress={() => router.push('/(main)/profile')}
           userAvatarUrl={userAvatarUrl}
         />

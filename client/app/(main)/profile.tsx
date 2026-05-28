@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'expo-router'
 import {
   Alert,
   ActivityIndicator,
@@ -35,6 +36,8 @@ export default function Profile() {
   const {isOffline, toggleOffline} = useNetwork();
 
   const accessToken = session?.access_token ?? null;
+
+  const router = useRouter();
 
   // Resetujemy błąd ładowania obrazka, jeśli zmieni się link do awatara
   useEffect(() => {
@@ -106,7 +109,7 @@ export default function Profile() {
         variant="default" 
         title="Mój Profil" 
         showProfile={false} 
-        onNotificationPress={() => console.log('Powiadomienia')} // Placeholder dla przycisku powiadomień
+        onNotificationPress={() => router.push('/notifications')}
       />
 
       <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPadding }]}>

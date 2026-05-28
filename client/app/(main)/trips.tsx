@@ -58,7 +58,7 @@ export default function Trips() {
         title="Twoje Podróże"
         tripCount={TRIPS.length}
         userInitials={userInitials}
-        onNotificationPress={() => {}}
+        onNotificationPress={() => router.push('/notifications')}
         onProfilePress={() => router.push('/(main)/profile')}
         userAvatarUrl={userAvatarUrl}
       />
