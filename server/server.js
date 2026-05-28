@@ -1,10 +1,13 @@
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
+
 const authRoutes = require('./routes/auth.routes');
 const profileRoutes = require('./routes/profile.routes');
 const friendsRoutes = require('./routes/friends.routes');
 const tripRoutes = require('./routes/trip.routes');
+const inspirationRoutes = require('./routes/inspiration.routes');
+
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -21,6 +24,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/friends', friendsRoutes);
 app.use('/api/trip', tripRoutes);
+app.use('/api/inspiration', inspirationRoutes);
+
 app.use(errorHandler);
 
 app.listen(PORT, () => {
