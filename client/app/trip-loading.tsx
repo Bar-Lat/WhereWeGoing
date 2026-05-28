@@ -8,6 +8,7 @@ import { useRouter } from 'expo-router';
 import { useTripStore } from '@/stores/tripStore';
 import { generateTripPlan } from '@/services/openaiService';
 import { styles } from '@/styles/trip.loading.styles';
+import { useAuth } from '@/providers/auth.provider';
 
 const STEPS = [
   { id: 'flights',     text: 'Szukam najlepszych lotów...' },
@@ -30,6 +31,7 @@ export default function TripLoadingScreen() {
   const progressAnim = useRef(new Animated.Value(0)).current;
 
   const { formData, setTripPlan, setError } = useTripStore();
+  const { session } = useAuth();
 
   // Refs — nie powodują re-renderu, bezpieczne w domknięciach
   const apiDoneRef = useRef(false);
@@ -73,7 +75,7 @@ export default function TripLoadingScreen() {
     const fetchPlan = async () => {
       try {
         if (!formData) throw new Error('Brak danych formularza');
-        const plan = await generateTripPlan(formData);
+        const plan = await generateTripPlan(formData, session?.access_token ?? undefined);
         setTripPlan(plan);
         apiDoneRef.current = true;
         tryNavigate();
