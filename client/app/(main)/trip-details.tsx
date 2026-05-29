@@ -12,6 +12,7 @@ import {
   Modal,
   TextInput,
   ScrollView,
+  BackHandler,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -37,6 +38,10 @@ const CATEGORY_ICONS: Record<string, string> = {
   other: '📌',
 };
 
+
+
+
+
 function getCategoryIcon(category: string): string {
   return CATEGORY_ICONS[category?.toLowerCase()] ?? '📍';
 }
@@ -60,6 +65,8 @@ function formatDate(dateStr: string): string {
   const months = ['', 'stycznia', 'lutego', 'marca', 'kwietnia', 'maja', 'czerwca', 'lipca', 'sierpnia', 'września', 'października', 'listopada', 'grudnia'];
   return `${parseInt(day)} ${months[parseInt(month)] ?? ''}`;
 }
+
+
 
 // ─── KOMPONENT DNIA ───────────────────────────────────────────────────────────
 function DayCardView({
@@ -132,6 +139,8 @@ function DayCardView({
     </>
   );
 
+
+  
   return (
     <View style={styles.dayWrapper}>
       <View style={{ position: 'relative' }}>
@@ -238,12 +247,30 @@ function DayCardView({
 
 // ─── GŁÓWNY EKRAN SZCZEGÓŁÓW ──────────────────────────────────────────────────
 export default function TripDetails() {
-  const { tripPlan, deleteDay, addDay, addActivity, updateActivity, deleteActivity } = useTripStore();
-  const [isEditingMode, setIsEditingMode] = useState(false);
+  const { 
+  tripPlan, deleteDay, addDay, addActivity, updateActivity, deleteActivity, 
+  isEditingMode, setIsEditingMode 
+} = useTripStore();
   const { session } = useAuth();
   const { isOffline } = useNetwork();
   const [isDeleting, setIsDeleting] = useState(false);
+  const [backupPlan, setBackupPlan] = useState<TripPlan | null>(null);
   const router = useRouter();
+
+  // Zablokowanie sprzętowego gestu/przycisku Wstecz w trybie edycji
+  React.useEffect(() => {
+    const onBackPress = () => {
+      if (isEditingMode) {
+        handleBackPress(); // Wywołujemy naszą bezpieczną funkcję z modalem
+        return true; // Blokuje domyślne cofnięcie
+      }
+      return false; // Pozwala na normalne cofnięcie, jeśli nie jesteśmy w edycji
+    };
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => subscription.remove();
+  }, [isEditingMode, backupPlan]);
+
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme() ?? 'light';
   const currentColors = Colors[colorScheme];
@@ -320,7 +347,6 @@ export default function TripDetails() {
     const newBudget = Number(budgetModal.value.replace(/[^0-9]/g, '')) || 0;
     useTripStore.getState().updateBudget(newBudget);
     setBudgetModal({ visible: false, value: '' });
-    await syncPlanWithDb();
   };
 
   const openAddActivity = (dayIndex: number) => {
@@ -369,7 +395,6 @@ export default function TripDetails() {
     }
 
     setActModal(prev => ({ ...prev, visible: false }));
-    await syncPlanWithDb();
   };
 
   const handleAddDay = async () => {
@@ -401,21 +426,62 @@ export default function TripDetails() {
       tips: ''
     });
     
-    await syncPlanWithDb();
   };
 
   const handleLocalDeleteDay = async (dayIndex: number) => {
     if (isOffline) return;
     deleteDay(dayIndex);
-    await syncPlanWithDb();
   };
 
   const handleLocalDeleteActivity = async (dayIndex: number, actIndex: number) => {
     if (isOffline) return;
     deleteActivity(dayIndex, actIndex);
-    await syncPlanWithDb();
   };
 
+
+  
+  const enterEditMode = () => {
+    // Robimy głęboką kopię planu, żeby mieć do czego wrócić
+    setBackupPlan(JSON.parse(JSON.stringify(tripPlan))); 
+    setIsEditingMode(true); 
+  };
+
+  const cancelEditMode = () => {
+    showAlert(
+      "Niezapisane zmiany",
+      "Czy na pewno chcesz odrzucić wszystkie wprowadzone zmiany?",
+      [
+        { text: "Wróć do edycji", style: "cancel" },
+        { 
+          text: "Odrzuć", 
+          style: "destructive", 
+          onPress: () => {
+            if (backupPlan) {
+              useTripStore.getState().setTripPlan(backupPlan); // Przywracamy stary stan!
+            }
+            setIsEditingMode(false);
+            setBackupPlan(null);
+          }
+        }
+      ]
+    );
+  };
+
+// Zabezpieczenie przycisku Wstecz
+  const handleBackPress = () => {
+    if (isEditingMode) {
+      showAlert("Tryb edycji", "Masz niezapisane zmiany w planie!", [{ text: "Ok" }]);
+    } else {
+      router.back();
+    }
+  };
+ 
+  const saveEditMode = async () => {
+    await syncPlanWithDb(); // Uderzamy do bazy DOPIERO gdy użytkownik akceptuje zmiany!
+    setIsEditingMode(false);
+    setBackupPlan(null);
+  };
+  
   const handleSaveDates = async () => {
     if (isOffline) return;
 
@@ -475,7 +541,6 @@ export default function TripDetails() {
               const updated = { ...tripPlan!, days: newDays, totalDays: newTotalDays };
               useTripStore.getState().setTripPlan(updated);
               setDatesModal({ visible: false, startDate: '', endDate: '' });
-              await syncPlanWithDb(updated);
             }
           }
         ]
@@ -486,7 +551,6 @@ export default function TripDetails() {
     const updated = { ...tripPlan!, days: newDays, totalDays: newTotalDays };
     useTripStore.getState().setTripPlan(updated);
     setDatesModal({ visible: false, startDate: '', endDate: '' });
-    await syncPlanWithDb(updated);
   };
 
   const handleDeleteTrip = () => {
@@ -494,27 +558,26 @@ export default function TripDetails() {
 
     // 1. Zapisujemy ID do stałej lokalnej
     const tripId = tripPlan?.id;
-    
-    // 2. Sprawdzamy nową stałą
     if (!tripId) return;
 
-    Alert.alert(
+    // Używamy Twojego autorskiego modala zamiast systemowego Alert.alert
+    showAlert(
       "Usuwanie wycieczki",
       "Czy na pewno chcesz usunąć ten plan? Tej akcji nie można cofnąć.",
       [
         { text: "Anuluj", style: "cancel" },
         { 
           text: "Usuń", 
-          style: "destructive",
+          style: "destructive", 
           onPress: async () => {
             try {
               setIsDeleting(true);
-              // 3. Używamy stałej lokalnej, TypeScript już nie będzie protestował
               await deleteTrip(tripId, session!.access_token); 
               useTripStore.getState().reset();
               router.replace('/(main)/trips');
             } catch (error: any) {
-              Alert.alert("Błąd", error.message || "Nie udało się usunąć wycieczki.");
+              // Tutaj również możesz użyć showAlert, jeśli chcesz pełnej spójności
+              showAlert("Błąd", error.message || "Nie udało się usunąć wycieczki.", [{ text: "OK" }]);
             } finally {
               setIsDeleting(false);
             }
@@ -621,30 +684,56 @@ export default function TripDetails() {
             <LinearGradient colors={['rgba(0,0,0,0.2)', 'rgba(26,29,58,0.95)']} style={StyleSheet.absoluteFillObject} />
             
             <Animated.View style={[styles.heroNav, { paddingTop: insets.top + 8, transform: [{ translateY: navTranslateY }] }]}>
-              <TouchableOpacity style={styles.heroNavBtn} onPress={() => router.back()}>
+              <TouchableOpacity style={styles.heroNavBtn} onPress={handleBackPress}>
                 <Ionicons name="arrow-back" size={18} color="#fff" />
               </TouchableOpacity>
               
               <View style={{ flexDirection: 'row', gap: 10 }}>
-                {!isOffline && (
-                  <>
-                    <TouchableOpacity
-                      style={[styles.heroNavBtn, isEditingMode ? { backgroundColor: Colors.brand.green || '#10b981' } : { backgroundColor: 'rgba(0,0,0,0.4)' }]}
-                      onPress={() => setIsEditingMode(!isEditingMode)}
-                    >
-                      <Ionicons name={isEditingMode ? "checkmark" : "pencil"} size={18} color="#fff" />
-                    </TouchableOpacity>
+  {!isOffline && (
+    isEditingMode ? (
+      <>
+        {/* KRZYŻYK = ODRZUĆ ZMIANY */}
+        <TouchableOpacity
+          style={[styles.heroNavBtn, { backgroundColor: '#ef4444' }]}
+          onPress={cancelEditMode}
+        >
+          <Ionicons name="close" size={20} color="#fff" />
+        </TouchableOpacity>
 
-                    <TouchableOpacity
-                      style={[styles.heroNavBtn, { backgroundColor: 'rgba(239, 68, 68, 0.8)' }]}
-                      onPress={handleDeleteTrip}
-                      disabled={isDeleting}
-                    >
-                      {isDeleting ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="trash-outline" size={18} color="#fff" />}
-                    </TouchableOpacity>
-                  </>
-                )}
-              </View>
+        {/* PTASZEK = ZAPISZ ZMIANY */}
+        <TouchableOpacity
+          style={[styles.heroNavBtn, { backgroundColor: '#10b981' }]}
+          onPress={saveEditMode}
+        >
+          <Ionicons name="checkmark" size={20} color="#fff" />
+        </TouchableOpacity>
+      </>
+    ) : (
+      <>
+        {/* OŁÓWEK = EDYTUJ */}
+        <TouchableOpacity
+          style={[styles.heroNavBtn, { backgroundColor: 'rgba(0,0,0,0.4)' }]}
+          onPress={enterEditMode}
+        >
+          <Ionicons name="pencil" size={18} color="#fff" />
+        </TouchableOpacity>
+
+        {/* KOSZ = USUŃ */}
+        <TouchableOpacity
+          style={[styles.heroNavBtn, { backgroundColor: 'rgba(239, 68, 68, 0.8)' }]}
+          onPress={handleDeleteTrip}
+          disabled={isDeleting}
+        >
+          {isDeleting ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Ionicons name="trash-outline" size={18} color="#fff" />
+          )}
+        </TouchableOpacity>
+      </>
+    )
+  )}
+</View>
             </Animated.View>
 
             <View style={styles.heroInfo}>
