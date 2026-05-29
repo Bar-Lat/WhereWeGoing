@@ -20,6 +20,7 @@ import ScreenHeader from '@/components/ScreenHeader';
 import TripScheduleSection from '@/components/TripScheduleSection';
 import { useCurrentUserProfile } from '@/hooks/useCurrentUserProfile';
 import { useAuth } from '@/providers/auth.provider';
+import { useNetwork } from '@/providers/network.provider';
 import { Colors } from '@/styles/colors';
 import { styles } from '@/styles/trips.styles';
 import { useNotifications } from '@/providers/notifications.provider';
@@ -34,10 +35,10 @@ import {
   removeTripParticipant,
   updateTripScheduleActivity,
 } from '@/services/trips.api';
+import { getCachedOfflineTrip, saveCachedOfflineTrip } from '@/services/offlineTrip.storage';
 import { useTripStore, TripPlan } from '@/stores/tripStore';
 import type { FriendProfile } from '@/types/friends';
 import type { TripDto, TripParticipantDto, TripScheduleDayDto } from '@/types/trips';
-import { useTripsListStore } from '@/stores/tripStore';
 
 const PLACEHOLDER_IMAGES = [
   'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=900',
@@ -56,11 +57,11 @@ const statusLabels: Record<string, { label: string; color: string }> = {
 type TripListFilter = 'all' | 'owner' | 'participant';
 type TripModalTab = 'details' | 'participants';
 
-const tripListFilters: Array<{
+const tripListFilters: {
   key: TripListFilter;
   label: string;
   icon: keyof typeof Ionicons.glyphMap;
-}> = [
+}[] = [
   { key: 'all', label: 'Wszystkie', icon: 'albums-outline' },
   { key: 'owner', label: 'Moje', icon: 'shield-checkmark-outline' },
   { key: 'participant', label: 'Wspólne', icon: 'people-outline' },
@@ -137,6 +138,26 @@ const getTripImage = (trip: TripDto | any, index: number) => {
   return PLACEHOLDER_IMAGES[index % PLACEHOLDER_IMAGES.length];
 };
 
+const getTripStartTime = (trip: TripDto) => {
+  const parsed = new Date(`${trip.startDate || (trip as any).start_date}T00:00:00`).getTime();
+  return Number.isNaN(parsed) ? Number.MAX_SAFE_INTEGER : parsed;
+};
+
+const getNearestTripForOffline = (trips: TripDto[]) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const upcoming = trips
+    .filter((trip) => getTripStartTime(trip) >= today.getTime())
+    .sort((a, b) => getTripStartTime(a) - getTripStartTime(b));
+
+  if (upcoming.length > 0) {
+    return upcoming[0];
+  }
+
+  return [...trips].sort((a, b) => getTripStartTime(b) - getTripStartTime(a))[0] ?? null;
+};
+
 const getFriendSubtitle = (friend: FriendProfile) => {
   const name = `${friend.firstName || ''} ${friend.lastName || ''}`.trim();
   return name ? 'Znajomy w WhereWeGoing' : 'Profil bez uzupełnionych danych';
@@ -170,6 +191,7 @@ export default function Trips() {
   const currentColors = Colors[colorScheme];
   
   const { session } = useAuth();
+  const { isOffline } = useNetwork();
   const { userAvatarUrl, userInitials } = useCurrentUserProfile();
 
   const [trips, setTrips] = useState<TripDto[]>([]);
@@ -200,30 +222,97 @@ export default function Trips() {
   };
 
   const accessToken = session?.access_token ?? null;
+  const userId = session?.user?.id ?? null;
   const bottomPadding = 65 + (insets.bottom > 0 ? insets.bottom : 10) + 24;
+
+  const cacheNearestTripForOffline = useCallback(
+    async (availableTrips: TripDto[]) => {
+      if (!accessToken || !userId || availableTrips.length === 0) {
+        return;
+      }
+
+      const nearestTrip = getNearestTripForOffline(availableTrips);
+
+      if (!nearestTrip) {
+        return;
+      }
+
+      try {
+        const [participantsResponse, scheduleResponse] = await Promise.all([
+          getTripParticipants(accessToken, nearestTrip.id),
+          getTripSchedule(accessToken, nearestTrip.id),
+        ]);
+
+        await saveCachedOfflineTrip(userId, {
+          trip: {
+            ...nearestTrip,
+            participantsCount: participantsResponse.count,
+            totalCost: scheduleResponse.totalCost ?? nearestTrip.totalCost,
+          },
+          participants: participantsResponse.participants,
+          scheduleDays: scheduleResponse.days,
+          cachedAt: new Date().toISOString(),
+        });
+      } catch (error) {
+        console.warn('Nie udało się zapisać wycieczki offline:', error);
+      }
+    },
+    [accessToken, userId]
+  );
 
   const loadTrips = useCallback(
     async (mode: 'initial' | 'refresh' = 'initial') => {
-      if (!accessToken) {
+      if (!accessToken || !userId) {
         setTrips([]);
         setTripsLoading(false);
         return;
       }
+
+      if (isOffline) {
+        try {
+          if (mode === 'refresh') setTripsRefreshing(true);
+          else setTripsLoading(true);
+
+          const cached = await getCachedOfflineTrip(userId);
+
+          if (cached) {
+            setTrips([cached.trip]);
+            setTripsError(null);
+          } else {
+            setTrips([]);
+            setTripsError('Brak zapisanej wycieczki offline. Połącz się z internetem, aby pobrać swoje plany.');
+          }
+        } finally {
+          setTripsLoading(false);
+          setTripsRefreshing(false);
+        }
+        return;
+      }
+
       try {
         if (mode === 'refresh') setTripsRefreshing(true);
         else setTripsLoading(true);
 
         setTripsError(null);
         const response = await getMyTrips(accessToken);
-        setTrips(response.trips || response || []);
+        const loadedTrips = response.trips || response || [];
+        setTrips(loadedTrips);
+        void cacheNearestTripForOffline(loadedTrips);
       } catch (error) {
-        setTripsError(error instanceof Error ? error.message : 'Nie udało się pobrać wycieczek');
+        const cached = await getCachedOfflineTrip(userId);
+
+        if (cached) {
+          setTrips([cached.trip]);
+          setTripsError(null);
+        } else {
+          setTripsError(error instanceof Error ? error.message : 'Nie udało się pobrać wycieczek');
+        }
       } finally {
         setTripsLoading(false);
         setTripsRefreshing(false);
       }
     },
-    [accessToken]
+    [accessToken, cacheNearestTripForOffline, isOffline, userId]
   );
 
   useEffect(() => {
@@ -232,7 +321,32 @@ export default function Trips() {
 
   const loadPanelData = useCallback(
     async (trip: TripDto) => {
-      if (!accessToken) return;
+      if (!accessToken || !userId) return;
+
+      if (isOffline) {
+        const cached = await getCachedOfflineTrip(userId);
+
+        if (cached?.trip.id === trip.id) {
+          setParticipants(cached.participants);
+          setScheduleDays(cached.scheduleDays);
+          setSelectedTrip((current) =>
+            current?.id === trip.id
+              ? {
+                  ...current,
+                  participantsCount: cached.participants.length || current.participantsCount,
+                  totalCost: cached.trip.totalCost ?? current.totalCost,
+                }
+              : current
+          );
+        }
+
+        setFriends([]);
+        setParticipantsLoading(false);
+        setFriendsLoading(false);
+        setScheduleLoading(false);
+        return;
+      }
+
       try {
         setParticipantsLoading(true);
         setFriendsLoading(trip.accessRole === 'owner');
@@ -251,6 +365,19 @@ export default function Trips() {
         setScheduleLoading(true);
         const scheduleResponse = await getTripSchedule(accessToken, trip.id);
         setScheduleDays(scheduleResponse.days);
+
+        if (getNearestTripForOffline(trips)?.id === trip.id) {
+          await saveCachedOfflineTrip(userId, {
+            trip: {
+              ...trip,
+              participantsCount: participantsResponse.count,
+              totalCost: scheduleResponse.totalCost ?? trip.totalCost,
+            },
+            participants: participantsResponse.participants,
+            scheduleDays: scheduleResponse.days,
+            cachedAt: new Date().toISOString(),
+          });
+        }
       } catch (error) {
         Alert.alert('Nie udało się pobrać danych', error instanceof Error ? error.message : 'Spróbuj ponownie.');
       } finally {
@@ -259,7 +386,7 @@ export default function Trips() {
         setScheduleLoading(false);
       }
     },
-    [accessToken]
+    [accessToken, isOffline, trips, userId]
   );
 
   const openTripPanel = useCallback(
@@ -570,7 +697,7 @@ export default function Trips() {
 
   const renderParticipantRow = (participant: TripParticipantDto) => {
     const isActionLoading = actionProfileId === participant.profileId;
-    const canRemove = selectedTrip?.accessRole === 'owner' && !participant.isOwner;
+    const canRemove = !isOffline && selectedTrip?.accessRole === 'owner' && !participant.isOwner;
 
     return (
       <View key={participant.profileId} style={[styles.personRow, { borderColor: currentColors.border }]}> 
@@ -623,8 +750,19 @@ export default function Trips() {
 
   const renderDetailsTab = () => {
     if (!selectedTrip || !selectedStatusMeta) return null;
+    const scheduleIsReadOnly = isOffline || selectedTrip.accessRole !== 'owner';
+
     return (
       <View>
+        {isOffline && (
+          <View style={[styles.readOnlyNotice, { backgroundColor: currentColors.card, borderColor: currentColors.border, marginBottom: 12 }]}>
+            <Ionicons name="cloud-offline-outline" size={19} color={Colors.brand.blue} />
+            <Text style={[styles.readOnlyText, { color: currentColors.subtext }]}>
+              Pokazujemy zapisaną najbliższą wycieczkę. W trybie offline edycja, usuwanie i zarządzanie uczestnikami są wyłączone.
+            </Text>
+          </View>
+        )}
+
         <View style={styles.detailsGrid}>
           <View style={styles.detailsGridRow}>
             <View style={[styles.detailsCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}>
@@ -721,10 +859,55 @@ export default function Trips() {
           )}
         </TouchableOpacity>
 
+        <View style={[styles.scheduleCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}>
+          <TouchableOpacity
+            style={styles.scheduleHeader}
+            activeOpacity={0.85}
+            onPress={() => setScheduleExpanded((value) => !value)}
+          >
+            <View style={styles.scheduleHeaderLeft}>
+              <Ionicons name="list-outline" size={22} color={Colors.brand.blue} />
+              <View style={styles.scheduleHeaderTextBox}>
+                <Text style={[styles.scheduleTitle, { color: currentColors.text }]}>Plan podróży</Text>
+                <Text style={[styles.scheduleSubtitle, { color: currentColors.subtext }]}>
+                  {scheduleLoading
+                    ? 'Ładowanie planu...'
+                    : `${scheduleDays.length} dni · ${scheduleActivityCount} punktów`}
+                </Text>
+              </View>
+            </View>
+            <Ionicons
+              name={scheduleExpanded ? 'chevron-up' : 'chevron-down'}
+              size={20}
+              color={currentColors.subtext}
+            />
+          </TouchableOpacity>
+
+          {scheduleExpanded && (
+            <View style={styles.scheduleBody}>
+              {scheduleIsReadOnly && (
+                <Text style={[styles.readOnlyText, { color: currentColors.subtext, marginBottom: 12 }]}>
+                  Harmonogram jest dostępny tylko do odczytu.
+                </Text>
+              )}
+              <TripScheduleSection
+                days={scheduleDays}
+                loading={scheduleLoading}
+                editable={!scheduleIsReadOnly}
+                saving={scheduleSaving}
+                currentColors={currentColors}
+                onAddActivity={handleAddScheduleActivity}
+                onUpdateActivity={handleUpdateScheduleActivity}
+                onDeleteActivity={handleDeleteScheduleActivity}
+              />
+            </View>
+          )}
+        </View>
+
         {/* --- PRZYCISK DO OTWARCIA ZAAWANSOWANEGO HARMONOGRAMU --- */}
         <TouchableOpacity
           style={{
-            backgroundColor: Colors.brand.blue,
+            backgroundColor: isOffline ? currentColors.border : Colors.brand.blue,
             paddingVertical: 14,
             borderRadius: 12,
             alignItems: 'center',
@@ -734,12 +917,18 @@ export default function Trips() {
             gap: 8,
           }}
           onPress={() => {
+            if (isOffline) {
+              return;
+            }
             closeTripPanel();
             handleTripPress(selectedTrip);
           }}
+          disabled={isOffline}
         >
           <Ionicons name="map-outline" size={20} color="#fff" />
-          <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>Otwórz edytor planu</Text>
+          <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>
+            {isOffline ? 'Edytor niedostępny offline' : 'Otwórz edytor planu'}
+          </Text>
         </TouchableOpacity>
 
       </View>
@@ -776,7 +965,7 @@ export default function Trips() {
           )}
         </View>
 
-        {selectedTrip.accessRole === 'owner' && (
+        {selectedTrip.accessRole === 'owner' && !isOffline && (
           <>
             <View style={styles.modalSectionHeader}>
               <Text style={[styles.modalSectionTitle, { color: currentColors.text }]}>Dodaj znajomego</Text>

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -18,8 +18,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Colors } from '@/styles/colors';
-import { useTripStore, TripPlan, DayPlan } from '@/stores/tripStore';
+import { useTripStore, DayPlan } from '@/stores/tripStore';
 import { useAuth } from '@/providers/auth.provider';
+import { useNetwork } from '@/providers/network.provider';
 import DateRangePicker from '@/components/DateRangePicker'; 
 import { deleteTrip, updateTrip } from '@/services/trip.api';
 
@@ -240,6 +241,7 @@ export default function TripDetails() {
   const { tripPlan, deleteDay, addDay, addActivity, updateActivity, deleteActivity } = useTripStore();
   const [isEditingMode, setIsEditingMode] = useState(false);
   const { session } = useAuth();
+  const { isOffline } = useNetwork();
   const [isDeleting, setIsDeleting] = useState(false);
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -283,8 +285,16 @@ export default function TripDetails() {
     actions: [] as any[]
   });
 
+  useEffect(() => {
+    if (isOffline) {
+      setIsEditingMode(false);
+    }
+  }, [isOffline]);
+
   // ─── AUTO-SYNC SYSTEM ───────────────────────────────────────────────────
   const syncPlanWithDb = async (forcedPlan?: any) => {
+    if (isOffline) return;
+
     const planToSave = forcedPlan || useTripStore.getState().tripPlan;
     if (!planToSave?.id || !session?.access_token) return;
     
@@ -302,6 +312,7 @@ export default function TripDetails() {
   };
 
   const openBudgetModal = () => {
+    if (isOffline) return;
     setBudgetModal({ visible: true, value: String(tripPlan?.estimatedTotalCost || 0) });
   };
 
@@ -313,6 +324,7 @@ export default function TripDetails() {
   };
 
   const openAddActivity = (dayIndex: number) => {
+    if (isOffline) return;
     setActModal({
       visible: true,
       mode: 'add',
@@ -323,6 +335,7 @@ export default function TripDetails() {
   };
 
   const openEditActivity = (dayIndex: number, actIndex: number, activity: any) => {
+    if (isOffline) return;
     setActModal({
       visible: true,
       mode: 'edit',
@@ -360,6 +373,8 @@ export default function TripDetails() {
   };
 
   const handleAddDay = async () => {
+    if (isOffline) return;
+
     const nextDayNum = (tripPlan?.days?.length || 0) + 1;
     
     // Zabezpieczenie: Inteligentne obliczanie daty kolejnego dnia
@@ -390,16 +405,20 @@ export default function TripDetails() {
   };
 
   const handleLocalDeleteDay = async (dayIndex: number) => {
+    if (isOffline) return;
     deleteDay(dayIndex);
     await syncPlanWithDb();
   };
 
   const handleLocalDeleteActivity = async (dayIndex: number, actIndex: number) => {
+    if (isOffline) return;
     deleteActivity(dayIndex, actIndex);
     await syncPlanWithDb();
   };
 
   const handleSaveDates = async () => {
+    if (isOffline) return;
+
     if (!datesModal.startDate || !datesModal.endDate) {
       showAlert("Błąd", "Wybierz pełny zakres dat (wylot i powrót).", [{ text: "OK" }]);
       return;
@@ -471,6 +490,8 @@ export default function TripDetails() {
   };
 
   const handleDeleteTrip = () => {
+    if (isOffline) return;
+
     // 1. Zapisujemy ID do stałej lokalnej
     const tripId = tripPlan?.id;
     
@@ -605,20 +626,24 @@ export default function TripDetails() {
               </TouchableOpacity>
               
               <View style={{ flexDirection: 'row', gap: 10 }}>
-                <TouchableOpacity 
-                  style={[styles.heroNavBtn, isEditingMode ? { backgroundColor: Colors.brand.green || '#10b981' } : { backgroundColor: 'rgba(0,0,0,0.4)' }]}
-                  onPress={() => setIsEditingMode(!isEditingMode)}
-                >
-                  <Ionicons name={isEditingMode ? "checkmark" : "pencil"} size={18} color="#fff" />
-                </TouchableOpacity>
+                {!isOffline && (
+                  <>
+                    <TouchableOpacity
+                      style={[styles.heroNavBtn, isEditingMode ? { backgroundColor: Colors.brand.green || '#10b981' } : { backgroundColor: 'rgba(0,0,0,0.4)' }]}
+                      onPress={() => setIsEditingMode(!isEditingMode)}
+                    >
+                      <Ionicons name={isEditingMode ? "checkmark" : "pencil"} size={18} color="#fff" />
+                    </TouchableOpacity>
 
-                <TouchableOpacity 
-                  style={[styles.heroNavBtn, { backgroundColor: 'rgba(239, 68, 68, 0.8)' }]}
-                  onPress={handleDeleteTrip}
-                  disabled={isDeleting}
-                >
-                  {isDeleting ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="trash-outline" size={18} color="#fff" />}
-                </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.heroNavBtn, { backgroundColor: 'rgba(239, 68, 68, 0.8)' }]}
+                      onPress={handleDeleteTrip}
+                      disabled={isDeleting}
+                    >
+                      {isDeleting ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="trash-outline" size={18} color="#fff" />}
+                    </TouchableOpacity>
+                  </>
+                )}
               </View>
             </Animated.View>
 

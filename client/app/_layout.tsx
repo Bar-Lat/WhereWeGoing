@@ -8,7 +8,6 @@ import { StatusBar } from 'expo-status-bar';
 import {NetworkProvider} from '@/providers/network.provider'
 import OfflineBanner from '@/components/OfflineBanner'
 import { NotificationsProvider } from '@/providers/notifications.provider';
-import { useTripsListStore } from '@/stores/tripStore';
 
 
 function AppNavigator() {
