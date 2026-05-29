@@ -8,6 +8,8 @@ const {
   addParticipant,
   deleteParticipant,
 } = require('../repositories/tripParticipants.repository');
+const { resolveAvatarUrl } = require('./friends.controller'); // lub ścieżka do Twojego pliku
+
 const {
   getFriendRowsBetweenProfiles,
   getProfileById,
@@ -94,26 +96,37 @@ const buildParticipantsList = async (trip) => {
 
   const safeParticipantRows = participantRows || [];
   const profileIds = Array.from(new Set([trip.owner_id, ...safeParticipantRows.map((row) => row.user_id)].filter(Boolean)));
+  
   const { data: profiles, error: profilesError } = await getProfilesByIds(profileIds);
-
   if (profilesError) {
     return { participants: [], error: profilesError };
   }
 
   const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
+  
+  // Zbieramy listę surowych uczestników
+  const rawParticipants = [];
+  
   const ownerProfile = profileById.get(trip.owner_id);
-  const participants = [];
-
   if (ownerProfile) {
-    participants.push(normalizeParticipant(ownerProfile, null, trip.owner_id));
+    rawParticipants.push(normalizeParticipant(ownerProfile, null, trip.owner_id));
   }
 
   safeParticipantRows.forEach((row) => {
     const profile = profileById.get(row.user_id);
     if (profile && profile.id !== trip.owner_id) {
-      participants.push(normalizeParticipant(profile, row, trip.owner_id));
+      rawParticipants.push(normalizeParticipant(profile, row, trip.owner_id));
     }
   });
+
+  // Teraz mapujemy surowych uczestników na listę z pełnymi adresami URL avatarów
+  const participants = await Promise.all(
+    rawParticipants.map(async (p) => ({
+      ...p,
+
+      avatar: await resolveAvatarUrl(p.avatar || null) 
+    }))
+  );
 
   return { participants, error: null };
 };

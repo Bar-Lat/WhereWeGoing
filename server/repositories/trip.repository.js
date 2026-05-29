@@ -39,10 +39,16 @@ const getTripsByIds = async (tripIds) => {
 
 const getTripById = async (tripId) => {
   const { data, error } = await supabaseDbClient
-    .from(TABLE)
-    .select('*')
+    .from('trips')
+    .select(`
+      *,
+      trip_days (
+        *,
+        activities (*)
+      )
+    `)
     .eq('id', tripId)
-    .maybeSingle();
+    .single();
 
   return { data, error };
 };

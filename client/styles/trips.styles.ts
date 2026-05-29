@@ -5,7 +5,38 @@ export const styles = StyleSheet.create({
   container: { flex: 1 },
   scrollContent: { paddingHorizontal: 20, gap: 20 },
 
-  // --- KARTY HERO (Nowy styl z feature/tripspage) ---
+  overviewGrid: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 14,
+    marginTop: -26,
+    width: '90%',
+    alignSelf: 'center',
+  },
+  overviewCard: {
+    flex: 1,
+    minHeight: 84,
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    justifyContent: 'space-between',
+  },
+  overviewValue: {
+    fontSize: 22,
+    lineHeight: 27,
+    fontWeight: '900',
+    marginTop: 8,
+  },
+  overviewLabel: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+
+  // --- KARTY HERO (Pozostałe style zostaw tak jak miałeś w poprzednim kodzie) ---
   heroCard: { 
     height: 210, 
     borderRadius: 24, 
@@ -16,6 +47,57 @@ export const styles = StyleSheet.create({
     shadowOpacity: 0.15, 
     shadowRadius: 10 
   },
+  peopleCard: {
+    borderRadius: 24,
+    borderWidth: 1,
+    paddingVertical: 4, // Dodajemy trochę oddechu wewnątrz karty
+    marginBottom: 22,
+    overflow: 'hidden',
+  },
+  personRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(148,163,184,0.1)', // Delikatna linia
+    gap: 12,
+  },
+  personInfo: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  personName: {
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  personSubtitle: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  addParticipantButton: {
+    backgroundColor: Colors.brand.blue,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  addParticipantText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  emptyFriendsBox: {
+    padding: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  inlineLoader: {
+    padding: 32,
+    alignItems: 'center',
+  },
+
+
   heroImage: { width: '100%', height: '100%' },
   heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.35)' },
   heroBottom: { position: 'absolute', bottom: 20, left: 20, right: 20 },
@@ -50,8 +132,22 @@ export const styles = StyleSheet.create({
   modalTabButtonActive: { backgroundColor: Colors.brand.blue },
   modalTabText: { fontSize: 13, lineHeight: 17, fontWeight: '900' },
   
-  detailsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
-  detailsCard: { width: '48.5%', minHeight: 104, borderRadius: 22, borderWidth: 1, padding: 14, justifyContent: 'space-between' },
+  detailsGrid: {
+  flexDirection: 'row',
+  flexWrap: 'wrap',
+  justifyContent: 'space-between', // Zapewnia równy odstęp między kolumnami
+  width: '100%',                   // Ważne: rodzic musi mieć 100%
+  gap: 10,                         // Odstęp między kafelkami
+  marginBottom: 16,
+},
+detailsCard: {
+  width: '48%',                    // 48% + 10px gapu powinno idealnie wypełnić wiersz
+  minHeight: 104,
+  borderRadius: 22,
+  borderWidth: 1,
+  padding: 14,
+  justifyContent: 'space-between',
+},
   detailsValue: { fontSize: 15, lineHeight: 20, fontWeight: '900', marginTop: 10 },
   detailsLabel: { fontSize: 11, lineHeight: 14, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 4 },
   
@@ -63,22 +159,24 @@ export const styles = StyleSheet.create({
   descriptionSubtitle: { fontSize: 12, lineHeight: 17, fontWeight: '700', marginTop: 1 },
   descriptionText: { fontSize: 14, lineHeight: 22, fontWeight: '600' },
   
-  peopleCard: { borderRadius: 24, borderWidth: 1, overflow: 'hidden', marginBottom: 22 },
-  personRow: { minHeight: 72, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  personInfo: { flex: 1, minWidth: 0 },
+
   personNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  personName: { flex: 1, fontSize: 15, lineHeight: 20, fontWeight: '900' },
-  personSubtitle: { fontSize: 12, lineHeight: 17, marginTop: 2 },
+
   ownerBadge: { color: '#FFFFFF', backgroundColor: Colors.brand.green, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3, fontSize: 10, lineHeight: 12, fontWeight: '900', overflow: 'hidden' },
-  avatarFallback: { alignItems: 'center', justifyContent: 'center' },
-  avatarFallbackText: { color: '#FFFFFF', fontWeight: '900' },
+  avatarFallback: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.brand.blue, // tymczasowy kolor dla testu
+  },
+  avatarFallbackText: {
+    color: '#FFFFFF',
+    fontWeight: '900',
+    fontSize: 16,
+  },
   
   smallActionButton: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   removeButton: { backgroundColor: 'rgba(239,68,68,0.12)' },
-  addParticipantButton: { minWidth: 74, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.brand.blue, paddingHorizontal: 14 },
-  addParticipantText: { color: '#FFFFFF', fontSize: 12, fontWeight: '900' },
-  
-  inlineLoader: { minHeight: 92, alignItems: 'center', justifyContent: 'center' },
+
   inlineLoaderSmall: { minHeight: 64, alignItems: 'center', justifyContent: 'center' },
   
   previewAvatarsRow: { flexDirection: 'row', alignItems: 'center', minHeight: 46 },
@@ -91,7 +189,7 @@ export const styles = StyleSheet.create({
   readOnlyText: { flex: 1, fontSize: 13, lineHeight: 19, fontWeight: '700' },
   
   emptyInlineText: { fontSize: 13, lineHeight: 20, textAlign: 'center', paddingHorizontal: 16, paddingVertical: 18 },
-  emptyFriendsBox: { minHeight: 108, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18, gap: 9 },
+
   modalSectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, marginTop: 2 },
   modalSectionTitle: { fontSize: 18, lineHeight: 24, fontWeight: '900' },
   modalSectionCount: { fontSize: 13, lineHeight: 17, fontWeight: '800' },
@@ -102,4 +200,242 @@ export const styles = StyleSheet.create({
   statusText: { fontSize: 11, lineHeight: 14, fontWeight: '900', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 0.5 },
   accessBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
   accessBadgeText: { color: '#FFFFFF', fontSize: 10, lineHeight: 13, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.4 },
+
+  // --- FILTRY I TABS ---
+  tripTabs: {
+    marginHorizontal: -20,
+    marginBottom: 16,
+  },
+  tripTabsContent: {
+    paddingHorizontal: 20,
+    gap: 9,
+  },
+  tripTab: {
+    height: 42,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  tripTabText: {
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: '900',
+  },
+
+  // --- STANY (LOADING, EMPTY, ERROR) ---
+  stateBox: {
+    minHeight: 260,
+    borderRadius: 26,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    gap: 12,
+  },
+  stateTitle: {
+    fontSize: 18,
+    lineHeight: 23,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  stateText: {
+    fontSize: 14,
+    lineHeight: 21,
+    textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: 8,
+    borderRadius: 999,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    backgroundColor: Colors.brand.blue,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  emptyCard: {
+    minHeight: 300,
+    borderRadius: 28,
+    borderWidth: 1,
+    padding: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyIconCircle: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.brand.blue,
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    fontSize: 22,
+    lineHeight: 28,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  emptyText: {
+    fontSize: 14,
+    lineHeight: 22,
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  emptyButton: {
+    marginTop: 18,
+    borderRadius: 999,
+    paddingHorizontal: 20,
+    paddingVertical: 13,
+    backgroundColor: Colors.brand.blue,
+  },
+  emptyButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  // --- KARTA WYCIECZKI (TripCard) ---
+  tripCard: {
+    borderRadius: 26,
+    marginBottom: 18,
+    overflow: 'hidden',
+    borderWidth: 1,
+  },
+  tripImage: {
+    width: '100%',
+    height: 176,
+  },
+  imageOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    height: 176,
+  },
+  tripImageContent: {
+    position: 'absolute',
+    left: 18,
+    right: 18,
+    top: 16,
+    height: 142,
+    justifyContent: 'space-between',
+  },
+  destination: {
+    color: '#FFFFFF',
+    fontSize: 25,
+    lineHeight: 31,
+    fontWeight: '900',
+    letterSpacing: -0.4,
+  },
+  tripDates: {
+    color: 'rgba(255,255,255,0.84)',
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '700',
+    marginTop: 3,
+  },
+  tripInfo: {
+    padding: 16,
+  },
+  tripMetaGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  metaPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    borderRadius: 999,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+  },
+  metaPillText: {
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: '800',
+  },
+  tripFooter: {
+    marginTop: 16,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(148,163,184,0.16)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  tripRoleRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  tripRoleText: {
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: '700',
+  },
+  manageButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.brand.blue,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  manageButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: '900',
+  },
+  
+  tripImageTextBox: {
+    gap: 3,
+  },
+  betterAvatarsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  avatarList: {
+    flexDirection: 'row',
+    marginRight: 12,
+  },
+  avatarBox: {
+    borderWidth: 2,
+    borderRadius: 20,
+    borderColor: 'transparent', // będzie się mieszać z tłem
+  },
+  participantsTextContainer: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  participantsMainText: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  participantsSubText: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  participantRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 12,
+  },
+  participantName: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+
+  
 });

@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from '@/providers/auth.provider';
 import { ProfileProvider } from '@/providers/profile.provider';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { useTripsListStore } from '@/stores/tripStore';
 
 
 function AppNavigator() {
@@ -17,7 +18,7 @@ function AppNavigator() {
         if (isBootstrapping) {
             return;
         }
-
+     
         const inAuthGroup = segments[0] === '(auth)';
         const inMainGroup = segments[0] === '(main)';
 
@@ -38,7 +39,6 @@ function AppNavigator() {
             </View>
         );
     }
-
     return (
         <SafeAreaProvider>
             {/* Dynamicznie dopasowuje kolor ikon baterii/godziny do motywu */}

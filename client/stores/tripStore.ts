@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { TripDto } from '@/types/trips';
 
 export interface TripFormData {
   destination: string;
@@ -40,11 +41,23 @@ export interface TripPlan {
   imageUrl?: string;
 }
 
+interface TripsListStore {
+  tripsCount: number;
+  setTripsCount: (count: number) => void;
+}
+
+export const useTripsListStore = create<TripsListStore>((set) => ({
+  tripsCount: 0,
+  setTripsCount: (count) => set({ tripsCount: count }),
+}));
+
 interface TripStore {
   formData: TripFormData | null;
   tripPlan: TripPlan | null;
   isLoading: boolean;
   error: string | null;
+  trips: TripDto[]; 
+  setTrips: (trips: TripDto[]) => void;
   setFormData: (data: TripFormData) => void;
   setTripPlan: (plan: TripPlan) => void;
   setLoading: (val: boolean) => void;
@@ -57,6 +70,7 @@ interface TripStore {
   updateActivity: (dayIndex: number, activityIndex: number, updatedActivity: any) => void;
   addActivity: (dayIndex: number, newActivity: any) => void;
   
+  
 }
 
 export const useTripStore = create<TripStore>((set) => ({
@@ -64,6 +78,8 @@ export const useTripStore = create<TripStore>((set) => ({
   tripPlan: null,
   isLoading: false,
   error: null,
+  trips: [],
+  setTrips: (trips) => set({ trips }),
   setFormData: (data) => set({ formData: data }),
   setTripPlan: (plan) => set({ tripPlan: plan }),
   setLoading: (val) => set({ isLoading: val }),

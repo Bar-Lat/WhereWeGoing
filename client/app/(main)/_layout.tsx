@@ -10,6 +10,28 @@ import { useSegments } from 'expo-router';
 // ─── IMPORTY AUTORYZACJI I API ───
 import { useAuth } from '@/providers/auth.provider';
 import { getMyTrips } from '@/services/trip.api';
+import { useTripStore } from '@/stores/tripStore';
+
+// To jest pełnoprawny komponent, więc hooki będą tu działać idealnie i dynamicznie
+const TripsTabIcon = ({ color, focused, currentColors }: any) => {
+  // Pobieramy stan bezpiecznie. Jeśli jest undefined, podstawiamy []
+  const trips = useTripStore((state) => state.trips) || [];
+  const count = trips.length;
+
+  return (
+    <View>
+      <Ionicons name={focused ? "briefcase" : "briefcase-outline"} size={24} color={color} />
+      
+      {count > 0 && (
+        <View style={[styles.badge, { borderColor: currentColors.card }]}>
+          <Text style={styles.badgeText}>
+            {count > 99 ? '99+' : count}
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+};
 
 export default function MainLayout() {
   const insets = useSafeAreaInsets();
@@ -24,21 +46,35 @@ export default function MainLayout() {
   
   // ─── STAN DLA LICZNIKA WYCIECZEK ───
   const { session } = useAuth();
-  const [activeTrips, setActiveTrips] = useState(0);
+  const { setTrips } = useTripStore();
+
+
+  
 
   useEffect(() => {
-    const fetchTripsCount = async () => {
-      if (!session?.access_token) return;
-      try {
-        const trips = await getMyTrips(session.access_token);
-        setActiveTrips(trips?.length || 0);
-      } catch (error) {
-        console.error('Błąd pobierania liczby wycieczek do layoutu:', error);
+  const loadTrips = async () => {
+    if (!session?.access_token) return;
+    try {
+      const data = await getMyTrips(session.access_token);
+      
+      // Wiemy, że data to czysta tablica, więc ładujemy ją bezpośrednio do store'a
+      if (Array.isArray(data)) {
+        setTrips(data);
+      } else {
+        // Zabezpieczenie na wypadek, gdyby struktura kiedyś się zmieniła
+        setTrips([]);
       }
-    };
+    } catch (e) { 
+      console.error("Błąd ładowania wycieczek w Layout:", e); 
+      setTrips([]); 
+    }
+  };
+  loadTrips();
+}, [session?.access_token]);
 
-    fetchTripsCount();
-  }, [session?.access_token]);
+// Licznik:
+const trips = useTripStore((state) => state.trips) || [];
+const tripsCount = trips.length;
   
   return (
     <Tabs
@@ -112,23 +148,17 @@ export default function MainLayout() {
         }}
       />
 
-      {/* 4. MOJE PLANY */}
+      {/* ZAKTUALIZOWANA ZAKŁADKA MOJE PLANY */}
       <Tabs.Screen
         name="trips"
         options={{
           title: 'Moje plany',
-          tabBarIcon: ({ color, focused }) => (
-            <View>
-              <Ionicons name={focused ? "briefcase" : "briefcase-outline"} size={24} color={color} />
-              
-              {activeTrips > 0 && (
-                <View style={[styles.badge, { borderColor: currentColors.card }]}>
-                  <Text style={styles.badgeText}>
-                    {activeTrips > 99 ? '99+' : activeTrips}
-                  </Text>
-                </View>
-              )}
-            </View>
+          tabBarIcon: (props) => (
+            <TripsTabIcon 
+              color={props.color} 
+              focused={props.focused} 
+              currentColors={currentColors} 
+            />
           ),
         }}
       />

@@ -31,6 +31,7 @@ import {
 import { useTripStore, TripPlan } from '@/stores/tripStore';
 import type { FriendProfile } from '@/types/friends';
 import type { TripDto, TripParticipantDto } from '@/types/trips';
+import { useTripsListStore } from '@/stores/tripStore';
 
 const PLACEHOLDER_IMAGES = [
   'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=900',
@@ -63,6 +64,18 @@ const getInitials = (name: string) => {
   const parts = name.trim().split(' ').filter(Boolean);
   if (parts.length === 0) return 'U';
   return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() || '').join('');
+};
+
+const getTripDescription = (notes?: string | null) => {
+  if (!notes) return '';
+  try {
+    // Próbujemy odczytać to jako JSON (plan od AI)
+    const parsed = JSON.parse(notes);
+    return parsed.summary || '';
+  } catch {
+    // Jeśli to nie jest JSON, tylko normalny tekst od użytkownika, po prostu go zwracamy
+    return notes;
+  }
 };
 
 const formatTripDate = (value: string | null | undefined) => {
@@ -106,7 +119,10 @@ const getStatusMeta = (status: string) => statusLabels[status] || { label: statu
 
 const getTripImage = (trip: TripDto | any, index: number) => {
   const url = trip.imageUrl || trip.image_url;
-  if (url && /^https?:\/\//i.test(url)) return url;
+  // Jeśli url istnieje i nie jest pusty, zwróć go. W przeciwnym razie zwróć placeholder.
+  if (url && typeof url === 'string' && url.trim().length > 0) {
+    return url;
+  }
   return PLACEHOLDER_IMAGES[index % PLACEHOLDER_IMAGES.length];
 };
 
@@ -114,28 +130,29 @@ const getFriendSubtitle = (friend: FriendProfile) => {
   const name = `${friend.firstName || ''} ${friend.lastName || ''}`.trim();
   return name ? 'Znajomy w WhereWeGoing' : 'Profil bez uzupełnionych danych';
 };
+const ProfileAvatar = ({ uri, label, size = 40, color = Colors.brand.blue }: any) => {
+  // Bezpieczne sprawdzenie typu i zawartości
+  const isImageValid = typeof uri === 'string' && uri.startsWith('http');
 
-const ProfileAvatar = ({
-  uri,
-  label,
-  size = 42,
-  color = Colors.brand.blue,
-}: {
-  uri?: string | null;
-  label: string;
-  size?: number;
-  color?: string;
-}) => {
-  if (uri) {
-    return <Image source={{ uri }} style={{ width: size, height: size, borderRadius: size / 2 }} />;
+  if (isImageValid) {
+    return (
+      <Image 
+        source={{ uri }} 
+        style={{ width: size, height: size, borderRadius: size / 2 }} 
+      />
+    );
   }
 
+  // Fallback, gdy brak poprawnego URL-a
   return (
-    <View style={[styles.avatarFallback, { width: size, height: size, borderRadius: size / 2, backgroundColor: color }]}> 
-      <Text style={[styles.avatarFallbackText, { fontSize: Math.max(12, size * 0.34) }]}>{getInitials(label)}</Text>
+    <View style={[styles.avatarFallback, { width: size, height: size, borderRadius: size / 2, backgroundColor: color }]}>
+      <Text style={styles.avatarFallbackText}>
+        {getInitials(label || '?')}
+      </Text>
     </View>
   );
 };
+
 
 export default function Trips() {
   const insets = useSafeAreaInsets();
@@ -145,6 +162,7 @@ export default function Trips() {
   
   const { session } = useAuth();
   const { userAvatarUrl, userInitials } = useCurrentUserProfile();
+
 
   const [trips, setTrips] = useState<TripDto[]>([]);
   const [tripsLoading, setTripsLoading] = useState(true);
@@ -158,6 +176,21 @@ export default function Trips() {
   const [friendsLoading, setFriendsLoading] = useState(false);
   const [actionProfileId, setActionProfileId] = useState<string | null>(null);
   const [tripListFilter, setTripListFilter] = useState<TripListFilter>('all');
+
+const getPeopleLabel = (count: number) => {
+  if (count === 1) return '1 osoba';
+  
+  // Sprawdzamy końcówkę dla liczb kończących się na 2, 3, 4 
+  // (ale wykluczamy nastolatki: 12, 13, 14, które kończą się na "osób")
+  const lastDigit = count % 10;
+  const isTeen = count % 100 >= 11 && count % 100 <= 14;
+
+  if (lastDigit >= 2 && lastDigit <= 4 && !isTeen) {
+    return `${count} osoby`;
+  }
+  
+  return `${count} osób`;
+};
 
   const accessToken = session?.access_token ?? null;
   const bottomPadding = 65 + (insets.bottom > 0 ? insets.bottom : 10) + 24;
@@ -242,10 +275,16 @@ export default function Trips() {
   // Wstrzyknięta logika parsowania notatek z JSON i przekazywania do Zustanda
   const handleTripPress = useCallback((trip: any) => {
     const rawPlan = trip.notes || trip.plan || trip.itinerary || trip.data || {};
+    
+    console.log("1. SUROWE DANE Z BAZY (trip.notes):", rawPlan); // <--- DODAJ TO
+
     let parsedData: any = {};
     try {
       parsedData = typeof rawPlan === 'string' ? JSON.parse(rawPlan) : rawPlan;
-    } catch (e) {}
+      console.log("2. PO PARSOWANIU (parsedData):", parsedData); // <--- DODAJ TO
+    } catch (e) {
+      console.error("❌ BŁĄD PARSOWANIA JSON:", e); // <--- DODAJ TO
+    }
 
     const activePlan: TripPlan = {
       id: trip.id,
@@ -413,13 +452,17 @@ export default function Trips() {
             <View style={styles.tripRoleRow}>
               <Ionicons name={isOwner ? 'shield-checkmark-outline' : 'people-outline'} size={16} color={currentColors.subtext} />
               <Text style={[styles.tripRoleText, { color: currentColors.subtext }]} numberOfLines={1}>
-                {isOwner ? 'Twój plan podróży' : 'Plan udostępniony Tobie'}
+                {isOwner ? 'Właściciel' : 'Uczestnik'}
               </Text>
             </View>
-            <View style={styles.manageButton}>
-              <Text style={styles.manageButtonText}>Zarządzaj</Text>
+            <TouchableOpacity 
+              style={styles.manageButton}
+              onPress={() => handleTripPress(trip)} // <--- TUTAJ TO ZMIENIAMY
+              activeOpacity={0.8}
+            >
+              <Text style={styles.manageButtonText}>Pokaż plan podróży</Text>
               <Ionicons name="chevron-forward" size={16} color="#FFFFFF" />
-            </View>
+            </TouchableOpacity>
           </View>
         </View>
       </TouchableOpacity>
@@ -513,48 +556,59 @@ export default function Trips() {
             </View>
           </View>
           <Text style={[styles.descriptionText, { color: currentColors.subtext }]}>
-            {selectedTrip.notes?.trim() || 'Ten plan nie ma jeszcze opisu. Organizator może uzupełnić szczegóły podróży w dalszym etapie planowania.'}
+            {getTripDescription(selectedTrip.notes)?.trim() || 'Ten plan nie ma jeszcze opisu. Organizator może uzupełnić szczegóły podróży w dalszym etapie planowania.'}
           </Text>
         </View>
 
-        <View style={[styles.descriptionCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
-          <View style={styles.descriptionHeader}>
-            <View style={[styles.descriptionIcon, { backgroundColor: Colors.brand.green }]}> 
-              <Ionicons name="people-outline" size={18} color="#FFFFFF" />
-            </View>
-            <View style={styles.descriptionTitleBox}>
-              <Text style={[styles.descriptionTitle, { color: currentColors.text }]}>Uczestnicy</Text>
-              <Text style={[styles.descriptionSubtitle, { color: currentColors.subtext }]}>{participants.length} osób w planie</Text>
-            </View>
-            <TouchableOpacity style={styles.secondaryButton} onPress={() => setModalTab('participants')}>
-              <Text style={styles.secondaryButtonText}>Pokaż</Text>
-            </TouchableOpacity>
-          </View>
+<TouchableOpacity 
+  style={[styles.descriptionCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}
+  onPress={() => setModalTab('participants')}
+  activeOpacity={0.7}
+>
+  <View style={styles.descriptionHeader}>
+    <View style={[styles.descriptionIcon, { backgroundColor: Colors.brand.green }]}> 
+      <Ionicons name="people-outline" size={18} color="#FFFFFF" />
+    </View>
+    <View style={styles.descriptionTitleBox}>
+      <Text style={[styles.descriptionTitle, { color: currentColors.text }]}>Uczestnicy</Text>
+      <Text style={[styles.descriptionSubtitle, { color: currentColors.subtext }]}>{participants.length} osób w planie</Text>
+    </View>
+    <Ionicons name="chevron-forward" size={20} color={currentColors.subtext} />
+  </View>
 
-          {participantsLoading ? (
-            <View style={styles.inlineLoaderSmall}>
-              <ActivityIndicator color={Colors.brand.blue} />
-            </View>
-          ) : participants.length > 0 ? (
-            <View style={styles.previewAvatarsRow}>
-              {participants.slice(0, 5).map((participant, index) => (
-                <View key={participant.profileId} style={[styles.previewAvatarWrap, { marginLeft: index === 0 ? 0 : -10, borderColor: currentColors.card }]}> 
-                  <ProfileAvatar uri={participant.avatar} label={participant.displayName} size={40} color={participant.isOwner ? Colors.brand.green : Colors.brand.blue} />
-                </View>
-              ))}
-              {participants.length > 5 && (
-                <View style={[styles.moreParticipantsBadge, { backgroundColor: currentColors.background, borderColor: currentColors.border }]}> 
-                  <Text style={[styles.moreParticipantsText, { color: currentColors.text }]}>+{participants.length - 5}</Text>
-                </View>
-              )}
-              <Text style={[styles.previewParticipantsText, { color: currentColors.subtext }]} numberOfLines={1}>
-                {ownerParticipant ? `Organizator: ${ownerParticipant.displayName}` : 'Lista uczestników wycieczki'}
-              </Text>
-            </View>
-          ) : (
-            <Text style={[styles.emptyInlineText, { color: currentColors.subtext }]}>Brak uczestników do wyświetlenia.</Text>
-          )}
-        </View>
+  {participantsLoading ? (
+    <ActivityIndicator color={Colors.brand.blue} />
+  ) : (
+    <View style={{ gap: 16 }}>
+      {/* Sekcja Organizatora */}
+      <View>
+        <Text style={[styles.descriptionSubtitle, { color: currentColors.subtext, marginBottom: 8, fontSize: 11 }]}>ORGANIZATOR:</Text>
+        {participants.filter(p => p.isOwner).map(p => (
+          <View key={p.profileId} style={styles.participantRow}>
+            <ProfileAvatar uri={p.avatar} label={p.displayName || "Użytkownik"} size={40} color={Colors.brand.green} />
+            <Text style={[styles.participantName, { color: currentColors.text }]}>{p.displayName}</Text>
+          </View>
+        ))}
+      </View>
+
+      {/* Sekcja Uczestników (tylko 3 pierwszych dla podglądu) */}
+      <View>
+        <Text style={[styles.descriptionSubtitle, { color: currentColors.subtext, marginBottom: 8, fontSize: 11 }]}>UCZESTNICY:</Text>
+        {participants.filter(p => !p.isOwner).slice(0, 3).map(p => (
+          <View key={p.profileId} style={styles.participantRow}>
+            <ProfileAvatar uri={p.avatar} label={p.displayName} size={36} color={Colors.brand.blue} />
+            <Text style={[styles.participantName, { color: currentColors.text }]}>{p.displayName}</Text>
+          </View>
+        ))}
+        {participants.filter(p => !p.isOwner).length > 3 && (
+          <Text style={{ color: Colors.brand.blue, fontSize: 12, fontWeight: '700', marginTop: 4 }}>
+            + {participants.filter(p => !p.isOwner).length - 3} więcej...
+          </Text>
+        )}
+      </View>
+    </View>
+  )}
+</TouchableOpacity>
 
         {/* --- PRZYCISK DO OTWARCIA HARMONOGRAMU --- */}
         <TouchableOpacity
@@ -594,9 +648,11 @@ export default function Trips() {
         )}
 
         <View style={styles.modalSectionHeader}>
-          <Text style={[styles.modalSectionTitle, { color: currentColors.text }]}>Obecni uczestnicy</Text>
-          <Text style={[styles.modalSectionCount, { color: currentColors.subtext }]}>{participants.length} osób</Text>
-        </View>
+  <Text style={[styles.modalSectionTitle, { color: currentColors.text }]}>Obecni uczestnicy</Text>
+  <Text style={[styles.modalSectionCount, { color: currentColors.subtext }]}>
+    {getPeopleLabel(participants.length)}
+  </Text>
+</View>
 
         <View style={[styles.peopleCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
           {participantsLoading ? (
@@ -655,19 +711,7 @@ export default function Trips() {
           onProfilePress={() => router.push('/(main)/profile')}
           userAvatarUrl={userAvatarUrl}
         />
-
-        <View style={styles.scrollContent}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleBox}>
-              <Text style={[styles.sectionTitle, { color: currentColors.text }]}>Moje plany</Text>
-              <Text style={[styles.sectionSubtitle, { color: currentColors.subtext }]}>Przeglądaj swoje wycieczki i plany, do których dodali Cię znajomi.</Text>
-            </View>
-            <TouchableOpacity style={styles.createSmallButton} onPress={() => router.push('/(main)/create')}>
-              <Ionicons name="add" size={20} color="#FFFFFF" />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.overviewGrid}>
+        <View style={styles.overviewGrid}>
             <View style={[styles.overviewCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
               <Ionicons name="briefcase-outline" size={19} color={Colors.brand.blue} />
               <Text style={[styles.overviewValue, { color: currentColors.text }]}>{trips.length}</Text>
@@ -684,6 +728,10 @@ export default function Trips() {
               <Text style={[styles.overviewLabel, { color: currentColors.subtext }]}>wspólne</Text>
             </View>
           </View>
+        <View style={styles.scrollContent}>
+
+
+          
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tripTabsContent} style={styles.tripTabs}>
             {tripListFilters.map((filter) => {

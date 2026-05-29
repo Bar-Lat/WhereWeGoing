@@ -58,7 +58,9 @@ DANE WYCIECZKI:
 Zwróć WYŁĄCZNIE obiekt JSON (bez markdown, bez komentarzy) w tym schemacie:
 {
   "destination": "string",
-  "summary": "string (2-3 zdania o wycieczce)",
+  "englishDestination": "string (angielska nazwa miasta dla Unsplash)", 
+  "summary": "string",
+  "imageUrl": "string (zostaw puste, wygenerujemy to sami)",
   "totalDays": number,
   "estimatedTotalCost": number,
   "currency": "PLN",
@@ -95,6 +97,48 @@ const toISO = (ddmmyyyy) => {
   if (parts.length !== 3) return null;
   const [day, month, year] = parts;
   return `${year}-${month}-${day}`;
+};
+
+const getUnsplashImage = async (searchQuery) => {
+  const accessKey = process.env.UNSPLASH_ACCESS_KEY;
+  
+  // Zabezpieczamy URI na wypadek, gdyby searchQuery było puste
+  const encodedQuery = encodeURIComponent(searchQuery || 'city');
+  const fallbackUrl = `https://loremflickr.com/800/600/${encodedQuery},landmark/all`;
+  
+  console.log("Czy klucz API istnieje?", !!accessKey);
+
+  if (!accessKey) return fallbackUrl;
+
+  try {
+    // Zmienna zadeklarowana tylko raz
+    const query = encodeURIComponent(`${searchQuery} city`);
+    const response = await fetch(`https://api.unsplash.com/search/photos?query=${query}&per_page=1&orientation=landscape`, {
+      headers: {
+        Authorization: `Client-ID ${accessKey}`
+      }
+    });
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      console.error("❌ Unsplash API Error:", response.status, errorData);
+      throw new Error(`Unsplash returned ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    if (data.results && data.results.length > 0) {
+      const url = data.results[0].urls.regular;
+      console.log("✅ Znaleziono zdjęcie na Unsplash:", url);
+      return url;
+    } else {
+      console.warn("⚠️ Unsplash nie znalazł zdjęć dla:", searchQuery);
+      return fallbackUrl;
+    }
+  } catch (error) {
+    console.error("❌ Błąd w funkcji Unsplash:", error);
+    return fallbackUrl;
+  }
 };
 
 const generateTripPlan = async (req, res, next) => {
@@ -158,16 +202,25 @@ const generateTripPlan = async (req, res, next) => {
     }
 
     let savedTrip = null;
-
+    
     if (ownerId) {
+      // DODANO ZABEZPIECZENIE: Użyj englishDestination od AI, a w razie jego braku - użyj oryginalnego destination
+      const searchTarget = tripPlan.englishDestination || destination;
+      
+      const generatedImageUrl = await getUnsplashImage(searchTarget);
+      console.log("Wygenerowany URL obrazu:", generatedImageUrl);
+      
+      tripPlan.imageUrl = generatedImageUrl; 
+
       const tripRow = {
         owner_id: ownerId,
         destination,
+
         start_date: toISO(departureDate),
         end_date: toISO(returnDate),
         total_budget: budget,
         status: 'planned',
-        image_url: '',
+        image_url: generatedImageUrl,
         notes: JSON.stringify(tripPlan),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -251,10 +304,11 @@ const updateTripHandler = async (req, res, next) => {
 
     // 1. Aktualizacja głównej tabeli (trips)
     const updateData = {
-      notes: JSON.stringify(tripPlan),
-      total_budget: tripPlan.estimatedTotalCost || trip.total_budget,
-      updated_at: new Date().toISOString()
-    };
+  notes: JSON.stringify(tripPlan),
+  total_budget: tripPlan.estimatedTotalCost || trip.total_budget,
+  image_url: tripPlan.imageUrl || trip.image_url,
+  updated_at: new Date().toISOString()
+};
 
     const { error: updateError } = await updateTripById(id, updateData);
     if (updateError) {
