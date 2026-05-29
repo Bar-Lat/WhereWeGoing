@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
   Image,
   KeyboardAvoidingView,
   Modal,
@@ -16,6 +17,8 @@ import {
   useColorScheme,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/styles/colors';
 import ScreenHeader from '@/components/ScreenHeader';
@@ -38,8 +41,43 @@ import {
   searchFriendCandidates,
 } from '@/services/friends.api';
 import { syncUnlockedAchievements } from '@/services/achievementNotifications.storage';
+import { getTripHistory, type TripHistoryItem } from '@/services/trip.api';
 
 type AchievementTab = 'unlocked' | 'locked';
+
+const TRIP_CARD_COLORS = [
+  '#3D5A80',
+  '#5C4D7D',
+  '#2A9D8F',
+  '#E76F51',
+  '#457B9D',
+  '#6A4C93',
+  '#BC6C25',
+  '#2F6B5E',
+];
+
+const getTripCardColor = (tripId: string) => {
+  let hash = 0;
+  for (let i = 0; i < tripId.length; i += 1) {
+    hash = tripId.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return TRIP_CARD_COLORS[Math.abs(hash) % TRIP_CARD_COLORS.length];
+};
+
+const formatDayDate = (date: string | null | undefined) => {
+  if (!date) {
+    return null;
+  }
+
+  const isoDate = date.split('T')[0];
+  const [year, month, day] = isoDate.split('-');
+
+  if (year && month && day) {
+    return `${day}.${month}.${year}`;
+  }
+
+  return date;
+};
 
 const getInitialsFromName = (name: string, fallback = 'U') => {
   const parts = name.trim().split(' ').filter(Boolean);
@@ -151,6 +189,12 @@ export default function Profile() {
 
   const [avatarLoadError, setAvatarLoadError] = useState(false);
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
+  const navigation = useNavigation<BottomTabNavigationProp<Record<string, object | undefined>>>();
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [history, setHistory] = useState<TripHistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [expandedTripIds, setExpandedTripIds] = useState<string[]>([]);
   const [isFriendsPanelVisible, setIsFriendsPanelVisible] = useState(false);
   const [isStatsPanelVisible, setIsStatsPanelVisible] = useState(false);
   const [isAchievementsPanelVisible, setIsAchievementsPanelVisible] = useState(false);
@@ -318,6 +362,70 @@ export default function Profile() {
       clearTimeout(timeout);
     };
   }, [accessToken, friendSearch, isFriendsPanelVisible]);
+
+  const loadHistory = useCallback(async () => {
+    if (!accessToken) {
+      setHistoryError('Brak dostępu. Zaloguj się ponownie.');
+      setHistory([]);
+      return;
+    }
+
+    setHistoryLoading(true);
+    setHistoryError(null);
+
+    try {
+      const response = await getTripHistory(accessToken);
+      setHistory(response.trips);
+    } catch (fetchError) {
+      setHistoryError(fetchError instanceof Error ? fetchError.message : 'Błąd podczas pobierania historii.');
+      setHistory([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [accessToken]);
+
+  useEffect(() => {
+    if (isHistoryOpen) {
+      void loadHistory();
+    }
+  }, [isHistoryOpen, loadHistory]);
+
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        setIsHistoryOpen(false);
+      };
+    }, [])
+  );
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('tabPress', () => {
+      setIsHistoryOpen(false);
+    });
+
+    return unsubscribe;
+  }, [navigation]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const handleBackPress = () => {
+        if (isHistoryOpen) {
+          setIsHistoryOpen(false);
+          return true;
+        }
+        return false;
+      };
+
+      const subscription = BackHandler.addEventListener('hardwareBackPress', handleBackPress);
+      return () => subscription.remove();
+    }, [isHistoryOpen])
+  );
+
+  const toggleHistoryDay = useCallback((tripId: string) => {
+    setExpandedTripIds((current) =>
+      current.includes(tripId) ? current.filter((id) => id !== tripId) : [...current, tripId]
+    );
+  }, []);
 
   const menuItems = [
     { label: 'Edytuj profil', icon: 'person-outline' },
@@ -551,7 +659,115 @@ export default function Profile() {
   );
 
   return (
-    <View style={[styles.container, { backgroundColor: currentColors.background }]}> 
+    <View style={[styles.container, { backgroundColor: currentColors.background }]}>
+      {isHistoryOpen ? (
+        <>
+          <View
+            style={[
+              styles.historyScreenHeader,
+              {
+                backgroundColor: currentColors.card,
+                borderBottomColor: currentColors.border,
+                paddingTop: insets.top + 12,
+              },
+            ]}
+          >
+            <Text style={[styles.historyScreenTitle, { color: currentColors.text }]}>Historia wycieczek</Text>
+            <TouchableOpacity style={styles.historyCloseButton} onPress={() => setIsHistoryOpen(false)}>
+              <Ionicons name="close" size={28} color={currentColors.text} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView contentContainerStyle={[styles.historyScreenContent, { paddingBottom: bottomPadding }]}>
+            {historyLoading ? (
+              <View style={styles.historyLoader}>
+                <ActivityIndicator size="large" color={Colors.brand.blue} />
+              </View>
+            ) : historyError ? (
+              <View style={styles.historyMessage}>
+                <Text style={[styles.historyMessageText, { color: currentColors.text }]}>{historyError}</Text>
+              </View>
+            ) : history.length === 0 ? (
+              <View style={styles.historyMessage}>
+                <Text style={[styles.historyMessageText, { color: currentColors.text }]}>
+                  Brak historii wycieczek do wyświetlenia.
+                </Text>
+              </View>
+            ) : (
+              history.map((trip) => {
+                const isExpanded = expandedTripIds.includes(trip.id);
+                const dateLabel = [trip.startDate, trip.endDate].filter(Boolean).join(' / ');
+                const totalLabel = trip.total !== null ? `${trip.total.toLocaleString()} PLN` : '-';
+
+                return (
+                  <View key={trip.id} style={[styles.historyCard, { borderColor: currentColors.border }]}>
+                    <TouchableOpacity activeOpacity={0.9} onPress={() => toggleHistoryDay(trip.id)}>
+                      <View style={[styles.historyCardHero, { backgroundColor: getTripCardColor(trip.id) }]}>
+                        <View style={styles.historyCardRow}>
+                          <Ionicons
+                            name={isExpanded ? 'chevron-down' : 'chevron-forward'}
+                            size={22}
+                            color="#FFFFFF"
+                            style={styles.historyArrow}
+                          />
+                          <View style={styles.historyHeaderText}>
+                            <Text style={styles.historyHeroDestination}>{trip.destination}</Text>
+                            {dateLabel ? <Text style={styles.historyHeroSubtitle}>{dateLabel}</Text> : null}
+                          </View>
+                          <Text style={styles.historyHeroTotal}>{totalLabel}</Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+
+                    {isExpanded && (
+                      <View style={[styles.historyDetails, { borderTopColor: currentColors.border }]}>
+                        {trip.days.length === 0 ? (
+                          <Text style={[styles.historyEmptyText, { color: currentColors.subtext }]}>
+                            Brak aktywności dla tej wycieczki.
+                          </Text>
+                        ) : (
+                          trip.days.map((day, dayIndex) => {
+                            const dayNumber = day.dayNumber ?? dayIndex + 1;
+                            const formattedDate = formatDayDate(day.date);
+                            const dayLabel = formattedDate
+                              ? `Dzień ${dayNumber} - ${formattedDate}`
+                              : `Dzień ${dayNumber}`;
+
+                            return (
+                              <View key={day.dayId} style={styles.historyDayBlock}>
+                                <Text style={[styles.historyDayTitle, { color: currentColors.text }]}>{dayLabel}</Text>
+                                {day.activities.map((activity) => (
+                                  <View
+                                    key={activity.id}
+                                    style={[styles.historyActivity, { borderBottomColor: currentColors.border }]}
+                                  >
+                                    <View style={styles.historyActivityLeft}>
+                                      <Text style={[styles.historyActivityName, { color: currentColors.text }]}>
+                                        {activity.name}
+                                      </Text>
+                                      <Text style={[styles.historyActivityMeta, { color: currentColors.subtext }]}>
+                                        {activity.duration_minutes !== null ? `${activity.duration_minutes} min` : '-'}
+                                      </Text>
+                                    </View>
+                                    <Text style={[styles.historyActivityCost, { color: currentColors.text }]}>
+                                      {activity.cost !== null ? `${activity.cost.toLocaleString()} PLN` : '-'}
+                                    </Text>
+                                  </View>
+                                ))}
+                              </View>
+                            );
+                          })
+                        )}
+                      </View>
+                    )}
+                  </View>
+                );
+              })
+            )}
+          </ScrollView>
+        </>
+      ) : (
+        <>
       <ScreenHeader
         variant="default"
         title="Mój Profil"
@@ -742,6 +958,33 @@ export default function Profile() {
               </View>
             </TouchableOpacity>
 
+            <TouchableOpacity
+              activeOpacity={0.88}
+              style={[styles.summaryCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}
+              onPress={() => setIsHistoryOpen(true)}
+            >
+              <View style={styles.summaryCardHeader}>
+                <View style={styles.summaryTitleRow}>
+                  <View style={[styles.summaryIconBox, { backgroundColor: '#6366F1' }]}>
+                    <Ionicons name="time" size={22} color="#FFFFFF" />
+                  </View>
+                  <View style={styles.summaryTextBox}>
+                    <Text style={[styles.summaryTitle, { color: currentColors.text }]}>Historia wycieczek</Text>
+                    <Text style={[styles.summarySubtitle, { color: currentColors.subtext }]}>
+                      Przeglądaj zakończone podróże i aktywności
+                    </Text>
+                  </View>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={currentColors.subtext} />
+              </View>
+
+              <View style={styles.summaryBottomRow}>
+                <Text style={[styles.summaryValue, { color: currentColors.text }]}>
+                  {profileStats?.tripsCount ?? 0} podróży
+                </Text>
+              </View>
+            </TouchableOpacity>
+
             {insightsError && (
               <TouchableOpacity style={styles.inlineError} onPress={loadProfileInsights} activeOpacity={0.85}>
                 <Ionicons name="warning-outline" size={18} color="#EF4444" />
@@ -783,6 +1026,8 @@ export default function Profile() {
           </>
         )}
       </ScrollView>
+        </>
+      )}
 
       <Modal
         visible={isFriendsPanelVisible}
@@ -1645,4 +1890,53 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     textAlign: 'center',
   },
+  historyScreenHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+  },
+  historyScreenTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+  },
+  historyCloseButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  historyScreenContent: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+  },
+  historyLoader: { padding: 24, alignItems: 'center' },
+  historyMessage: { padding: 20, alignItems: 'center' },
+  historyMessageText: { textAlign: 'center', fontSize: 15, lineHeight: 22 },
+  historyCard: { borderWidth: 1, borderRadius: 20, overflow: 'hidden', marginBottom: 18 },
+  historyCardHero: { width: '100%', padding: 16 },
+  historyCardRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  historyArrow: { marginTop: 2, marginRight: 12 },
+  historyHeaderText: { flex: 1, paddingRight: 8 },
+  historyHeroDestination: { fontSize: 18, fontWeight: '700', marginBottom: 4, color: '#FFFFFF' },
+  historyHeroSubtitle: { fontSize: 14, lineHeight: 20, color: 'rgba(255,255,255,0.88)' },
+  historyHeroTotal: { fontSize: 15, fontWeight: '700', color: '#FFFFFF', marginTop: 2 },
+  historyDetails: { padding: 16, borderTopWidth: 1 },
+  historyEmptyText: { fontSize: 14, lineHeight: 20 },
+  historyDayBlock: { marginBottom: 18 },
+  historyDayTitle: { fontSize: 16, fontWeight: '700', marginBottom: 10 },
+  historyActivity: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  historyActivityLeft: { flex: 1, paddingRight: 12 },
+  historyActivityName: { fontSize: 15, fontWeight: '600', marginBottom: 4 },
+  historyActivityMeta: { fontSize: 13 },
+  historyActivityCost: { fontSize: 14, fontWeight: '700' },
 });

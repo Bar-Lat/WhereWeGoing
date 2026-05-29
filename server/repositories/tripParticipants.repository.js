@@ -47,21 +47,44 @@ const getParticipantByTripAndUser = async (tripId, userId) => {
   return { data, error };
 };
 
-const addParticipant = async ({ tripId, userId, role = 'participant' }) => {
+const addParticipant = async ({ tripId, userId, role = 'participant', amountOwed = 0, amountPaid = 0, currency = 'PLN' }) => {
   const { data, error } = await supabaseDbClient
     .from(TABLE)
     .insert({
       trip_id: tripId,
       user_id: userId,
       role,
-      amount_paid: 0,
-      amount_owed: 0,
-      currency: 'PLN',
+      amount_paid: amountPaid,
+      amount_owed: amountOwed,
+      currency,
     })
     .select(selectFields)
     .single();
 
   return { data, error };
+};
+
+const updateParticipantsAmountOwed = async (tripId, userIds, amountOwed, currency = 'PLN') => {
+  if (!Array.isArray(userIds) || userIds.length === 0) {
+    return { error: null };
+  }
+
+  const { error } = await supabaseDbClient
+    .from(TABLE)
+    .update({ amount_owed: amountOwed, currency })
+    .eq('trip_id', tripId)
+    .in('user_id', userIds);
+
+  return { error };
+};
+
+const updateAllParticipantsAmountOwed = async (tripId, amountOwed, currency = 'PLN') => {
+  const { error } = await supabaseDbClient
+    .from(TABLE)
+    .update({ amount_owed: amountOwed, currency })
+    .eq('trip_id', tripId);
+
+  return { error };
 };
 
 const deleteParticipant = async (tripId, userId) => {
@@ -80,5 +103,7 @@ module.exports = {
   getParticipantsByUserId,
   getParticipantByTripAndUser,
   addParticipant,
+  updateParticipantsAmountOwed,
+  updateAllParticipantsAmountOwed,
   deleteParticipant,
 };

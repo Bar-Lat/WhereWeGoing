@@ -17,6 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 
 import ScreenHeader from '@/components/ScreenHeader';
+import TripScheduleSection from '@/components/TripScheduleSection';
 import { useCurrentUserProfile } from '@/hooks/useCurrentUserProfile';
 import { useAuth } from '@/providers/auth.provider';
 import { Colors } from '@/styles/colors';
@@ -24,12 +25,16 @@ import { styles } from '@/styles/trips.styles';
 import { getMyFriends } from '@/services/friends.api';
 import {
   addTripParticipant,
+  createTripScheduleActivity,
+  deleteTripScheduleActivity,
   getMyTrips,
   getTripParticipants,
+  getTripSchedule,
   removeTripParticipant,
+  updateTripScheduleActivity,
 } from '@/services/trips.api';
 import type { FriendProfile } from '@/types/friends';
-import type { TripDto, TripParticipantDto } from '@/types/trips';
+import type { TripDto, TripParticipantDto, TripScheduleDayDto } from '@/types/trips';
 
 const PLACEHOLDER_IMAGES = [
   'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=900',
@@ -97,8 +102,18 @@ const formatDaysLabel = (days: number | null) => {
 };
 
 const formatBudget = (value: number | null | undefined) => {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) return 'Brak budżetu';
-  return `${Math.round(Number(value))} PLN`;
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return 'Brak kosztu';
+  return `${Math.round(Number(value)).toLocaleString('pl-PL')} PLN`;
+};
+
+const getTripDisplayCost = (trip: TripDto) => trip.totalCost ?? trip.totalBudget;
+
+const formatParticipantCost = (value: number | null | undefined, currency = 'PLN') => {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) {
+    return 'Brak naliczonego kosztu';
+  }
+
+  return `${Math.round(Number(value)).toLocaleString('pl-PL')} ${currency}`;
 };
 
 const getStatusMeta = (status: string) => statusLabels[status] || { label: status || 'Plan', color: Colors.brand.blue };
@@ -155,6 +170,10 @@ export default function Trips() {
   const [friendsLoading, setFriendsLoading] = useState(false);
   const [actionProfileId, setActionProfileId] = useState<string | null>(null);
   const [tripListFilter, setTripListFilter] = useState<TripListFilter>('all');
+  const [scheduleExpanded, setScheduleExpanded] = useState(false);
+  const [scheduleDays, setScheduleDays] = useState<TripScheduleDayDto[]>([]);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [scheduleSaving, setScheduleSaving] = useState(false);
 
   const accessToken = session?.access_token ?? null;
   const bottomPadding = 65 + (insets.bottom > 0 ? insets.bottom : 10) + 24;
@@ -206,11 +225,16 @@ export default function Trips() {
         } else {
           setFriends([]);
         }
+
+        setScheduleLoading(true);
+        const scheduleResponse = await getTripSchedule(accessToken, trip.id);
+        setScheduleDays(scheduleResponse.days);
       } catch (error) {
         Alert.alert('Nie udało się pobrać danych', error instanceof Error ? error.message : 'Spróbuj ponownie.');
       } finally {
         setParticipantsLoading(false);
         setFriendsLoading(false);
+        setScheduleLoading(false);
       }
     },
     [accessToken]
@@ -222,6 +246,8 @@ export default function Trips() {
       setModalTab(tab);
       setParticipants([]);
       setFriends([]);
+      setScheduleDays([]);
+      setScheduleExpanded(false);
       await loadPanelData(trip);
     },
     [loadPanelData]
@@ -232,6 +258,8 @@ export default function Trips() {
     setModalTab('details');
     setParticipants([]);
     setFriends([]);
+    setScheduleDays([]);
+    setScheduleExpanded(false);
     setActionProfileId(null);
   }, []);
 
@@ -275,9 +303,93 @@ export default function Trips() {
 
   const selectedTripDays = selectedTrip ? getTripDays(selectedTrip) : null;
   const selectedStatusMeta = selectedTrip ? getStatusMeta(selectedTrip.status) : null;
-  const ownerParticipant = useMemo(
-    () => participants.find((participant) => participant.isOwner),
-    [participants]
+  const scheduleActivityCount = useMemo(
+    () => scheduleDays.reduce((sum, day) => sum + day.activities.length, 0),
+    [scheduleDays]
+  );
+
+  const applyScheduleMutation = useCallback(
+    (response: { days: TripScheduleDayDto[]; totalCost: number | null; participants?: TripParticipantDto[] }) => {
+      setScheduleDays(response.days);
+      if (response.participants?.length) {
+        setParticipants(response.participants);
+      }
+      setSelectedTrip((current) =>
+        current ? { ...current, totalCost: response.totalCost ?? current.totalCost } : current
+      );
+    },
+    []
+  );
+
+  const handleAddScheduleActivity = useCallback(
+    async (dayId: string) => {
+      if (!accessToken || !selectedTrip) return;
+
+      try {
+        setScheduleSaving(true);
+        const response = await createTripScheduleActivity(accessToken, selectedTrip.id, dayId, {
+          name: 'Nowa aktywność',
+          time: '12:00',
+          description: 'Opis aktywności',
+          category: 'inne',
+          location: '',
+          cost: 0,
+        });
+        applyScheduleMutation(response);
+        await loadTrips('refresh');
+      } catch (error) {
+        Alert.alert('Nie udało się dodać punktu', error instanceof Error ? error.message : 'Spróbuj ponownie.');
+      } finally {
+        setScheduleSaving(false);
+      }
+    },
+    [accessToken, applyScheduleMutation, loadTrips, selectedTrip]
+  );
+
+  const handleUpdateScheduleActivity = useCallback(
+    async (
+      activityId: string,
+      payload: {
+        name: string;
+        time: string;
+        description: string;
+        category: string;
+        location: string;
+        cost: number;
+      }
+    ) => {
+      if (!accessToken || !selectedTrip) return;
+
+      try {
+        setScheduleSaving(true);
+        const response = await updateTripScheduleActivity(accessToken, selectedTrip.id, activityId, payload);
+        applyScheduleMutation(response);
+        await loadTrips('refresh');
+      } catch (error) {
+        Alert.alert('Nie udało się zapisać zmian', error instanceof Error ? error.message : 'Spróbuj ponownie.');
+      } finally {
+        setScheduleSaving(false);
+      }
+    },
+    [accessToken, applyScheduleMutation, loadTrips, selectedTrip]
+  );
+
+  const handleDeleteScheduleActivity = useCallback(
+    async (activityId: string) => {
+      if (!accessToken || !selectedTrip) return;
+
+      try {
+        setScheduleSaving(true);
+        const response = await deleteTripScheduleActivity(accessToken, selectedTrip.id, activityId);
+        applyScheduleMutation(response);
+        await loadTrips('refresh');
+      } catch (error) {
+        Alert.alert('Nie udało się usunąć punktu', error instanceof Error ? error.message : 'Spróbuj ponownie.');
+      } finally {
+        setScheduleSaving(false);
+      }
+    },
+    [accessToken, applyScheduleMutation, loadTrips, selectedTrip]
   );
 
   const handleAddParticipant = useCallback(
@@ -286,10 +398,15 @@ export default function Trips() {
 
       try {
         setActionProfileId(friend.id);
-        await addTripParticipant(accessToken, selectedTrip.id, friend.id);
-        const participantsResponse = await getTripParticipants(accessToken, selectedTrip.id);
-        setParticipants(participantsResponse.participants);
-        setSelectedTrip((current) => current ? { ...current, participantsCount: participantsResponse.count } : current);
+        const response = await addTripParticipant(accessToken, selectedTrip.id, friend.id);
+        if (response.participants?.length) {
+          setParticipants(response.participants);
+          setSelectedTrip((current) => current ? { ...current, participantsCount: response.participants!.length } : current);
+        } else {
+          const participantsResponse = await getTripParticipants(accessToken, selectedTrip.id);
+          setParticipants(participantsResponse.participants);
+          setSelectedTrip((current) => current ? { ...current, participantsCount: participantsResponse.count } : current);
+        }
         await loadTrips('refresh');
       } catch (error) {
         Alert.alert('Nie udało się dodać uczestnika', error instanceof Error ? error.message : 'Spróbuj ponownie.');
@@ -315,10 +432,15 @@ export default function Trips() {
             onPress: async () => {
               try {
                 setActionProfileId(participant.profileId);
-                await removeTripParticipant(accessToken, selectedTrip.id, participant.profileId);
-                const participantsResponse = await getTripParticipants(accessToken, selectedTrip.id);
-                setParticipants(participantsResponse.participants);
-                setSelectedTrip((current) => current ? { ...current, participantsCount: participantsResponse.count } : current);
+                const response = await removeTripParticipant(accessToken, selectedTrip.id, participant.profileId);
+                if (response.participants?.length !== undefined) {
+                  setParticipants(response.participants);
+                  setSelectedTrip((current) => current ? { ...current, participantsCount: response.participants!.length } : current);
+                } else {
+                  const participantsResponse = await getTripParticipants(accessToken, selectedTrip.id);
+                  setParticipants(participantsResponse.participants);
+                  setSelectedTrip((current) => current ? { ...current, participantsCount: participantsResponse.count } : current);
+                }
                 await loadTrips('refresh');
               } catch (error) {
                 Alert.alert('Nie udało się usunąć uczestnika', error instanceof Error ? error.message : 'Spróbuj ponownie.');
@@ -376,7 +498,7 @@ export default function Trips() {
             </View>
             <View style={[styles.metaPill, { backgroundColor: currentColors.background }]}> 
               <Ionicons name="wallet-outline" size={16} color={Colors.brand.yellow} />
-              <Text style={[styles.metaPillText, { color: currentColors.text }]}>{formatBudget(trip.totalBudget)}</Text>
+              <Text style={[styles.metaPillText, { color: currentColors.text }]}>{formatBudget(getTripDisplayCost(trip))}</Text>
             </View>
           </View>
 
@@ -409,7 +531,12 @@ export default function Trips() {
             <Text style={[styles.personName, { color: currentColors.text }]} numberOfLines={1}>{participant.displayName}</Text>
             {participant.isOwner && <Text style={styles.ownerBadge}>Właściciel</Text>}
           </View>
-          <Text style={[styles.personSubtitle, { color: currentColors.subtext }]}>{participant.isOwner ? 'Organizator wycieczki' : 'Uczestnik wycieczki'}</Text>
+          <Text style={[styles.personSubtitle, { color: currentColors.subtext }]}>
+            {participant.isOwner ? 'Organizator wycieczki' : 'Uczestnik wycieczki'}
+          </Text>
+          <Text style={[styles.personCost, { color: Colors.brand.blue }]}>
+            {formatParticipantCost(participant.amountOwed, participant.currency)}
+          </Text>
         </View>
         {canRemove && (
           <TouchableOpacity
@@ -451,31 +578,41 @@ export default function Trips() {
     return (
       <View>
         <View style={styles.detailsGrid}>
-          <View style={[styles.detailsCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
-            <Ionicons name="calendar-outline" size={20} color={Colors.brand.blue} />
-            <Text style={[styles.detailsValue, { color: currentColors.text }]}>{formatTripRange(selectedTrip)}</Text>
-            <Text style={[styles.detailsLabel, { color: currentColors.subtext }]}>termin</Text>
+          <View style={styles.detailsGridRow}>
+            <View style={[styles.detailsCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}>
+              <Ionicons name="calendar-outline" size={20} color={Colors.brand.blue} />
+              <Text style={[styles.detailsValue, { color: currentColors.text }]}>{formatTripRange(selectedTrip)}</Text>
+              <Text style={[styles.detailsLabel, { color: currentColors.subtext }]}>termin</Text>
+            </View>
+            <View style={[styles.detailsCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}>
+              <Ionicons name="time-outline" size={20} color={Colors.brand.green} />
+              <Text style={[styles.detailsValue, { color: currentColors.text }]}>{formatDaysLabel(selectedTripDays)}</Text>
+              <Text style={[styles.detailsLabel, { color: currentColors.subtext }]}>długość</Text>
+            </View>
           </View>
-          <View style={[styles.detailsCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
-            <Ionicons name="time-outline" size={20} color={Colors.brand.green} />
-            <Text style={[styles.detailsValue, { color: currentColors.text }]}>{formatDaysLabel(selectedTripDays)}</Text>
-            <Text style={[styles.detailsLabel, { color: currentColors.subtext }]}>długość</Text>
-          </View>
-          <View style={[styles.detailsCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
-            <Ionicons name="wallet-outline" size={20} color={Colors.brand.yellow} />
-            <Text style={[styles.detailsValue, { color: currentColors.text }]}>{formatBudget(selectedTrip.totalBudget)}</Text>
-            <Text style={[styles.detailsLabel, { color: currentColors.subtext }]}>budżet</Text>
-          </View>
-          <View style={[styles.detailsCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
-            <Ionicons name={selectedTrip.accessRole === 'owner' ? 'shield-checkmark-outline' : 'people-outline'} size={20} color={selectedTrip.accessRole === 'owner' ? Colors.brand.blue : Colors.brand.green} />
-            <Text style={[styles.detailsValue, { color: currentColors.text }]}>{selectedTrip.accessRole === 'owner' ? 'Organizator' : 'Uczestnik'}</Text>
-            <Text style={[styles.detailsLabel, { color: currentColors.subtext }]}>Twoja rola</Text>
+          <View style={styles.detailsGridRow}>
+            <View style={[styles.detailsCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}>
+              <Ionicons name="wallet-outline" size={20} color={Colors.brand.yellow} />
+              <Text style={[styles.detailsValue, { color: currentColors.text }]}>{formatBudget(getTripDisplayCost(selectedTrip))}</Text>
+              <Text style={[styles.detailsLabel, { color: currentColors.subtext }]}>koszt</Text>
+            </View>
+            <View style={[styles.detailsCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}>
+              <Ionicons
+                name={selectedTrip.accessRole === 'owner' ? 'shield-checkmark-outline' : 'people-outline'}
+                size={20}
+                color={selectedTrip.accessRole === 'owner' ? Colors.brand.blue : Colors.brand.green}
+              />
+              <Text style={[styles.detailsValue, { color: currentColors.text }]}>
+                {selectedTrip.accessRole === 'owner' ? 'Organizator' : 'Uczestnik'}
+              </Text>
+              <Text style={[styles.detailsLabel, { color: currentColors.subtext }]}>Twoja rola</Text>
+            </View>
           </View>
         </View>
 
-        <View style={[styles.descriptionCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
+        <View style={[styles.descriptionCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}>
           <View style={styles.descriptionHeader}>
-            <View style={[styles.descriptionIcon, { backgroundColor: selectedStatusMeta.color }]}> 
+            <View style={[styles.descriptionIcon, { backgroundColor: selectedStatusMeta.color }]}>
               <Ionicons name="information-outline" size={18} color="#FFFFFF" />
             </View>
             <View style={styles.descriptionTitleBox}>
@@ -488,42 +625,48 @@ export default function Trips() {
           </Text>
         </View>
 
-        <View style={[styles.descriptionCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
-          <View style={styles.descriptionHeader}>
-            <View style={[styles.descriptionIcon, { backgroundColor: Colors.brand.green }]}> 
-              <Ionicons name="people-outline" size={18} color="#FFFFFF" />
+        <View style={[styles.scheduleCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}>
+          <TouchableOpacity
+            style={styles.scheduleHeader}
+            activeOpacity={0.85}
+            onPress={() => setScheduleExpanded((value) => !value)}
+          >
+            <View style={styles.scheduleHeaderLeft}>
+              <Ionicons name="list-outline" size={22} color={Colors.brand.blue} />
+              <View style={styles.scheduleHeaderTextBox}>
+                <Text style={[styles.scheduleTitle, { color: currentColors.text }]}>Harmonogram</Text>
+                <Text style={[styles.scheduleSubtitle, { color: currentColors.subtext }]}>
+                  {scheduleLoading
+                    ? 'Ładowanie planu dnia po dniu...'
+                    : `${scheduleDays.length} dni · ${scheduleActivityCount} punktów`}
+                </Text>
+              </View>
             </View>
-            <View style={styles.descriptionTitleBox}>
-              <Text style={[styles.descriptionTitle, { color: currentColors.text }]}>Uczestnicy</Text>
-              <Text style={[styles.descriptionSubtitle, { color: currentColors.subtext }]}>{participants.length} osób w planie</Text>
-            </View>
-            <TouchableOpacity style={styles.secondaryButton} onPress={() => setModalTab('participants')}>
-              <Text style={styles.secondaryButtonText}>Pokaż</Text>
-            </TouchableOpacity>
-          </View>
+            <Ionicons
+              name={scheduleExpanded ? 'chevron-up' : 'chevron-down'}
+              size={20}
+              color={currentColors.subtext}
+            />
+          </TouchableOpacity>
 
-          {participantsLoading ? (
-            <View style={styles.inlineLoaderSmall}>
-              <ActivityIndicator color={Colors.brand.blue} />
-            </View>
-          ) : participants.length > 0 ? (
-            <View style={styles.previewAvatarsRow}>
-              {participants.slice(0, 5).map((participant, index) => (
-                <View key={participant.profileId} style={[styles.previewAvatarWrap, { marginLeft: index === 0 ? 0 : -10, borderColor: currentColors.card }]}> 
-                  <ProfileAvatar uri={participant.avatar} label={participant.displayName} size={40} color={participant.isOwner ? Colors.brand.green : Colors.brand.blue} />
-                </View>
-              ))}
-              {participants.length > 5 && (
-                <View style={[styles.moreParticipantsBadge, { backgroundColor: currentColors.background, borderColor: currentColors.border }]}> 
-                  <Text style={[styles.moreParticipantsText, { color: currentColors.text }]}>+{participants.length - 5}</Text>
-                </View>
+          {scheduleExpanded && (
+            <View style={styles.scheduleBody}>
+              {selectedTrip.accessRole !== 'owner' && (
+                <Text style={[styles.readOnlyText, { color: currentColors.subtext, marginBottom: 12 }]}>
+                  Możesz przeglądać harmonogram. Edycja dostępna tylko dla organizatora.
+                </Text>
               )}
-              <Text style={[styles.previewParticipantsText, { color: currentColors.subtext }]} numberOfLines={1}>
-                {ownerParticipant ? `Organizator: ${ownerParticipant.displayName}` : 'Lista uczestników wycieczki'}
-              </Text>
+              <TripScheduleSection
+                days={scheduleDays}
+                loading={scheduleLoading}
+                editable={selectedTrip.accessRole === 'owner'}
+                saving={scheduleSaving}
+                currentColors={currentColors}
+                onAddActivity={handleAddScheduleActivity}
+                onUpdateActivity={handleUpdateScheduleActivity}
+                onDeleteActivity={handleDeleteScheduleActivity}
+              />
             </View>
-          ) : (
-            <Text style={[styles.emptyInlineText, { color: currentColors.subtext }]}>Brak uczestników do wyświetlenia.</Text>
           )}
         </View>
       </View>

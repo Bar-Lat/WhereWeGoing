@@ -9,6 +9,7 @@ export interface TripFormData {
   interests: string[];
   transport: string[];
   attractionsPerDay: number;
+  selectedFriendIds: string[];
 }
 
 export interface DayPlan {
@@ -41,10 +42,12 @@ export interface TripPlan {
 interface TripStore {
   formData: TripFormData | null;
   tripPlan: TripPlan | null;
+  savedTripId: string | null;
   isLoading: boolean;
   error: string | null;
   setFormData: (data: TripFormData) => void;
   setTripPlan: (plan: TripPlan) => void;
+  setSavedTripId: (tripId: string | null) => void;
   setLoading: (val: boolean) => void;
   setError: (msg: string | null) => void;
   reset: () => void;
@@ -53,11 +56,13 @@ interface TripStore {
 export const useTripStore = create<TripStore>((set) => ({
   formData: null,
   tripPlan: null,
+  savedTripId: null,
   isLoading: false,
   error: null,
   setFormData: (data) => set({ formData: data }),
   setTripPlan: (plan) => set({ tripPlan: plan }),
+  setSavedTripId: (tripId) => set({ savedTripId: tripId }),
   setLoading: (val) => set({ isLoading: val }),
   setError: (msg) => set({ error: msg }),
-  reset: () => set({ formData: null, tripPlan: null, isLoading: false, error: null }),
+  reset: () => set({ formData: null, tripPlan: null, savedTripId: null, isLoading: false, error: null }),
 }));

@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { Colors } from '@/styles/colors';
 import GradientButton from '../../components/GradientButton';
 import { useTripStore } from '@/stores/tripStore';
+import { useAuth } from '@/providers/auth.provider';
 import { styles } from '@/styles/create.styles';
 import { Step1, Step2, Step3, Step4, Step5, TripFormData } from '../../components/CreateSteps';
 
@@ -34,12 +35,15 @@ export default function Create() {
     interests: [],
     transport: [],
     attractionsPerDay: 4,
+    selectedFriendIds: [],
   });
 
   const errorAnim = useRef(new Animated.Value(0)).current;
   const [errorMessages, setErrorMessages] = useState<string[]>([]);
 
   const setStoreFormData = useTripStore((s) => s.setFormData);
+  const { session } = useAuth();
+  const accessToken = session?.access_token ?? null;
 
   // Błędy
 
@@ -130,6 +134,7 @@ export default function Create() {
   const handleGeneratePlan = () => {
     if (validateStep4()) {
       setStoreFormData(formData);
+      useTripStore.getState().setSavedTripId(null);
       router.push('/trip-loading');
     }
   };
@@ -169,7 +174,7 @@ export default function Create() {
 
   // Render
 
-  const stepProps = { formData, setFormData, currentColors };
+  const stepProps = { formData, setFormData, currentColors, accessToken };
   const bottomOffset = 65 + (insets.bottom > 0 ? insets.bottom : 10);
 
   return (
