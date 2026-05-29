@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useMemo, useState, useEffect } from 'react'; 
 import { 
   View, Text, ScrollView, TouchableOpacity, 
-  Image, useColorScheme 
+  Image, useColorScheme, ActivityIndicator 
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -13,24 +13,24 @@ import ScreenHeader from '../../components/ScreenHeader';
 import { useCurrentUserProfile } from '@/hooks/useCurrentUserProfile';
 import { useNetwork } from '@/providers/network.provider';
 import { useNotifications } from '@/providers/notifications.provider';
+import { useTripStore, TripPlan } from '@/stores/tripStore';
+import { getTripSchedule } from '@/services/trips.api';
+import { useAuth } from '@/providers/auth.provider';
 
-const MOCK_TRIP = {
-  destination: "Paryż",
-  start_date: "12 Cze",
-  end_date: "18 Cze",
-  travelers: 2, // liczba podróżnych
-  days_left: 79, // liczba dni do wyjazdu
-  spent: 1250,
-  budget: 3000,
-  image: 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?q=80&w=1000&auto=format&fit=crop',
-  schedule: [
-    { id: '1', name: 'Wieża Eiffla', time: '10:00', duration: 120, type: 'attraction', cost: 120 },
-    { id: '2', name: 'Le Comptoir', time: '13:30', duration: 90, type: 'restaurant', cost: 250 },
-  ]
-};
+// --- HELPERY DO DAT ---
+// Zakładamy, że startDate przychodzi z bazy jako ISO string, np. "2024-06-12T00:00:00.000Z" lub "2024-06-12"
+function formatShortDate(dateStr?: string | null) {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return dateStr;
+  const months = ['Sty', 'Lut', 'Mar', 'Kwi', 'Maj', 'Cze', 'Lip', 'Sie', 'Wrz', 'Paź', 'Lis', 'Gru'];
+  return `${date.getDate()} ${months[date.getMonth()]}`;
+}
+
+
 
 export default function Home() {
-  const insets = useSafeAreaInsets();
+ const insets = useSafeAreaInsets();
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
   const currentColors = Colors[colorScheme];
@@ -38,19 +38,181 @@ export default function Home() {
 
   const { isOffline } = useNetwork();
   const { hasUnreadNotifications } = useNotifications();
+  const { trips, setTripPlan } = useTripStore();
   
+  const { session } = useAuth(); 
+  const [isLoadingTrip, setIsLoadingTrip] = useState(false);
+  
+
+
   const bottomPadding = 65 + (insets.bottom > 0 ? insets.bottom : 10) + 20;
 
+  // --- LOGIKA WYLICZANIA NAJBLIŻSZEJ WYCIECZKI (Bazuje na TripDto) ---
+  const { upcomingTrip, daysLeft, isOngoing, isPast } = useMemo(() => {
+    if (!trips || trips.length === 0) return { upcomingTrip: null, daysLeft: 0, isOngoing: false, isPast: false };
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Sortowanie wycieczek od najbliższej po polu startDate
+    const sortedTrips = [...trips].sort((a, b) => {
+      const aDate = a.startDate ? new Date(a.startDate).getTime() : 0;
+      const bDate = b.startDate ? new Date(b.startDate).getTime() : 0;
+      return aDate - bDate;
+    });
+
+    // Znajdź pierwszą, której endDate jest dzisiaj lub w przyszłości
+    let closest = sortedTrips.find(t => {
+      if (!t.endDate) return false;
+      const endDate = new Date(t.endDate);
+      endDate.setHours(0, 0, 0, 0);
+      return endDate >= today;
+    });
+
+    let isPast = false;
+    if (!closest) {
+      closest = sortedTrips[sortedTrips.length - 1]; // Pokazuje ostatnią, jeśli nie ma planów na przyszłość
+      isPast = true;
+    }
+
+    let daysLeft = 0;
+    let isOngoing = false;
+
+    if (closest?.startDate && closest?.endDate) {
+      const startDate = new Date(closest.startDate);
+      startDate.setHours(0, 0, 0, 0);
+      const endDate = new Date(closest.endDate);
+      endDate.setHours(0, 0, 0, 0);
+      
+      const diffTime = startDate.getTime() - today.getTime();
+      daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      if (today >= startDate && today <= endDate) {
+        isOngoing = true;
+        daysLeft = 0;
+      }
+    }
+
+    return { upcomingTrip: closest, daysLeft, isOngoing, isPast };
+  }, [trips]);
+
+  // --- PRZYGOTOWANIE ZMIENNYCH DLA WIDOKU ---
+  const heroImage = upcomingTrip?.imageUrl || 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?q=80&w=1000&auto=format&fit=crop';
+  const startDateText = formatShortDate(upcomingTrip?.startDate);
+  const endDateText = formatShortDate(upcomingTrip?.endDate);
+  
+  // Bezpośrednie czytanie budżetu z TripDto
+  const budget = upcomingTrip?.totalBudget || 0;
+  const spent = upcomingTrip?.totalCost || 0;
+  const progressPercent = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
+  const isOverBudget = spent > budget;
+
+  const handleOpenUpcomingTrip = async () => {
+    if (!upcomingTrip || !session?.access_token) return;
+
+    try {
+      setIsLoadingTrip(true);
+      
+      // POPRAWKA: Kolejność argumentów to (accessToken, tripId)
+      const scheduleResponse = await getTripSchedule(session.access_token, upcomingTrip.id);
+
+      const mappedPlan: TripPlan = {
+        id: upcomingTrip.id,
+        destination: upcomingTrip.destination,
+        summary: upcomingTrip.notes || '',
+        totalDays: scheduleResponse.days?.length || 0, 
+        estimatedTotalCost: upcomingTrip.totalBudget || 0,
+        currency: 'PLN',
+        
+        // Prawidłowe mapowanie danych z API do lokalnego TripStore
+        days: scheduleResponse.days?.map(day => ({
+          day: day.dayNumber,
+          date: day.date,
+          title: day.title,
+          estimatedDayCost: day.activities.reduce((sum, act) => sum + (act.cost || 0), 0),
+          tips: '',
+          activities: day.activities.map(act => ({
+            name: act.name,
+            time: act.time,
+            description: act.description,
+            category: act.category,
+            estimatedCost: act.cost, // <-- tu było ważne mapowanie!
+            location: act.location
+          }))
+        })) || [],
+        
+        generalTips: [],
+        bestTransport: '',
+        imageUrl: upcomingTrip.imageUrl || undefined
+      };
+
+      setTripPlan(mappedPlan);
+      router.push('/(main)/trip-details');
+
+    } catch (error) {
+      console.error("Błąd pobierania szczegółów planu:", error);
+      // Jeśli API rzuci błąd, aplikacja zatrzyma się tutaj i NIE przeniesie Cię do pustego planu.
+    } finally {
+      setIsLoadingTrip(false);
+    }
+  };
+
+  const [todayActivities, setTodayActivities] = useState<any[]>([]);
+  const [isLoadingActivities, setIsLoadingActivities] = useState(false);
+  const [activitiesDayLabel, setActivitiesDayLabel] = useState('Najbliższe aktywności');
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchTodaySchedule = async () => {
+      if (!upcomingTrip || !session?.access_token) {
+        setTodayActivities([]);
+        return;
+      }
+
+      try {
+        setIsLoadingActivities(true);
+        const scheduleResponse = await getTripSchedule(session.access_token, upcomingTrip.id);
+        if (!isMounted) return;
+
+        // Szukamy odpowiedniego dnia
+        const today = new Date();
+        const todayStr = `${String(today.getDate()).padStart(2, '0')}.${String(today.getMonth() + 1).padStart(2, '0')}.${today.getFullYear()}`;
+
+        let displayDay = scheduleResponse.days?.find(d => d.date === todayStr);
+        let label = "Dzisiaj w planie";
+
+        // Jeśli nie ma dzisiejszego dnia (wycieczka jest w przyszłości lub przeszłości)
+        if (!displayDay && scheduleResponse.days && scheduleResponse.days.length > 0) {
+          if (isPast) {
+            displayDay = scheduleResponse.days[scheduleResponse.days.length - 1];
+            label = "Ostatni dzień wycieczki";
+          } else {
+            displayDay = scheduleResponse.days[0];
+            label = "Pierwszy dzień wycieczki";
+          }
+        }
+
+        setTodayActivities(displayDay?.activities || []);
+        setActivitiesDayLabel(label);
+
+      } catch (error) {
+        console.error("Błąd pobierania harmonogramu w tle:", error);
+      } finally {
+        if (isMounted) setIsLoadingActivities(false);
+      }
+    };
+
+    fetchTodaySchedule();
+
+    return () => { isMounted = false; };
+  }, [upcomingTrip?.id, session?.access_token, isPast]);
   return (
     <View style={[styles.container, { backgroundColor: currentColors.background }]}>
-      
       <ScrollView 
         showsVerticalScrollIndicator={false}
-        // Ustawiamy padding na dole, ale górę zostawiamy na 0, bo ScreenHeader sam ogarnia notcha!
         contentContainerStyle={{ paddingBottom: bottomPadding }}
       >
-        
-        {/* ZMIANA: Nagłówek jest teraz W ŚRODKU ScrollView */}
         <ScreenHeader 
           variant="dashboard"
           userInitials={userInitials}
@@ -61,63 +223,88 @@ export default function Home() {
           hasUnreadNotifications={hasUnreadNotifications}
         />
 
-        {/* --- NACHODZĄCA KARTA --- */}
-        {/* Dodany wymuszony marginTop: -30 oraz zIndex, żeby karta fizycznie weszła na nagłówek */}
+        {/* --- NACHODZĄCA KARTA (LUB PUSTY STAN) --- */}
         <View style={[styles.heroSection]}>
-          <TouchableOpacity 
-            activeOpacity={0.9} 
-            onPress={() => router.push('/(main)/trips')}
-            style={[styles.heroCard, { backgroundColor: currentColors.card, borderColor: currentColors.border, borderWidth: 1 }]}
-          >
-            <Image source={{ uri: MOCK_TRIP.image }} style={styles.heroImage} />
-            <View style={styles.heroOverlay} />
-            <View style={styles.daysBadge}>
-              <View style={styles.pulseDot} />
-              <Text style={styles.daysBadgeText}>{MOCK_TRIP.days_left} dni</Text>
-            </View>
-            <View style={styles.heroBottom}>
-              <View style={styles.heroSubtitleRow}>
-                <Ionicons name="location" size={14} color="rgba(255,255,255,0.8)" />
-                <Text style={styles.heroSubtitle}>Nadchodząca podróż</Text>
+          {!upcomingTrip ? (
+            <TouchableOpacity 
+              activeOpacity={0.9} 
+              onPress={() => router.push('/(main)/create')}
+              style={[styles.heroCard, { backgroundColor: currentColors.card, borderColor: currentColors.border, borderWidth: 1, justifyContent: 'center', alignItems: 'center' }]}
+            >
+              <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: 'rgba(99, 102, 241, 0.1)', justifyContent: 'center', alignItems: 'center', marginBottom: 16 }}>
+                <Ionicons name="airplane" size={32} color={Colors.brand.blue} />
               </View>
-              <View style={styles.heroMainRow}>
-                <View>
-                  <Text style={styles.heroDestination}>{MOCK_TRIP.destination}</Text>
-                  <Text style={styles.heroDates}>
-                    {MOCK_TRIP.start_date} – {MOCK_TRIP.end_date} · {MOCK_TRIP.travelers} os.
+              <Text style={{ color: currentColors.text, fontSize: 18, fontWeight: '700', marginBottom: 4 }}>Brak nadchodzących planów</Text>
+              <Text style={{ color: currentColors.subtext, fontSize: 13 }}>Kliknij tutaj, aby utworzyć nową podróż</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity 
+              activeOpacity={0.9} 
+              onPress={handleOpenUpcomingTrip}
+              style={[styles.heroCard, { backgroundColor: currentColors.card, borderColor: currentColors.border, borderWidth: 1 }]}
+            >
+              <Image source={{ uri: heroImage }} style={styles.heroImage} />
+              <View style={styles.heroOverlay} />
+              
+              <View style={[styles.daysBadge, isPast && { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
+                {!isPast && <View style={[styles.pulseDot, isOngoing && { backgroundColor: '#FF3B30' }]} />}
+                <Text style={styles.daysBadgeText}>
+                  {isOngoing ? 'W trakcie' : isPast ? 'Zakończona' : `Za ${daysLeft} dni`}
+                </Text>
+              </View>
+
+              <View style={styles.heroBottom}>
+                <View style={styles.heroSubtitleRow}>
+                  <Ionicons name="location" size={14} color="rgba(255,255,255,0.8)" />
+                  <Text style={styles.heroSubtitle}>
+                    {isOngoing ? 'Aktualna podróż' : isPast ? 'Ostatnia podróż' : 'Nadchodząca podróż'}
                   </Text>
                 </View>
-                <View style={styles.heroArrow}>
-                  <Ionicons name="chevron-forward" size={20} color="white" />
+                <View style={styles.heroMainRow}>
+                  <View>
+                    <Text style={styles.heroDestination}>{upcomingTrip.destination}</Text>
+                    <Text style={styles.heroDates}>
+                      {startDateText} – {endDateText} · {upcomingTrip.participantsCount} os.
+                    </Text>
+                  </View>
+                  <View style={styles.heroArrow}>
+                    <Ionicons name="chevron-forward" size={20} color="white" />
+                  </View>
                 </View>
               </View>
-            </View>
-          </TouchableOpacity>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* --- SEKCJA BUDŻETU --- */}
-        <View style={styles.section}>
-          <View style={[styles.card, { backgroundColor: currentColors.card, borderColor: currentColors.border, borderWidth: 1 }]}>
-            <View style={styles.cardHeader}>
-              <View style={styles.row}>
-                <Ionicons name="wallet-outline" size={18} color={Colors.brand.blue} />
-                <Text style={[styles.cardTitle, { color: currentColors.text }]}>Budżet podróży</Text>
+        {upcomingTrip && (
+          <View style={styles.section}>
+            <View style={[styles.card, { backgroundColor: currentColors.card, borderColor: currentColors.border, borderWidth: 1 }]}>
+              <View style={styles.cardHeader}>
+                <View style={styles.row}>
+                  <Ionicons name="wallet-outline" size={18} color={Colors.brand.blue} />
+                  <Text style={[styles.cardTitle, { color: currentColors.text }]}>Szacowane koszty</Text>
+                </View>
+                <Text style={[styles.cardSubValue, { color: currentColors.subtext }]}>{spent} / {budget} PLN</Text>
               </View>
-              <Text style={[styles.cardSubValue, { color: currentColors.subtext }]}>{MOCK_TRIP.spent} / {MOCK_TRIP.budget} PLN</Text>
-            </View>
-            <View style={[styles.progressTrack, { backgroundColor: currentColors.border }]}>
-              <LinearGradient 
-                colors={[Colors.brand.blue, '#7C3AED']} 
-                start={{x:0, y:0}} end={{x:1, y:0}}
-                style={[styles.progressBar, { width: `${(MOCK_TRIP.spent / MOCK_TRIP.budget) * 100}%` }]} 
-              />
-            </View>
-            <View style={styles.cardFooter}>
-              <Text style={styles.statusOk}>✓ W normie</Text>
-              <Text style={[styles.remainingText, { color: currentColors.subtext }]}>Zostało: {MOCK_TRIP.budget - MOCK_TRIP.spent} PLN</Text>
+              <View style={[styles.progressTrack, { backgroundColor: currentColors.border }]}>
+                <LinearGradient 
+                  colors={isOverBudget ? ['#FF3B30', '#FF453A'] : [Colors.brand.blue, '#7C3AED']} 
+                  start={{x:0, y:0}} end={{x:1, y:0}}
+                  style={[styles.progressBar, { width: `${progressPercent}%` }]} 
+                />
+              </View>
+              <View style={styles.cardFooter}>
+                <Text style={[styles.statusOk, isOverBudget && { color: '#FF3B30' }]}>
+                  {isOverBudget ? '⚠️ Przekroczony' : '✓ W normie'}
+                </Text>
+                <Text style={[styles.remainingText, { color: currentColors.subtext }]}>
+                  {isOverBudget ? `Przekroczono o: ${spent - budget} PLN` : `Zostało: ${budget - spent} PLN`}
+                </Text>
+              </View>
             </View>
           </View>
-        </View>
+        )}
 
         {/* --- SZYBKIE AKCJE --- */}
         {!isOffline && (
@@ -126,39 +313,74 @@ export default function Home() {
             <View style={styles.quickActionsGrid}>
               <QuickActionButton icon="airplane-outline" label="Nowy plan" color={Colors.brand.blue} bg={currentColors.card} border={currentColors.border} textColor={currentColors.text} onPress={() => router.push('/(main)/create')} />
               <QuickActionButton icon="bulb-outline" label="Inspiracje" color="#F59E0B" bg={currentColors.card} border={currentColors.border} textColor={currentColors.text} onPress={() => router.push('/(main)/inspiration')} />
-              <QuickActionButton icon="pie-chart-outline" label="Wydatki" color="#10B981" bg={currentColors.card} border={currentColors.border} textColor={currentColors.text} onPress={() => {}} />
-              <QuickActionButton icon="share-social-outline" label="Udostępnij" color="#8B5CF6" bg={currentColors.card} border={currentColors.border} textColor={currentColors.text} onPress={() => {}} />
+              <QuickActionButton icon="map-outline" label="Wszystkie" color="#10B981" bg={currentColors.card} border={currentColors.border} textColor={currentColors.text} onPress={() => router.push('/(main)/trips')} />
+              <QuickActionButton icon="share-social-outline" label="Zaproś" color="#8B5CF6" bg={currentColors.card} border={currentColors.border} textColor={currentColors.text} onPress={() => {}} />
             </View>
           </View>
         )}
 
-        {/* --- HARMONOGRAM --- */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={[styles.sectionHeading, { color: currentColors.text }]}>Dzisiaj w planie</Text>
-            <TouchableOpacity><Text style={styles.seeAllText}>Cały plan</Text></TouchableOpacity>
-          </View>
-          <View style={styles.scheduleList}>
-            {MOCK_TRIP.schedule.map((act) => (
-              <View key={act.id} style={[styles.scheduleItem, { backgroundColor: currentColors.card, borderColor: currentColors.border, borderWidth: 1 }]}>
-                <View style={[styles.scheduleIcon, { backgroundColor: currentColors.background }]}>
-                  <Ionicons 
-                    name={act.type === 'attraction' ? 'camera-outline' : act.type === 'restaurant' ? 'restaurant-outline' : 'bed-outline'} 
-                    size={20} 
-                    color={Colors.brand.blue} 
-                  />
+        {/* --- HARMONOGRAM / AKTYWNOŚCI --- */}
+        {upcomingTrip && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={[styles.sectionHeading, { color: currentColors.text, marginBottom: 0 }]}>
+                {activitiesDayLabel}
+              </Text>
+              <TouchableOpacity onPress={handleOpenUpcomingTrip} disabled={isLoadingTrip}>
+                {isLoadingTrip ? (
+                  <ActivityIndicator size="small" color={Colors.brand.blue} />
+                ) : (
+                  <Text style={styles.seeAllText}>Cały plan</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+            
+            {/* Jeśli ładujemy aktywności w tle */}
+            {isLoadingActivities ? (
+              <View style={[styles.card, { backgroundColor: currentColors.card, borderColor: currentColors.border, borderWidth: 1, alignItems: 'center', paddingVertical: 32 }]}>
+                <ActivityIndicator size="large" color={Colors.brand.blue} style={{ marginBottom: 12 }} />
+                <Text style={{ color: currentColors.subtext, fontSize: 13 }}>Wczytywanie harmonogramu...</Text>
+              </View>
+            ) : todayActivities.length > 0 ? (
+              /* Lista aktywności */
+              <View style={styles.scheduleList}>
+                {todayActivities.map((act, index) => {
+                  const categoryIcon = act.category?.toLowerCase() === 'atrakcja' || act.category?.toLowerCase() === 'attraction' ? 'camera-outline' 
+                    : act.category?.toLowerCase() === 'jedzenie' || act.category?.toLowerCase() === 'food' ? 'restaurant-outline' 
+                    : act.category?.toLowerCase() === 'nocleg' || act.category?.toLowerCase() === 'accommodation' ? 'bed-outline' 
+                    : act.category?.toLowerCase() === 'transport' ? 'bus-outline' 
+                    : 'location-outline';
+
+                  return (
+                    <View key={index} style={[styles.scheduleItem, { backgroundColor: currentColors.card, borderColor: currentColors.border, borderWidth: 1 }]}>
+                      <View style={[styles.scheduleIcon, { backgroundColor: currentColors.background }]}>
+                        <Ionicons name={categoryIcon} size={20} color={Colors.brand.blue} />
+                      </View>
+                      <View style={styles.scheduleInfo}>
+                        <Text style={[styles.scheduleName, { color: currentColors.text }]} numberOfLines={1}>{act.name}</Text>
+                        <Text style={[styles.scheduleTime, { color: currentColors.subtext }]}>{act.time}</Text>
+                      </View>
+                      <Text style={[styles.scheduleCost, { color: act.cost > 0 ? '#FF6B35' : currentColors.subtext, fontWeight: '700' }]}>
+                        {act.cost > 0 ? `${act.cost} PLN` : 'Darmowe'}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : (
+              /* Stan pusty (gdy wycieczka nie ma żadnych aktywności) */
+              <View style={[styles.card, { backgroundColor: currentColors.card, borderColor: currentColors.border, borderWidth: 1, alignItems: 'center', paddingVertical: 24 }]}>
+                <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(99, 102, 241, 0.1)', justifyContent: 'center', alignItems: 'center', marginBottom: 12 }}>
+                  <Ionicons name="time-outline" size={24} color={Colors.brand.blue} />
                 </View>
-                <View style={styles.scheduleInfo}>
-                  <Text style={[styles.scheduleName, { color: currentColors.text }]}>{act.name}</Text>
-                  <Text style={[styles.scheduleTime, { color: currentColors.subtext }]}>{act.time} · {act.duration} min</Text>
-                </View>
-                <Text style={[styles.scheduleCost, { color: act.cost > 0 ? '#FF6B35' : currentColors.subtext }]}>
-                  {act.cost > 0 ? `${act.cost} PLN` : 'Darmowe'}
+                <Text style={{ color: currentColors.text, fontSize: 15, fontWeight: '600', marginBottom: 4 }}>Brak aktywności</Text>
+                <Text style={{ color: currentColors.subtext, fontSize: 13, textAlign: 'center', paddingHorizontal: 20 }}>
+                  Wygląda na to, że ten dzień jest jeszcze nie zaplanowany.
                 </Text>
               </View>
-            ))}
+            )}
           </View>
-        </View>
+        )}
 
       </ScrollView>
     </View>
