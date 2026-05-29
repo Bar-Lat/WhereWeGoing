@@ -51,7 +51,6 @@ function AppNavigator() {
                 <Stack.Screen name="(auth)" options={{ animation: 'default' }} />
                 <Stack.Screen name="(main)" options={{ animation: 'default' }} />
                 <Stack.Screen name="trip-loading" options={{ animation: 'fade' }} />
-                <Stack.Screen name="trip-result" options={{ animation: 'slide_from_right' }} />
             </Stack>
             <OfflineBanner />
 
