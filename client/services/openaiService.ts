@@ -1,6 +1,15 @@
 import { TripFormData, TripPlan } from '@/stores/tripStore';
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000/api';
+const normalizeApiUrl = (url: string) => {
+  const trimmedUrl = url.trim();
+  const urlWithProtocol = /^https?:\/\//i.test(trimmedUrl)
+    ? trimmedUrl
+    : `https://${trimmedUrl}`;
+
+  return urlWithProtocol.replace(/\/$/, '');
+};
+
+const API_URL = normalizeApiUrl(process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000/api');
 
 export async function generateTripPlan(
   formData: TripFormData,
