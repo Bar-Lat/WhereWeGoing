@@ -9,6 +9,8 @@ const {
   deleteParticipant,
   updateAllParticipantsAmountOwed,
 } = require('../repositories/tripParticipants.repository');
+const { resolveAvatarUrl } = require('./friends.controller'); // lub ścieżka do Twojego pliku
+
 const {
   getActivitiesTotalCostByTripId,
   getActivitiesTotalCostsByTripIds,
@@ -134,37 +136,48 @@ const recalculateTripCostSplit = async (tripId) => {
 
 const buildParticipantsList = async (trip) => {
   const { data: participantRows, error } = await getParticipantsByTripId(trip.id);
-
   if (error) {
     return { participants: [], error };
   }
 
   const safeParticipantRows = participantRows || [];
   const profileIds = Array.from(new Set([trip.owner_id, ...safeParticipantRows.map((row) => row.user_id)].filter(Boolean)));
+  
   const { data: profiles, error: profilesError } = await getProfilesByIds(profileIds);
-
   if (profilesError) {
     return { participants: [], error: profilesError };
   }
 
   const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
+  
+  // Tego brakowało - musimy stworzyć tymczasową tablicę!
+  const rawParticipants = []; 
+  
   const ownerRow = safeParticipantRows.find((row) => row.user_id === trip.owner_id);
   const ownerProfile = profileById.get(trip.owner_id);
-  const participants = [];
-
   if (ownerProfile) {
-    participants.push(normalizeParticipant(ownerProfile, ownerRow || null, trip.owner_id));
+    // Wrzucamy do rawParticipants, a nie do niezainicjalizowanego participants
+    rawParticipants.push(normalizeParticipant(ownerProfile, ownerRow || null, trip.owner_id)); 
   }
 
   safeParticipantRows.forEach((row) => {
     const profile = profileById.get(row.user_id);
     if (profile && profile.id !== trip.owner_id) {
-      participants.push(normalizeParticipant(profile, row, trip.owner_id));
+      rawParticipants.push(normalizeParticipant(profile, row, trip.owner_id));
     }
   });
-
+  
+  // Teraz mapujemy surowych uczestników na końcową listę z pełnymi adresami URL avatarów
+  const participants = await Promise.all(
+    rawParticipants.map(async (p) => ({
+      ...p,
+      avatar: await resolveAvatarUrl(p.avatar || null) 
+    }))
+  );
+  
   return { participants, error: null };
 };
+
 
 const getTrips = async (req, res, next) => {
   try {
