@@ -47,7 +47,7 @@ export default function EditProfileModal({
 }: EditProfileModalProps) {
   const colorScheme = useColorScheme() ?? 'light';
   const currentColors = Colors[colorScheme];
-  const { setProfile } = useProfile();
+  const { setProfile, refreshProfile } = useProfile();
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -116,6 +116,7 @@ export default function EditProfileModal({
       setLastName(profileToStore.lastName);
       setAvatar(profileToStore.avatar);
       setProfile(profileToStore);
+      await refreshProfile(); // <-- odświeżenie profilu globalnie
       onProfileUpdated(profileToStore);
       onClose();
     } catch (error) {
@@ -123,7 +124,7 @@ export default function EditProfileModal({
     } finally {
       setIsSaving(false);
     }
-  }, [accessToken, cacheProfile, firstName, isSaving, lastName, onClose, onProfileUpdated, setProfile]);
+  }, [accessToken, cacheProfile, firstName, isSaving, lastName, onClose, onProfileUpdated, setProfile, refreshProfile]);
 
   // Wybieramy zdjęcie z galerii i wysyłamy je jako avatar.
   const onPickAvatar = useCallback(async () => {
@@ -169,13 +170,14 @@ export default function EditProfileModal({
       const profileToStore = await cacheProfile(response.profile);
       setAvatar(profileToStore.avatar);
       setProfile(profileToStore);
+      await refreshProfile(); // <-- odświeżenie profilu globalnie
       onProfileUpdated(profileToStore);
     } catch (error) {
       console.error("Błąd wgrywania awatara:", error);
     } finally {
       setIsUploadingAvatar(false);
     }
-  }, [accessToken, cacheProfile, isUploadingAvatar, onProfileUpdated, setProfile]);
+  }, [accessToken, cacheProfile, isUploadingAvatar, onProfileUpdated, setProfile, refreshProfile]);
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>

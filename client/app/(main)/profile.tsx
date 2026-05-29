@@ -192,7 +192,7 @@ export default function Profile() {
 
   const [avatarLoadError, setAvatarLoadError] = useState(false);
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
-  
+
   const { isOffline, isForceOffline, toggleOffline } = useNetwork();
 
   const { hasUnreadNotifications } = useNotifications();
