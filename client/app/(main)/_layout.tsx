@@ -104,9 +104,9 @@ export default function MainLayout() {
     }, 3000);
   };
 
-  const combinedTabPressListener = {
+  const createTabPressListener = (options: { blockOffline?: boolean } = {}) => ({
     tabPress: (event: any) => {
-      if (isOffline) {
+      if (options.blockOffline && isOffline) {
         event.preventDefault();
         showOfflinePopup();
         return;
@@ -123,7 +123,10 @@ export default function MainLayout() {
         });
       }
     },
-  };
+  });
+
+  const defaultTabPressListener = createTabPressListener();
+  const onlineOnlyTabPressListener = createTabPressListener({ blockOffline: true });
 
   return (
     <View style={{ flex: 1 }}>
@@ -160,7 +163,7 @@ export default function MainLayout() {
       >
         <Tabs.Screen
           name="home"
-          listeners={combinedTabPressListener}
+          listeners={defaultTabPressListener}
           options={{
             title: 'Home',
 
@@ -176,7 +179,7 @@ export default function MainLayout() {
 
         <Tabs.Screen
           name="inspiration"
-          listeners={combinedTabPressListener}
+          listeners={onlineOnlyTabPressListener}
           options={{
             title: 'Inspiracje',
 
@@ -192,7 +195,7 @@ export default function MainLayout() {
 
         <Tabs.Screen
           name="create"
-          listeners={combinedTabPressListener}
+          listeners={onlineOnlyTabPressListener}
           options={{
             title: '',
 
@@ -218,7 +221,7 @@ export default function MainLayout() {
 
         <Tabs.Screen
           name="trips"
-          listeners={combinedTabPressListener}
+          listeners={defaultTabPressListener}
           options={{
             title: 'Moje plany',
 
@@ -234,7 +237,7 @@ export default function MainLayout() {
 
         <Tabs.Screen
           name="profile"
-          listeners={combinedTabPressListener}
+          listeners={defaultTabPressListener}
           options={{
             title: 'Profil',
 
