@@ -2,6 +2,8 @@ const { supabaseDbClient, supabaseAuthClient } = require('../configs/supabaseCli
 const { createTrip } = require('../repositories/trip.repository');
 const { createTripDays } = require('../repositories/tripDays.repository');
 const { createActivities } = require('../repositories/activities.repository');
+const { addParticipant } = require('../repositories/tripParticipants.repository');
+const { getFriendRowsBetweenProfiles } = require('../repositories/friends.repository');
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
@@ -75,12 +77,158 @@ Zwróć WYŁĄCZNIE obiekt JSON (bez markdown, bez komentarzy) w tym schemacie:
 }
 
 Każdy dzień powinien mieć dokładnie ${attractionsPerDay} atrakcji (nie licząc transportu i posiłków).
-Zadbaj żeby suma estimatedDayCost ze wszystkich dni była zbliżona do budżetu ${data.budget} PLN.`;
+Wszystkie koszty (estimatedCost, estimatedDayCost, estimatedTotalCost) dotyczą CAŁEJ grupy ${data.travelers} osób, nie jednej osoby.
+estimatedDayCost każdego dnia musi być równy sumie estimatedCost aktywności tego dnia.
+Suma estimatedDayCost ze wszystkich dni powinna być zbliżona do budżetu ${data.budget} PLN.`;
 };
 
 const toISO = (ddmmyyyy) => {
   const [day, month, year] = ddmmyyyy.split('.');
   return `${year}-${month}-${day}`;
+};
+
+const calculateTripTotalCost = (tripPlan, fallbackBudget) => {
+  const days = Array.isArray(tripPlan?.days) ? tripPlan.days : [];
+  const fromDays = days.reduce((sum, day) => {
+    const activities = Array.isArray(day.activities) ? day.activities : [];
+    const activityTotal = activities.reduce(
+      (daySum, activity) => daySum + (Number(activity.estimatedCost) || 0),
+      0
+    );
+
+    if (activityTotal > 0) {
+      return sum + activityTotal;
+    }
+
+    if (typeof day.estimatedDayCost === 'number' && !Number.isNaN(day.estimatedDayCost)) {
+      return sum + day.estimatedDayCost;
+    }
+
+    return sum;
+  }, 0);
+
+  if (fromDays > 0) {
+    return fromDays;
+  }
+
+  if (typeof tripPlan?.estimatedTotalCost === 'number' && !Number.isNaN(tripPlan.estimatedTotalCost)) {
+    return tripPlan.estimatedTotalCost;
+  }
+
+  return typeof fallbackBudget === 'number' ? fallbackBudget : 0;
+};
+
+const persistTripPlan = async ({ ownerId, formData, tripPlan }) => {
+  const { destination, departureDate, returnDate, budget } = formData;
+  const totalCost = calculateTripTotalCost(tripPlan, budget);
+
+  const tripRow = {
+    owner_id: ownerId,
+    destination,
+    start_date: toISO(departureDate),
+    end_date: toISO(returnDate),
+    total_budget: budget,
+    status: 'planned',
+    image_url: '',
+    notes: tripPlan.summary ?? null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data: trip, error: tripError } = await createTrip(tripRow);
+  if (tripError || !trip) {
+    return { error: tripError || new Error('Nie udało się zapisać wycieczki') };
+  }
+
+  const tripDays = (tripPlan.days || []).map((day) => ({
+    trip_id: trip.id,
+    day_number: day.day,
+    date: toISO(day.date),
+    title: day.title ?? null,
+  }));
+
+  const { data: savedDays, error: daysError } = await createTripDays(tripDays);
+  if (daysError) {
+    return { error: daysError };
+  }
+
+  const activities = [];
+  (tripPlan.days || []).forEach((day, dayIndex) => {
+    const savedDay = savedDays?.[dayIndex];
+    if (!savedDay) {
+      return;
+    }
+
+    (day.activities || []).forEach((act, actIndex) => {
+      activities.push({
+        day_id: savedDay.id,
+        time: `${toISO(day.date)}T${act.time ?? '09:00'}:00`,
+        name: act.name ?? null,
+        type: act.category ?? 'inne',
+        description: act.description ?? null,
+        location: act.location ?? null,
+        coordinates: null,
+        cost: act.estimatedCost ?? null,
+        duration_minutes: null,
+        order_index: actIndex,
+      });
+    });
+  });
+
+  if (activities.length > 0) {
+    const { error: activitiesError } = await createActivities(activities);
+    if (activitiesError) {
+      return { error: activitiesError };
+    }
+  }
+
+  return { trip, totalCost };
+};
+
+const addTripParticipantsWithSplit = async ({ tripId, ownerId, selectedFriendIds, totalCost }) => {
+  const uniqueFriendIds = Array.from(new Set((selectedFriendIds || []).filter((id) => typeof id === 'string' && id !== ownerId)));
+  const participantIds = [ownerId, ...uniqueFriendIds];
+  const amountPerPerson = participantIds.length > 0 ? totalCost / participantIds.length : 0;
+
+  for (const friendId of uniqueFriendIds) {
+    const { data: friendship, error: friendshipError } = await getFriendRowsBetweenProfiles(ownerId, friendId);
+    if (friendshipError) {
+      return { error: friendshipError };
+    }
+    if (!friendship || friendship.length === 0) {
+      return { error: new Error('Do wycieczki można dodawać tylko swoich znajomych') };
+    }
+  }
+
+  const { error: ownerParticipantError } = await addParticipant({
+    tripId,
+    userId: ownerId,
+    role: 'owner',
+    amountOwed: amountPerPerson,
+  });
+
+  if (ownerParticipantError) {
+    return { error: ownerParticipantError };
+  }
+
+  for (const friendId of uniqueFriendIds) {
+    const { error: friendError } = await addParticipant({
+      tripId,
+      userId: friendId,
+      role: 'participant',
+      amountOwed: amountPerPerson,
+    });
+
+    if (friendError) {
+      return { error: friendError };
+    }
+  }
+
+  return {
+    participantCount: participantIds.length,
+    amountPerPerson,
+    participantIds,
+  };
 };
 
 const generateTripPlan = async (req, res, next) => {
@@ -89,23 +237,18 @@ const generateTripPlan = async (req, res, next) => {
       return res.status(500).json({ message: 'Brak klucza GROQ_API_KEY na serwerze' });
     }
 
-    const { destination, departureDate, returnDate, travelers, budget } = req.body;
+    const { destination, departureDate, returnDate, travelers, budget, selectedFriendIds } = req.body;
+    const friendCount = Array.isArray(selectedFriendIds) ? selectedFriendIds.length : 0;
+    const travelersCount = typeof travelers === 'number' && travelers > 0 ? travelers : friendCount + 1;
 
-    if (!destination || !departureDate || !returnDate || !travelers || !budget) {
+    if (!destination || !departureDate || !returnDate || !budget) {
       return res.status(400).json({ message: 'Brakujące dane formularza' });
     }
 
-    const accessToken = req.headers.authorization?.slice(7);
-    let ownerId = null;
-
-    if (accessToken) {
-      const { data, error } = await supabaseAuthClient.auth.getUser(accessToken);
-      ownerId = data?.user?.id ?? null;
-
-      if (error) {
-        console.log('getUser error:', error.message);
-      }
-    }
+    const promptBody = {
+      ...req.body,
+      travelers: travelersCount,
+    };
 
     const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
@@ -122,7 +265,7 @@ const generateTripPlan = async (req, res, next) => {
           },
           {
             role: 'user',
-            content: buildPrompt(req.body),
+            content: buildPrompt(promptBody),
           },
         ],
         temperature: 0.7,
@@ -147,77 +290,58 @@ const generateTripPlan = async (req, res, next) => {
       return res.status(502).json({ message: 'Nie udało się sparsować odpowiedzi AI' });
     }
 
-    let savedTrip = null;
+    return res.status(200).json({ tripPlan });
+  } catch (err) {
+    return next(err);
+  }
+};
 
-    if (ownerId) {
-      const tripRow = {
-        owner_id: ownerId,
-        destination,
-        start_date: toISO(departureDate),
-        end_date: toISO(returnDate),
-        total_budget: budget,
-        status: 'planned',
-        image_url: '',
-        notes: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-
-      const { data: trip, error: tripError } = await createTrip(tripRow);
-
-      if (tripError) {
-        console.error('Nie udało się zapisać wycieczki:', tripError.message);
-      } else {
-        savedTrip = trip;
-
-        const tripDays = tripPlan.days.map((day) => ({
-          trip_id: trip.id,
-          day_number: day.day,
-          date: toISO(day.date),
-          title: day.title ?? null,
-        }));
-
-        const { data: savedDays, error: daysError } = await createTripDays(tripDays);
-
-        if (daysError) {
-          console.error('Nie udało się zapisać dni wycieczki:', daysError.message);
-        } else {
-          const activities = [];
-
-          tripPlan.days.forEach((day, dayIndex) => {
-            const savedDay = savedDays[dayIndex];
-            if (!savedDay) {
-              return;
-            }
-
-            day.activities.forEach((act, actIndex) => {
-              const timeStr = `${toISO(day.date)}T${act.time ?? '09:00'}:00`;
-
-              activities.push({
-                day_id: savedDay.id,
-                time: timeStr,
-                name: act.name ?? null,
-                type: act.category ?? 'inne',
-                description: act.description ?? null,
-                location: act.location ?? null,
-                coordinates: null,
-                cost: act.estimatedCost ?? null,
-                duration_minutes: null,
-                order_index: actIndex,
-              });
-            });
-          });
-
-          const { error: activitiesError } = await createActivities(activities);
-
-          if (activitiesError) {
-            console.error('Nie udało się zapisać aktywności:', activitiesError.message);
-          }
-        }
-      }
+const acceptTripPlan = async (req, res, next) => {
+  try {
+    const user = await resolveAuthenticatedUser(req, res);
+    if (!user) {
+      return;
     }
 
-    return res.status(200).json({ tripPlan, tripId: savedTrip?.id ?? null });
+    const { formData, tripPlan, selectedFriendIds } = req.body;
+
+    if (!formData || !tripPlan) {
+      return res.status(400).json({ message: 'Brak danych planu do zapisania' });
+    }
+
+    const { destination, departureDate, returnDate, budget } = formData;
+    if (!destination || !departureDate || !returnDate || !budget) {
+      return res.status(400).json({ message: 'Brakujące dane formularza' });
+    }
+
+    const { trip, totalCost, error: persistError } = await persistTripPlan({
+      ownerId: user.id,
+      formData,
+      tripPlan,
+    });
+
+    if (persistError || !trip) {
+      return res.status(500).json({ message: persistError?.message || 'Nie udało się zapisać wycieczki' });
+    }
+
+    const { participantCount, amountPerPerson, error: participantsError } = await addTripParticipantsWithSplit({
+      tripId: trip.id,
+      ownerId: user.id,
+      selectedFriendIds: Array.isArray(selectedFriendIds) ? selectedFriendIds : [],
+      totalCost,
+    });
+
+    if (participantsError) {
+      return res.status(500).json({ message: participantsError.message || 'Nie udało się dodać uczestników' });
+    }
+
+    return res.status(201).json({
+      message: 'Wycieczka została zaakceptowana i zapisana.',
+      tripId: trip.id,
+      totalCost,
+      participantCount,
+      amountPerPerson,
+    });
   } catch (err) {
     return next(err);
   }
@@ -417,4 +541,4 @@ const getTripHistory = async (req, res, next) => {
   }
 };
 
-module.exports = { generateTripPlan, getTripHistory };
+module.exports = { generateTripPlan, getTripHistory, acceptTripPlan };

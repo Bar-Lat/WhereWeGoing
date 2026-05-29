@@ -7,7 +7,9 @@ const {
   getParticipantByTripAndUser,
   addParticipant,
   deleteParticipant,
+  updateAllParticipantsAmountOwed,
 } = require('../repositories/tripParticipants.repository');
+const { getActivitiesTotalCostByTripId, getActivitiesTotalCostsByTripIds } = require('../repositories/activities.repository');
 const {
   getFriendRowsBetweenProfiles,
   getProfileById,
@@ -29,13 +31,14 @@ const getDisplayName = (profile) => {
   return name || 'Uzytkownik WhereWeGoing';
 };
 
-const normalizeTrip = (trip, userId, participantsCount = 0) => ({
+const normalizeTrip = (trip, userId, participantsCount = 0, totalCost = null) => ({
   id: trip.id,
   ownerId: trip.owner_id,
   destination: trip.destination,
   startDate: trip.start_date,
   endDate: trip.end_date,
   totalBudget: trip.total_budget === null || trip.total_budget === undefined ? null : Number(trip.total_budget),
+  totalCost: totalCost !== null && totalCost !== undefined && Number(totalCost) > 0 ? Number(totalCost) : null,
   status: trip.status,
   imageUrl: trip.image_url,
   notes: trip.notes,
@@ -55,6 +58,8 @@ const normalizeParticipant = (profile, row, ownerId) => ({
   avatar: profile.avatar || null,
   role: profile.id === ownerId ? 'owner' : row?.role || 'participant',
   isOwner: profile.id === ownerId,
+  amountOwed: row?.amount_owed !== null && row?.amount_owed !== undefined ? Number(row.amount_owed) : null,
+  currency: row?.currency || 'PLN',
 });
 
 const getVisibleTrip = async (tripId, userId) => {
@@ -85,6 +90,38 @@ const getVisibleTrip = async (tripId, userId) => {
   return { trip, error: null, statusCode: 200, accessRole: 'participant' };
 };
 
+const recalculateTripCostSplit = async (tripId) => {
+  const { data: trip, error: tripError } = await getTripById(tripId);
+  if (tripError || !trip) {
+    return { error: tripError || new Error('Wycieczka nie znaleziona') };
+  }
+
+  const { data: participantRows, error: participantsError } = await getParticipantsByTripId(tripId);
+  if (participantsError) {
+    return { error: participantsError };
+  }
+
+  const rows = participantRows || [];
+  if (rows.length === 0) {
+    return { amountPerPerson: 0, participantCount: 0, totalCost: 0 };
+  }
+
+  const { total: activitiesTotal, error: activitiesError } = await getActivitiesTotalCostByTripId(tripId);
+  if (activitiesError) {
+    return { error: activitiesError };
+  }
+
+  const totalCost = activitiesTotal ?? Number(trip.total_budget) ?? 0;
+  const amountPerPerson = totalCost / rows.length;
+  const { error: updateError } = await updateAllParticipantsAmountOwed(tripId, amountPerPerson);
+
+  if (updateError) {
+    return { error: updateError };
+  }
+
+  return { amountPerPerson, participantCount: rows.length, totalCost };
+};
+
 const buildParticipantsList = async (trip) => {
   const { data: participantRows, error } = await getParticipantsByTripId(trip.id);
 
@@ -101,11 +138,12 @@ const buildParticipantsList = async (trip) => {
   }
 
   const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
+  const ownerRow = safeParticipantRows.find((row) => row.user_id === trip.owner_id);
   const ownerProfile = profileById.get(trip.owner_id);
   const participants = [];
 
   if (ownerProfile) {
-    participants.push(normalizeParticipant(ownerProfile, null, trip.owner_id));
+    participants.push(normalizeParticipant(ownerProfile, ownerRow || null, trip.owner_id));
   }
 
   safeParticipantRows.forEach((row) => {
@@ -156,11 +194,17 @@ const getTrips = async (req, res, next) => {
       return acc;
     }, {});
 
+    const { totalsByTripId, error: totalsError } = await getActivitiesTotalCostsByTripIds(tripIds);
+    if (totalsError) {
+      return res.status(500).json({ message: totalsError.message });
+    }
+
     const normalizedTrips = trips
       .map((trip) => {
         const uniqueParticipantIds = participantsByTripId[trip.id] || new Set();
         uniqueParticipantIds.add(trip.owner_id);
-        return normalizeTrip(trip, userId, uniqueParticipantIds.size);
+        const activityTotal = totalsByTripId[trip.id] ?? null;
+        return normalizeTrip(trip, userId, uniqueParticipantIds.size, activityTotal);
       })
       .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
 
@@ -192,7 +236,8 @@ const getTripByIdHandler = async (req, res, next) => {
     const { data: participantRows } = await getParticipantsByTripId(trip.id);
     const participantIds = new Set((participantRows || []).map((row) => row.user_id).filter(Boolean));
     participantIds.add(trip.owner_id);
-    return res.status(200).json({ trip: normalizeTrip(trip, userId, participantIds.size) });
+    const { total: activityTotal } = await getActivitiesTotalCostByTripId(trip.id);
+    return res.status(200).json({ trip: normalizeTrip(trip, userId, participantIds.size, activityTotal) });
   } catch (err) {
     return next(err);
   }
@@ -335,11 +380,20 @@ const addTripParticipantHandler = async (req, res, next) => {
       return res.status(500).json({ message: 'Nie udalo sie dodac uczestnika' });
     }
 
-    const participant = normalizeParticipant(profile, participantRow, trip.owner_id);
+    const splitResult = await recalculateTripCostSplit(id);
+    if (splitResult.error) {
+      return res.status(500).json({ message: 'Uczestnik dodany, ale nie udalo sie przeliczyc kosztow' });
+    }
+
+    const { participants } = await buildParticipantsList(trip);
+    const participant = participants.find((item) => item.profileId === profileId)
+      || normalizeParticipant(profile, participantRow, trip.owner_id);
 
     return res.status(201).json({
       message: 'Uczestnik zostal dodany.',
       participant,
+      amountPerPerson: splitResult.amountPerPerson,
+      participants,
     });
   } catch (err) {
     return next(err);
@@ -378,7 +432,18 @@ const removeTripParticipantHandler = async (req, res, next) => {
       return res.status(500).json({ message: 'Nie udalo sie usunac uczestnika' });
     }
 
-    return res.status(200).json({ message: 'Uczestnik zostal usuniety.' });
+    const splitResult = await recalculateTripCostSplit(id);
+    if (splitResult.error) {
+      return res.status(500).json({ message: 'Uczestnik usuniety, ale nie udalo sie przeliczyc kosztow' });
+    }
+
+    const { participants } = await buildParticipantsList(trip);
+
+    return res.status(200).json({
+      message: 'Uczestnik zostal usuniety.',
+      amountPerPerson: splitResult.amountPerPerson,
+      participants,
+    });
   } catch (err) {
     return next(err);
   }

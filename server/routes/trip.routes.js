@@ -1,5 +1,5 @@
 const express = require('express');
-const { generateTripPlan, getTripHistory } = require('../controllers/trip.controller');
+const { generateTripPlan, getTripHistory, acceptTripPlan } = require('../controllers/trip.controller');
 const {
   getTrips,
   getTripByIdHandler,
@@ -12,6 +12,7 @@ const {
 const router = express.Router();
 
 router.post('/generate', generateTripPlan);
+router.post('/accept', acceptTripPlan);
 router.get('/history', getTripHistory);
 router.get('/', getTrips);
 router.get('/:id/participants', getTripParticipantsHandler);

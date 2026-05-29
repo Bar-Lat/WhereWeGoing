@@ -7,6 +7,7 @@ export type TripDto = {
   startDate: string;
   endDate: string;
   totalBudget: number | null;
+  totalCost: number | null;
   status: string;
   imageUrl: string | null;
   notes: string | null;
@@ -26,6 +27,8 @@ export type TripParticipantDto = {
   avatar: string | null;
   role: string;
   isOwner: boolean;
+  amountOwed: number | null;
+  currency: string;
 };
 
 export type TripsResponse = {
@@ -41,4 +44,12 @@ export type TripParticipantsResponse = {
 export type AddTripParticipantResponse = {
   message: string;
   participant: TripParticipantDto;
+  amountPerPerson?: number;
+  participants?: TripParticipantDto[];
+};
+
+export type RemoveTripParticipantResponse = {
+  message: string;
+  amountPerPerson?: number;
+  participants?: TripParticipantDto[];
 };

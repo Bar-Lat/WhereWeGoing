@@ -430,6 +430,12 @@ export const styles = StyleSheet.create({
     lineHeight: 17,
     marginTop: 2,
   },
+  personCost: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '800',
+    marginTop: 4,
+  },
   ownerBadge: {
     color: '#FFFFFF',
     backgroundColor: Colors.brand.green,
@@ -558,13 +564,15 @@ export const styles = StyleSheet.create({
     fontWeight: '900',
   },
   detailsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 10,
     marginBottom: 16,
   },
+  detailsGridRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
   detailsCard: {
-    width: '48.5%',
+    flex: 1,
     minHeight: 104,
     borderRadius: 22,
     borderWidth: 1,

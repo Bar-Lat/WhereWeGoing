@@ -2,6 +2,7 @@ import axios from 'axios';
 import { api } from './api';
 import type {
   AddTripParticipantResponse,
+  RemoveTripParticipantResponse,
   TripParticipantsResponse,
   TripsResponse,
 } from '@/types/trips';
@@ -63,7 +64,7 @@ export const addTripParticipant = async (accessToken: string, tripId: string, pr
 
 export const removeTripParticipant = async (accessToken: string, tripId: string, profileId: string) => {
   try {
-    const { data } = await api.delete<{ message: string }>(
+    const { data } = await api.delete<RemoveTripParticipantResponse>(
       `/trip/${tripId}/participants/${profileId}`,
       authHeaders(accessToken)
     );
