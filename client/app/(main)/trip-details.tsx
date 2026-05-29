@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -21,6 +21,7 @@ import { useRouter } from 'expo-router';
 import { Colors } from '@/styles/colors';
 import { useTripStore, TripPlan, DayPlan } from '@/stores/tripStore';
 import { useAuth } from '@/providers/auth.provider';
+import { useNetwork } from '@/providers/network.provider';
 import DateRangePicker from '@/components/DateRangePicker'; 
 import { deleteTrip, updateTrip } from '@/services/trip.api';
 
@@ -251,6 +252,7 @@ export default function TripDetails() {
   isEditingMode, setIsEditingMode 
 } = useTripStore();
   const { session } = useAuth();
+  const { isOffline } = useNetwork();
   const [isDeleting, setIsDeleting] = useState(false);
   const [backupPlan, setBackupPlan] = useState<TripPlan | null>(null);
   const router = useRouter();
@@ -310,8 +312,16 @@ export default function TripDetails() {
     actions: [] as any[]
   });
 
+  useEffect(() => {
+    if (isOffline) {
+      setIsEditingMode(false);
+    }
+  }, [isOffline]);
+
   // ─── AUTO-SYNC SYSTEM ───────────────────────────────────────────────────
   const syncPlanWithDb = async (forcedPlan?: any) => {
+    if (isOffline) return;
+
     const planToSave = forcedPlan || useTripStore.getState().tripPlan;
     if (!planToSave?.id || !session?.access_token) return;
     
@@ -329,6 +339,7 @@ export default function TripDetails() {
   };
 
   const openBudgetModal = () => {
+    if (isOffline) return;
     setBudgetModal({ visible: true, value: String(tripPlan?.estimatedTotalCost || 0) });
   };
 
@@ -339,6 +350,7 @@ export default function TripDetails() {
   };
 
   const openAddActivity = (dayIndex: number) => {
+    if (isOffline) return;
     setActModal({
       visible: true,
       mode: 'add',
@@ -349,6 +361,7 @@ export default function TripDetails() {
   };
 
   const openEditActivity = (dayIndex: number, actIndex: number, activity: any) => {
+    if (isOffline) return;
     setActModal({
       visible: true,
       mode: 'edit',
@@ -385,6 +398,8 @@ export default function TripDetails() {
   };
 
   const handleAddDay = async () => {
+    if (isOffline) return;
+
     const nextDayNum = (tripPlan?.days?.length || 0) + 1;
     
     // Zabezpieczenie: Inteligentne obliczanie daty kolejnego dnia
@@ -414,10 +429,12 @@ export default function TripDetails() {
   };
 
   const handleLocalDeleteDay = async (dayIndex: number) => {
+    if (isOffline) return;
     deleteDay(dayIndex);
   };
 
   const handleLocalDeleteActivity = async (dayIndex: number, actIndex: number) => {
+    if (isOffline) return;
     deleteActivity(dayIndex, actIndex);
   };
 
@@ -466,6 +483,8 @@ export default function TripDetails() {
   };
   
   const handleSaveDates = async () => {
+    if (isOffline) return;
+
     if (!datesModal.startDate || !datesModal.endDate) {
       showAlert("Błąd", "Wybierz pełny zakres dat (wylot i powrót).", [{ text: "OK" }]);
       return;
@@ -535,6 +554,9 @@ export default function TripDetails() {
   };
 
   const handleDeleteTrip = () => {
+    if (isOffline) return;
+
+    // 1. Zapisujemy ID do stałej lokalnej
     const tripId = tripPlan?.id;
     if (!tripId) return;
 
@@ -667,37 +689,51 @@ export default function TripDetails() {
               </TouchableOpacity>
               
               <View style={{ flexDirection: 'row', gap: 10 }}>
-                {isEditingMode ? (
-                  <>
-                    {/* KRZYŻYK = ODRZUĆ ZMIANY */}
-                    <TouchableOpacity 
-                      style={[styles.heroNavBtn, { backgroundColor: '#ef4444' }]} 
-                      onPress={cancelEditMode}
-                    >
-                      <Ionicons name="close" size={20} color="#fff" />
-                    </TouchableOpacity>
+  {!isOffline && (
+    isEditingMode ? (
+      <>
+        {/* KRZYŻYK = ODRZUĆ ZMIANY */}
+        <TouchableOpacity
+          style={[styles.heroNavBtn, { backgroundColor: '#ef4444' }]}
+          onPress={cancelEditMode}
+        >
+          <Ionicons name="close" size={20} color="#fff" />
+        </TouchableOpacity>
 
-                    {/* PTASZEK = ZAPISZ ZMIANY */}
-                    <TouchableOpacity 
-                      style={[styles.heroNavBtn, { backgroundColor: '#10b981' }]} 
-                      onPress={saveEditMode}
-                    >
-                      <Ionicons name="checkmark" size={20} color="#fff" />
-                    </TouchableOpacity>
-                  </>
-                ) : (
-                  <>
-                    {/* OŁÓWEK = EDYTUJ */}
-                    <TouchableOpacity style={styles.heroNavBtn} onPress={enterEditMode}>
-                      <Ionicons name="pencil" size={18} color="#fff" />
-                    </TouchableOpacity>
-                    {/* KOSZ = USUŃ */}
-                    <TouchableOpacity style={styles.heroNavBtn} onPress={handleDeleteTrip}>
-                      <Ionicons name="trash-outline" size={18} color="#fff" />
-                    </TouchableOpacity>
-                  </>
-                )}
-              </View>
+        {/* PTASZEK = ZAPISZ ZMIANY */}
+        <TouchableOpacity
+          style={[styles.heroNavBtn, { backgroundColor: '#10b981' }]}
+          onPress={saveEditMode}
+        >
+          <Ionicons name="checkmark" size={20} color="#fff" />
+        </TouchableOpacity>
+      </>
+    ) : (
+      <>
+        {/* OŁÓWEK = EDYTUJ */}
+        <TouchableOpacity
+          style={[styles.heroNavBtn, { backgroundColor: 'rgba(0,0,0,0.4)' }]}
+          onPress={enterEditMode}
+        >
+          <Ionicons name="pencil" size={18} color="#fff" />
+        </TouchableOpacity>
+
+        {/* KOSZ = USUŃ */}
+        <TouchableOpacity
+          style={[styles.heroNavBtn, { backgroundColor: 'rgba(239, 68, 68, 0.8)' }]}
+          onPress={handleDeleteTrip}
+          disabled={isDeleting}
+        >
+          {isDeleting ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Ionicons name="trash-outline" size={18} color="#fff" />
+          )}
+        </TouchableOpacity>
+      </>
+    )
+  )}
+</View>
             </Animated.View>
 
             <View style={styles.heroInfo}>

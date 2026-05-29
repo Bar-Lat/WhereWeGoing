@@ -193,7 +193,7 @@ export default function Profile() {
   const [avatarLoadError, setAvatarLoadError] = useState(false);
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   
-  const {isOffline, toggleOffline} = useNetwork();
+  const { isOffline, isForceOffline, toggleOffline } = useNetwork();
 
   const { hasUnreadNotifications } = useNotifications();
 
@@ -268,6 +268,13 @@ export default function Profile() {
 
   const loadFriends = useCallback(
     async (mode: 'initial' | 'refresh' = 'initial') => {
+      if (isOffline) {
+        setFriendsLoading(false);
+        setFriendsRefreshing(false);
+        setFriendsError(null);
+        return;
+      }
+
       if (!accessToken) {
         setFriends([]);
         setFriendsCount(0);
@@ -292,10 +299,16 @@ export default function Profile() {
         setFriendsRefreshing(false);
       }
     },
-    [accessToken]
+    [accessToken, isOffline]
   );
 
   const loadProfileInsights = useCallback(async () => {
+    if (isOffline) {
+      setInsightsLoading(false);
+      setInsightsError(null);
+      return;
+    }
+
     if (!accessToken) {
       setProfileStats(null);
       setAchievements([]);
@@ -329,7 +342,7 @@ export default function Profile() {
     } finally {
       setInsightsLoading(false);
     }
-  }, [accessToken, profile?.id]);
+  }, [accessToken, isOffline, profile?.id]);
 
   useEffect(() => {
     loadFriends();
@@ -376,6 +389,13 @@ export default function Profile() {
   }, [accessToken, friendSearch, isFriendsPanelVisible]);
 
   const loadHistory = useCallback(async () => {
+    if (isOffline) {
+      setHistoryError(null);
+      setHistory([]);
+      setHistoryLoading(false);
+      return;
+    }
+
     if (!accessToken) {
       setHistoryError('Brak dostępu. Zaloguj się ponownie.');
       setHistory([]);
@@ -394,7 +414,7 @@ export default function Profile() {
     } finally {
       setHistoryLoading(false);
     }
-  }, [accessToken]);
+  }, [accessToken, isOffline]);
 
   useEffect(() => {
     if (isHistoryOpen) {
@@ -446,14 +466,19 @@ export default function Profile() {
   }, [isOffline]);
 
   const menuItems = useMemo(() => {
-    const items = [
+    const items: { label: 'Edytuj profil' | 'Tryb offline' | 'Tryb online' | 'Wyloguj się'; icon: string }[] = [
       { label: 'Edytuj profil', icon: 'person-outline' },
-      { label: isOffline ? 'Tryb online' : 'Tryb offline', icon: isOffline ? 'cloud-outline' : 'cloud-offline-outline' },
       { label: 'Wyloguj się', icon: 'log-out-outline' },
-    ] as const;
+    ];
+
+    if (isForceOffline) {
+      items.splice(1, 0, { label: 'Tryb online', icon: 'cloud-outline' });
+    } else if (!isOffline) {
+      items.splice(1, 0, { label: 'Tryb offline', icon: 'cloud-offline-outline' });
+    }
 
     return isOffline ? items.filter((item) => item.label !== 'Edytuj profil') : items;
-  }, [isOffline]);
+  }, [isForceOffline, isOffline]);
 
   const openEditProfile = useCallback(() => {
     if (isOffline) {
@@ -593,6 +618,16 @@ export default function Profile() {
     [profileStats, statsFriendCount]
   );
 
+  const renderOfflineUnavailable = (title: string, description: string) => (
+    <View style={[styles.emptyStateLarge, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}>
+      <Ionicons name="cloud-offline-outline" size={38} color={currentColors.subtext} />
+      <Text style={[styles.emptyStateTitle, { color: currentColors.text }]}>{title}</Text>
+      <Text style={[styles.emptyStateText, { color: currentColors.subtext }]}>
+        {description}
+      </Text>
+    </View>
+  );
+
   const renderFriendRow = (friend: FriendProfile, type: 'friend' | 'search') => {
     const isActionLoading = actionProfileId === friend.id;
     const actionLabel = type === 'friend' ? 'Usuń' : 'Dodaj';
@@ -716,7 +751,12 @@ export default function Profile() {
           </View>
 
           <ScrollView contentContainerStyle={[styles.historyScreenContent, { paddingBottom: bottomPadding }]}>
-            {historyLoading ? (
+            {isOffline ? (
+              renderOfflineUnavailable(
+                'Historia wycieczek niedostępna offline',
+                'Połącz się z internetem, aby pobrać zakończone podróże i aktywności.'
+              )
+            ) : historyLoading ? (
               <View style={styles.historyLoader}>
                 <ActivityIndicator size="large" color={Colors.brand.blue} />
               </View>
@@ -869,7 +909,7 @@ export default function Profile() {
 
             <TouchableOpacity
               activeOpacity={0.88}
-              style={[styles.summaryCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}
+              style={[styles.summaryCard, { backgroundColor: currentColors.card, borderColor: currentColors.border, opacity: isOffline ? 0.72 : 1 }]}
               onPress={() => setIsFriendsPanelVisible(true)}
             >
               <View style={styles.summaryCardHeader}>
@@ -879,7 +919,9 @@ export default function Profile() {
                   </View>
                   <View style={styles.summaryTextBox}>
                     <Text style={[styles.summaryTitle, { color: currentColors.text }]}>Moi znajomi</Text>
-                    <Text style={[styles.summarySubtitle, { color: currentColors.subtext }]}>Zarządzaj osobami do wspólnych planów</Text>
+                    <Text style={[styles.summarySubtitle, { color: currentColors.subtext }]}>
+                      {isOffline ? 'Niedostępne w trybie offline' : 'Zarządzaj osobami do wspólnych planów'}
+                    </Text>
                   </View>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color={currentColors.subtext} />
@@ -921,7 +963,7 @@ export default function Profile() {
 
             <TouchableOpacity
               activeOpacity={0.88}
-              style={[styles.summaryCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}
+              style={[styles.summaryCard, { backgroundColor: currentColors.card, borderColor: currentColors.border, opacity: isOffline ? 0.72 : 1 }]}
               onPress={() => setIsStatsPanelVisible(true)}
             >
               <View style={styles.summaryCardHeader}>
@@ -931,7 +973,9 @@ export default function Profile() {
                   </View>
                   <View style={styles.summaryTextBox}>
                     <Text style={[styles.summaryTitle, { color: currentColors.text }]}>Moje statystyki</Text>
-                    <Text style={[styles.summarySubtitle, { color: currentColors.subtext }]}>Podróże, aktywności i budżet w jednym miejscu</Text>
+                    <Text style={[styles.summarySubtitle, { color: currentColors.subtext }]}>
+                      {isOffline ? 'Niedostępne w trybie offline' : 'Podróże, aktywności i budżet w jednym miejscu'}
+                    </Text>
                   </View>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color={currentColors.subtext} />
@@ -955,7 +999,7 @@ export default function Profile() {
 
             <TouchableOpacity
               activeOpacity={0.88}
-              style={[styles.summaryCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}
+              style={[styles.summaryCard, { backgroundColor: currentColors.card, borderColor: currentColors.border, opacity: isOffline ? 0.72 : 1 }]}
               onPress={() => setIsAchievementsPanelVisible(true)}
             >
               <View style={styles.summaryCardHeader}>
@@ -965,7 +1009,9 @@ export default function Profile() {
                   </View>
                   <View style={styles.summaryTextBox}>
                     <Text style={[styles.summaryTitle, { color: currentColors.text }]}>Osiągnięcia</Text>
-                    <Text style={[styles.summarySubtitle, { color: currentColors.subtext }]}>Odblokowane cele i kolejne wyzwania</Text>
+                    <Text style={[styles.summarySubtitle, { color: currentColors.subtext }]}>
+                      {isOffline ? 'Niedostępne w trybie offline' : 'Odblokowane cele i kolejne wyzwania'}
+                    </Text>
                   </View>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color={currentColors.subtext} />
@@ -1000,7 +1046,7 @@ export default function Profile() {
 
             <TouchableOpacity
               activeOpacity={0.88}
-              style={[styles.summaryCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}
+              style={[styles.summaryCard, { backgroundColor: currentColors.card, borderColor: currentColors.border, opacity: isOffline ? 0.72 : 1 }]}
               onPress={() => setIsHistoryOpen(true)}
             >
               <View style={styles.summaryCardHeader}>
@@ -1011,7 +1057,7 @@ export default function Profile() {
                   <View style={styles.summaryTextBox}>
                     <Text style={[styles.summaryTitle, { color: currentColors.text }]}>Historia wycieczek</Text>
                     <Text style={[styles.summarySubtitle, { color: currentColors.subtext }]}>
-                      Przeglądaj zakończone podróże i aktywności
+                      {isOffline ? 'Niedostępne w trybie offline' : 'Przeglądaj zakończone podróże i aktywności'}
                     </Text>
                   </View>
                 </View>
@@ -1085,6 +1131,13 @@ export default function Profile() {
             contentContainerStyle={[styles.modalContent, { paddingBottom: insets.bottom + 28 }]}
             keyboardShouldPersistTaps="handled"
           >
+            {isOffline ? (
+              renderOfflineUnavailable(
+                'Moi znajomi niedostępni offline',
+                'Połącz się z internetem, aby wyszukiwać, dodawać i usuwać znajomych.'
+              )
+            ) : (
+              <>
             <View style={[styles.profileCodeCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
               <View style={styles.profileCodeTop}>
                 <View style={styles.profileCodeIcon}>
@@ -1174,6 +1227,8 @@ export default function Profile() {
                 )}
               </View>
             </View>
+              </>
+            )}
           </ScrollView>
         </KeyboardAvoidingView>
       </Modal>
@@ -1187,6 +1242,13 @@ export default function Profile() {
         <View style={[styles.modalContainer, { backgroundColor: currentColors.background }]}> 
           {renderPanelHeader('Moje statystyki', 'Pełny przegląd Twojej aktywności', () => setIsStatsPanelVisible(false))}
           <ScrollView contentContainerStyle={[styles.modalContent, { paddingBottom: insets.bottom + 28 }]}> 
+            {isOffline ? (
+              renderOfflineUnavailable(
+                'Statystyki niedostępne offline',
+                'Połącz się z internetem, aby pobrać aktualne podsumowanie podróży, aktywności i budżetu.'
+              )
+            ) : (
+              <>
             <View style={[styles.statsHeroCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
               <View style={styles.statsHeroIcon}>
                 <Ionicons name="analytics-outline" size={28} color="#FFFFFF" />
@@ -1220,6 +1282,8 @@ export default function Profile() {
               <Ionicons name="refresh" size={18} color="#FFFFFF" />
               <Text style={styles.refreshPanelButtonText}>Odśwież statystyki</Text>
             </TouchableOpacity>
+              </>
+            )}
           </ScrollView>
         </View>
       </Modal>
@@ -1233,6 +1297,13 @@ export default function Profile() {
         <View style={[styles.modalContainer, { backgroundColor: currentColors.background }]}> 
           {renderPanelHeader('Osiągnięcia', 'Odblokowane cele i wyzwania na później', () => setIsAchievementsPanelVisible(false))}
           <ScrollView contentContainerStyle={[styles.modalContent, { paddingBottom: insets.bottom + 28 }]}> 
+            {isOffline ? (
+              renderOfflineUnavailable(
+                'Osiągnięcia niedostępne offline',
+                'Połącz się z internetem, aby zobaczyć aktualny postęp i odblokowane cele.'
+              )
+            ) : (
+              <>
             <View style={[styles.achievementsHeroCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
               <View style={styles.achievementsHeroIcon}>
                 <Ionicons name="trophy" size={26} color="#FFFFFF" />
@@ -1280,6 +1351,8 @@ export default function Profile() {
                 </View>
               )}
             </View>
+              </>
+            )}
           </ScrollView>
         </View>
       </Modal>
