@@ -19,6 +19,7 @@ import { Colors } from '@/styles/colors';
 import { useTripStore, TripPlan, DayPlan } from '@/stores/tripStore';
 import { useAuth } from '@/providers/auth.provider';
 import { acceptTripPlan } from '@/services/openaiService';
+import { useNotifications } from '@/providers/notifications.provider';
 
 // ─── TYPY ────────────────────────────────────────────────────────────────────
 
@@ -461,6 +462,7 @@ export default function TripResult() {
   } | null>(null);
   const accessToken = session?.access_token ?? null;
   const isAccepted = Boolean(savedTripId);
+  const { refreshNotifications } = useNotifications();
 
   if (!localPlan) {
     return (
@@ -497,6 +499,7 @@ export default function TripResult() {
       setIsAccepting(true);
       const response = await acceptTripPlan(formData, localPlan, accessToken);
       setSavedTripId(response.tripId);
+      await refreshNotifications();
       setAcceptSuccessModal({
         amountPerPerson: response.amountPerPerson,
         participantCount: response.participantCount,

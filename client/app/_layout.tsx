@@ -3,9 +3,12 @@ import React, { useEffect } from 'react';
 import { ActivityIndicator, View, useColorScheme } from 'react-native';
 import { AuthProvider, useAuth } from '@/providers/auth.provider';
 import { ProfileProvider } from '@/providers/profile.provider';
-import DevMenu from '../components/DevMenu';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import {NetworkProvider} from '@/providers/network.provider'
+import OfflineBanner from '@/components/OfflineBanner'
+import { NotificationsProvider } from '@/providers/notifications.provider';
+import { useTripsListStore } from '@/stores/tripStore';
 
 
 function AppNavigator() {
@@ -18,7 +21,7 @@ function AppNavigator() {
         if (isBootstrapping) {
             return;
         }
-
+     
         const inAuthGroup = segments[0] === '(auth)';
         const inMainGroup = segments[0] === '(main)';
 
@@ -39,7 +42,6 @@ function AppNavigator() {
             </View>
         );
     }
-
     return (
         <SafeAreaProvider>
             {/* Dynamicznie dopasowuje kolor ikon baterii/godziny do motywu */}
@@ -52,9 +54,9 @@ function AppNavigator() {
                 <Stack.Screen name="trip-loading" options={{ animation: 'fade' }} />
                 <Stack.Screen name="trip-result" options={{ animation: 'slide_from_right' }} />
             </Stack>
+            <OfflineBanner />
 
-            {/* Nasz pomocnik deweloperski dostępny w każdym miejscu aplikacji */}
-            <DevMenu />
+
         </SafeAreaProvider>
     );
 }
@@ -62,9 +64,13 @@ function AppNavigator() {
 export default function RootLayout() {
     return (
         <AuthProvider>
-            <ProfileProvider>
-                <AppNavigator />
-            </ProfileProvider>
+            <NotificationsProvider>
+                <NetworkProvider>
+                    <ProfileProvider>
+                        <AppNavigator />
+                    </ProfileProvider>
+                </NetworkProvider>
+            </NotificationsProvider>
         </AuthProvider>
     );
 }

@@ -11,6 +11,8 @@ import { Colors } from '@/styles/colors';
 import { styles } from '@/styles/home.styles';
 import ScreenHeader from '../../components/ScreenHeader';
 import { useCurrentUserProfile } from '@/hooks/useCurrentUserProfile';
+import { useNetwork } from '@/providers/network.provider';
+import { useNotifications } from '@/providers/notifications.provider';
 
 const MOCK_TRIP = {
   destination: "Paryż",
@@ -33,6 +35,9 @@ export default function Home() {
   const colorScheme = useColorScheme() ?? 'light';
   const currentColors = Colors[colorScheme];
   const { userAvatarUrl, userInitials } = useCurrentUserProfile();
+
+  const { isOffline } = useNetwork();
+  const { hasUnreadNotifications } = useNotifications();
   
   const bottomPadding = 65 + (insets.bottom > 0 ? insets.bottom : 10) + 20;
 
@@ -50,9 +55,10 @@ export default function Home() {
           variant="dashboard"
           userInitials={userInitials}
           onSearchFocus={() => router.push('/(main)/create')}
-          onNotificationPress={() => console.log('Powiadomienia')}
+          onNotificationPress={() => router.push('/notifications')}
           onProfilePress={() => router.push('/(main)/profile')}
           userAvatarUrl={userAvatarUrl}
+          hasUnreadNotifications={hasUnreadNotifications}
         />
 
         {/* --- NACHODZĄCA KARTA --- */}
@@ -114,15 +120,17 @@ export default function Home() {
         </View>
 
         {/* --- SZYBKIE AKCJE --- */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionHeading, { color: currentColors.text }]}>Szybkie akcje</Text>
-          <View style={styles.quickActionsGrid}>
-            <QuickActionButton icon="airplane-outline" label="Nowy plan" color={Colors.brand.blue} bg={currentColors.card} border={currentColors.border} textColor={currentColors.text} onPress={() => router.push('/(main)/create')} />
-            <QuickActionButton icon="bulb-outline" label="Inspiracje" color="#F59E0B" bg={currentColors.card} border={currentColors.border} textColor={currentColors.text} onPress={() => router.push('/(main)/inspiration')} />
-            <QuickActionButton icon="pie-chart-outline" label="Wydatki" color="#10B981" bg={currentColors.card} border={currentColors.border} textColor={currentColors.text} onPress={() => {}} />
-            <QuickActionButton icon="share-social-outline" label="Udostępnij" color="#8B5CF6" bg={currentColors.card} border={currentColors.border} textColor={currentColors.text} onPress={() => {}} />
+        {!isOffline && (
+          <View style={styles.section}>
+            <Text style={[styles.sectionHeading, { color: currentColors.text }]}>Szybkie akcje</Text>
+            <View style={styles.quickActionsGrid}>
+              <QuickActionButton icon="airplane-outline" label="Nowy plan" color={Colors.brand.blue} bg={currentColors.card} border={currentColors.border} textColor={currentColors.text} onPress={() => router.push('/(main)/create')} />
+              <QuickActionButton icon="bulb-outline" label="Inspiracje" color="#F59E0B" bg={currentColors.card} border={currentColors.border} textColor={currentColors.text} onPress={() => router.push('/(main)/inspiration')} />
+              <QuickActionButton icon="pie-chart-outline" label="Wydatki" color="#10B981" bg={currentColors.card} border={currentColors.border} textColor={currentColors.text} onPress={() => {}} />
+              <QuickActionButton icon="share-social-outline" label="Udostępnij" color="#8B5CF6" bg={currentColors.card} border={currentColors.border} textColor={currentColors.text} onPress={() => {}} />
+            </View>
           </View>
-        </View>
+        )}
 
         {/* --- HARMONOGRAM --- */}
         <View style={styles.section}>

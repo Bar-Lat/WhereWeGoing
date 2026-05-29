@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '@/styles/colors';
 import Logo from '@/assets/images/WhereWeGoingLogo.png';
+import { useNetwork } from '@/providers/network.provider';
 
 interface ScreenHeaderProps {
   // Wariant nagłówka
@@ -23,6 +24,8 @@ interface ScreenHeaderProps {
   showProfile?: boolean;
   onProfilePress?: () => void;
   userAvatarUrl?: string | null;
+
+  hasUnreadNotifications?: boolean;
 }
 
 export default function ScreenHeader({ 
@@ -34,11 +37,15 @@ export default function ScreenHeader({
   onNotificationPress,
   showProfile = true,
   onProfilePress,
-  userAvatarUrl
+  userAvatarUrl,
+  hasUnreadNotifications = false,
 }: ScreenHeaderProps) {
   const insets = useSafeAreaInsets();
+  const { isOffline } = useNetwork();
   const colorScheme = useColorScheme() ?? 'light';
   const currentColors = Colors[colorScheme];
+
+  const offlineTopOffset = isOffline ? 42 : 0;
 
   // --- WARIANT 1: DASHBOARD (Home) ---
   if (variant === 'dashboard') {
@@ -47,7 +54,7 @@ export default function ScreenHeader({
         colors={Colors.brand.logoGradient}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={[styles.dashboardHeader, { paddingTop: insets.top + 10 }]}
+        style={[styles.dashboardHeader, { paddingTop: insets.top + 10 + offlineTopOffset }]}
       >
         <View style={styles.dashboardTop}>
           <View>
@@ -58,7 +65,7 @@ export default function ScreenHeader({
             {showNotifications && (
               <TouchableOpacity style={styles.iconCircle} onPress={onNotificationPress}>
                 <Ionicons name="notifications-outline" size={22} color="white" />
-                <View style={styles.notificationDot} />
+                {hasUnreadNotifications && <View style={styles.notificationDot} />}
               </TouchableOpacity>
             )}
             <TouchableOpacity onPress={onProfilePress}>
@@ -83,7 +90,7 @@ export default function ScreenHeader({
         colors={Colors.brand.logoGradient}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={[styles.dashboardHeader, { paddingTop: insets.top + 10 }]}
+        style={[styles.dashboardHeader, { paddingTop: insets.top + 10 + offlineTopOffset }]}
       >
         <View style={styles.dashboardTop}>
           <View>
@@ -94,7 +101,7 @@ export default function ScreenHeader({
             {showNotifications && (
               <TouchableOpacity style={styles.iconCircle} onPress={onNotificationPress}>
                 <Ionicons name="notifications-outline" size={22} color="white" />
-                <View style={styles.notificationDot} />
+                {hasUnreadNotifications && <View style={styles.notificationDot} />}
               </TouchableOpacity>
             )}
             <TouchableOpacity onPress={onProfilePress}>
@@ -119,7 +126,7 @@ export default function ScreenHeader({
         colors={Colors.brand.logoGradient}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={[styles.dashboardHeader, { paddingTop: insets.top + 10 }]}
+        style={[styles.dashboardHeader, { paddingTop: insets.top + 10 + offlineTopOffset}]}
       >
         <View style={styles.dashboardTop}>
           <View>
@@ -130,7 +137,7 @@ export default function ScreenHeader({
             {showNotifications && (
               <TouchableOpacity style={styles.iconCircle} onPress={onNotificationPress}>
                 <Ionicons name="notifications-outline" size={22} color="white" />
-                <View style={styles.notificationDot} />
+                { hasUnreadNotifications && <View style={styles.notificationDot} />}
               </TouchableOpacity>
             )}
             <TouchableOpacity onPress={onProfilePress}>
@@ -153,7 +160,7 @@ export default function ScreenHeader({
     <View style={[
       styles.defaultHeader, 
       { 
-        paddingTop: insets.top > 0 ? insets.top + 10 : 30, 
+        paddingTop: insets.top > 0 ? insets.top + 10 + offlineTopOffset : 30 + offlineTopOffset, 
         backgroundColor: currentColors.card,
         borderBottomColor: currentColors.border 
       }
@@ -170,6 +177,7 @@ export default function ScreenHeader({
         {showNotifications && (
           <TouchableOpacity style={styles.headerButton} onPress={onNotificationPress}>
             <Ionicons name="notifications-outline" size={24} color={currentColors.text} />
+            { hasUnreadNotifications && <View style={styles.notificationDot} />}
           </TouchableOpacity>
         )}
         {showProfile && (

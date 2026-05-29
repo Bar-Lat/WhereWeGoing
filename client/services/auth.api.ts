@@ -1,4 +1,4 @@
-import axios from 'axios';
+import { isAxiosError } from 'axios';
 import { api } from './api';
 
 export type AuthSession = {
@@ -22,19 +22,37 @@ type AuthResponse = {
   session?: AuthSession | null;
 };
 
-const getApiErrorMessage = (error: unknown, fallback: string) => {
-  if (axios.isAxiosError(error)) {
+export class ApiRequestError extends Error {
+  status?: number;
+  isNetworkError: boolean;
+
+  constructor(message: string, options?: { status?: number; isNetworkError?: boolean }) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.status = options?.status;
+    this.isNetworkError = options?.isNetworkError ?? false;
+  }
+}
+
+const toApiRequestError = (error: unknown, fallback: string) => {
+  if (isAxiosError(error)) {
     const responseMessage = error.response?.data?.message;
-    if (typeof responseMessage === 'string' && responseMessage.length > 0) {
-      return responseMessage;
-    }
+    const message =
+      typeof responseMessage === 'string' && responseMessage.length > 0
+        ? responseMessage
+        : error.message || fallback;
+
+    return new ApiRequestError(message, {
+      status: error.response?.status,
+      isNetworkError: !error.response,
+    });
   }
 
   if (error instanceof Error && error.message) {
-    return error.message;
+    return new ApiRequestError(error.message);
   }
 
-  return fallback;
+  return new ApiRequestError(fallback);
 };
 
 export const registerUser = async (payload: {
@@ -45,7 +63,7 @@ export const registerUser = async (payload: {
     const { data } = await api.post<AuthResponse>('/auth/register', payload);
     return data;
   } catch (error) {
-    throw new Error(getApiErrorMessage(error, 'Nie udalo sie utworzyc konta'));
+    throw toApiRequestError(error, 'Nie udalo sie utworzyc konta');
   }
 };
 
@@ -54,7 +72,7 @@ export const loginUser = async (payload: { email: string; password: string }) =>
     const { data } = await api.post<AuthResponse>('/auth/login', payload);
     return data;
   } catch (error) {
-    throw new Error(getApiErrorMessage(error, 'Nie udalo sie zalogowac'));
+    throw toApiRequestError(error, 'Nie udalo sie zalogowac');
   }
 };
 
@@ -63,7 +81,7 @@ export const refreshUserSession = async (payload: { refreshToken: string }) => {
     const { data } = await api.post<AuthResponse>('/auth/refresh', payload);
     return data;
   } catch (error) {
-    throw new Error(getApiErrorMessage(error, 'Nie udalo sie odswiezyc sesji'));
+    throw toApiRequestError(error, 'Nie udalo sie odswiezyc sesji');
   }
 };
 
@@ -72,7 +90,7 @@ export const logoutUser = async (payload: { accessToken: string; refreshToken: s
     const { data } = await api.post<AuthResponse>('/auth/logout', payload);
     return data;
   } catch (error) {
-    throw new Error(getApiErrorMessage(error, 'Nie udalo sie wylogowac'));
+    throw toApiRequestError(error, 'Nie udalo sie wylogowac');
   }
 };
 

@@ -2,158 +2,16 @@ import { StyleSheet } from 'react-native';
 import { Colors } from './colors';
 
 export const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    marginTop: 30,
-    zIndex: 1,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 14,
-    marginBottom: 18,
-  },
-  sectionTitleBox: {
-    flex: 1,
-  },
-  sectionTitle: {
-    fontSize: 26,
-    lineHeight: 34,
-    fontWeight: '900',
-    letterSpacing: -0.4,
-  },
-  sectionSubtitle: {
-    fontSize: 14,
-    lineHeight: 22,
-    marginTop: 8,
-  },
-  createSmallButton: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.brand.blue,
-    marginTop: 4,
-  },
-  tripCard: {
-    borderRadius: 26,
-    marginBottom: 18,
-    overflow: 'hidden',
-    borderWidth: 1,
-  },
-  tripImage: {
-    width: '100%',
-    height: 176,
-  },
-  imageOverlay: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    height: 176,
-  },
-  tripImageContent: {
-    position: 'absolute',
-    left: 18,
-    right: 18,
-    top: 16,
-    height: 142,
-    justifyContent: 'space-between',
-  },
-  statusBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 11,
-    paddingVertical: 6,
-    borderRadius: 999,
-  },
-  statusText: {
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: '900',
-    color: '#FFFFFF',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  destination: {
-    color: '#FFFFFF',
-    fontSize: 25,
-    lineHeight: 31,
-    fontWeight: '900',
-    letterSpacing: -0.4,
-  },
-  tripDates: {
-    color: 'rgba(255,255,255,0.84)',
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: '700',
-    marginTop: 3,
-  },
-  tripInfo: {
-    padding: 16,
-  },
-  tripMetaGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  metaPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    borderRadius: 999,
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-  },
-  metaPillText: {
-    fontSize: 12,
-    lineHeight: 15,
-    fontWeight: '800',
-  },
-  tripFooter: {
-    marginTop: 16,
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(148,163,184,0.16)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  tripRoleRow: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-  },
-  tripRoleText: {
-    fontSize: 13,
-    lineHeight: 17,
-    fontWeight: '700',
-  },
-  manageButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: Colors.brand.blue,
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  manageButtonText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    lineHeight: 15,
-    fontWeight: '900',
-  },
+  container: { flex: 1 },
+  scrollContent: { paddingHorizontal: 20, gap: 20 },
+
   overviewGrid: {
     flexDirection: 'row',
     gap: 10,
     marginBottom: 14,
+    marginTop: -26,
+    width: '90%',
+    alignSelf: 'center',
   },
   overviewCard: {
     flex: 1,
@@ -177,6 +35,82 @@ export const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
+
+  // --- KARTY HERO (Pozostałe style zostaw tak jak miałeś w poprzednim kodzie) ---
+  heroCard: { 
+    height: 210, 
+    borderRadius: 24, 
+    overflow: 'hidden', 
+    elevation: 8, 
+    shadowColor: '#000', 
+    shadowOffset: { width: 0, height: 6 }, 
+    shadowOpacity: 0.15, 
+    shadowRadius: 10 
+  },
+
+
+
+
+
+  heroImage: { width: '100%', height: '100%' },
+  heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.35)' },
+  heroBottom: { position: 'absolute', bottom: 20, left: 20, right: 20 },
+  heroSubtitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+  heroSubtitle: { color: 'rgba(255,255,255,0.9)', fontSize: 13, fontWeight: '500' },
+  heroMainRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  heroDestination: { color: 'white', fontSize: 26, fontWeight: '800', marginBottom: 4 },
+  heroDates: { color: 'rgba(255,255,255,0.8)', fontSize: 13 },
+  heroArrow: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.25)', justifyContent: 'center', alignItems: 'center' },
+  daysBadge: { position: 'absolute', top: 16, right: 16, backgroundColor: 'rgba(255,255,255,0.25)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  daysBadgeText: { color: 'white', fontSize: 12, fontWeight: '700' },
+  pulseDot: { width: 8, height: 8, borderRadius: 4 },
+
+  // --- MODALE I LISTY UCZESTNIKÓW (Zachowane z HEAD) ---
+  modalContainer: { flex: 1 },
+  modalHeader: { paddingHorizontal: 20, paddingBottom: 16, borderBottomWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 14 },
+  modalTitleBox: { flex: 1 },
+  modalTitle: { fontSize: 28, lineHeight: 34, fontWeight: '900', letterSpacing: -0.5 },
+  modalSubtitle: { fontSize: 14, lineHeight: 20, marginTop: 3 },
+  closeButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  modalContent: { paddingHorizontal: 20, paddingTop: 18 },
+  
+
+  tripDetailsOverlay: { position: 'absolute', left: 0, right: 0, top: 0, height: 210 },
+  tripDetailsContent: { position: 'absolute', left: 18, right: 18, top: 16, bottom: 18, justifyContent: 'space-between' },
+  tripDetailsTitle: { color: '#FFFFFF', fontSize: 28, lineHeight: 34, fontWeight: '900', letterSpacing: -0.5 },
+  tripDetailsSubtitle: { color: 'rgba(255,255,255,0.86)', fontSize: 14, lineHeight: 20, fontWeight: '800', marginTop: 5 },
+  
+  modalTabs: { flexDirection: 'row', borderWidth: 1, borderRadius: 22, padding: 5, gap: 5, marginBottom: 18 },
+
+
+  descriptionIcon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  descriptionTitleBox: { flex: 1, minWidth: 0 },
+  descriptionTitle: { fontSize: 16, lineHeight: 21, fontWeight: '900' },
+  descriptionSubtitle: { fontSize: 12, lineHeight: 17, fontWeight: '700', marginTop: 1 },
+  descriptionText: { fontSize: 14, lineHeight: 22, fontWeight: '600' },
+  
+
+  
+  inlineLoaderSmall: { minHeight: 64, alignItems: 'center', justifyContent: 'center' },
+  
+  previewAvatarsRow: { flexDirection: 'row', alignItems: 'center', minHeight: 46 },
+  previewAvatarWrap: { borderWidth: 2, borderRadius: 22 },
+  moreParticipantsBadge: { width: 40, height: 40, borderRadius: 20, borderWidth: 1, alignItems: 'center', justifyContent: 'center', marginLeft: -10 },
+  moreParticipantsText: { fontSize: 12, lineHeight: 15, fontWeight: '900' },
+  previewParticipantsText: { flex: 1, fontSize: 13, lineHeight: 18, fontWeight: '700', marginLeft: 12 },
+  
+  readOnlyNotice: { borderWidth: 1, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 13, flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 22 },
+  
+
+  secondaryButton: { height: 34, borderRadius: 17, paddingHorizontal: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.brand.blue },
+  secondaryButtonText: { color: '#FFFFFF', fontSize: 12, lineHeight: 15, fontWeight: '900' },
+  cardBadgeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
+  statusBadge: { alignSelf: 'flex-start', paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999 },
+  statusText: { fontSize: 11, lineHeight: 14, fontWeight: '900', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 0.5 },
+  accessBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
+  accessBadgeText: { color: '#FFFFFF', fontSize: 10, lineHeight: 13, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.4 },
+
+  // --- FILTRY I TABS ---
   tripTabs: {
     marginHorizontal: -20,
     marginBottom: 16,
@@ -199,31 +133,8 @@ export const styles = StyleSheet.create({
     lineHeight: 17,
     fontWeight: '900',
   },
-  cardBadgeRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 10,
-  },
-  accessBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-  },
-  accessBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    lineHeight: 13,
-    fontWeight: '900',
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  tripImageTextBox: {
-    gap: 3,
-  },
+
+  // --- STANY (LOADING, EMPTY, ERROR) ---
   stateBox: {
     minHeight: 260,
     borderRadius: 26,
@@ -297,80 +208,12 @@ export const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '900',
   },
-  modalContainer: {
-    flex: 1,
-  },
-  modalHeader: {
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 14,
-  },
-  modalTitleBox: {
-    flex: 1,
-  },
-  modalTitle: {
-    fontSize: 28,
-    lineHeight: 34,
-    fontWeight: '900',
-    letterSpacing: -0.5,
-  },
-  modalSubtitle: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 3,
-  },
-  closeButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalContent: {
-    paddingHorizontal: 20,
-    paddingTop: 18,
-  },
-  panelHero: {
-    borderRadius: 24,
-    borderWidth: 1,
+  // --- KARTA WYCIECZKI (TripCard) ---
+  tripCard: {
+    borderRadius: 26,
+    marginBottom: 18,
     overflow: 'hidden',
-    marginBottom: 16,
-  },
-  panelHeroGradient: {
-    padding: 18,
-    minHeight: 112,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-  },
-  panelHeroText: {
-    flex: 1,
-  },
-  panelHeroTitle: {
-    color: '#FFFFFF',
-    fontSize: 19,
-    lineHeight: 24,
-    fontWeight: '900',
-  },
-  panelHeroSubtitle: {
-    color: 'rgba(255,255,255,0.82)',
-    fontSize: 13,
-    lineHeight: 19,
-    marginTop: 4,
-  },
-  readOnlyNotice: {
     borderWidth: 1,
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    marginBottom: 22,
   },
   readOnlyText: {
     flex: 1,
@@ -384,6 +227,18 @@ export const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 10,
     marginTop: 2,
+  },
+  tripImage: {
+    width: '100%',
+    height: 176,
+  },
+  metaPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    borderRadius: 999,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
   },
   modalSectionTitle: {
     fontSize: 18,
@@ -507,44 +362,44 @@ export const styles = StyleSheet.create({
   },
   tripDetailsImage: {
     width: '100%',
-    height: 210,
+    height: 176,
   },
-  tripDetailsOverlay: {
+  imageOverlay: {
     position: 'absolute',
     left: 0,
     right: 0,
     top: 0,
-    height: 210,
+    height: 176,
   },
-  tripDetailsContent: {
+  tripImageContent: {
     position: 'absolute',
     left: 18,
     right: 18,
     top: 16,
-    bottom: 18,
+    height: 142,
     justifyContent: 'space-between',
   },
-  tripDetailsTitle: {
+  destination: {
     color: '#FFFFFF',
-    fontSize: 28,
-    lineHeight: 34,
+    fontSize: 25,
+    lineHeight: 31,
     fontWeight: '900',
-    letterSpacing: -0.5,
+    letterSpacing: -0.4,
   },
-  tripDetailsSubtitle: {
-    color: 'rgba(255,255,255,0.86)',
+  tripDates: {
+    color: 'rgba(255,255,255,0.84)',
     fontSize: 14,
     lineHeight: 20,
-    fontWeight: '800',
-    marginTop: 5,
+    fontWeight: '700',
+    marginTop: 3,
   },
-  modalTabs: {
+  tripInfo: {
+    padding: 16,
+  },
+  tripMetaGrid: {
     flexDirection: 'row',
-    borderWidth: 1,
-    borderRadius: 22,
-    padding: 5,
-    gap: 5,
-    marginBottom: 18,
+    flexWrap: 'wrap',
+    gap: 8,
   },
   modalTabButton: {
     flex: 1,
@@ -602,86 +457,93 @@ export const styles = StyleSheet.create({
   descriptionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    marginBottom: 12,
+    gap: 7,
+    borderRadius: 999,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
   },
-  descriptionIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  descriptionTitleBox: {
-    flex: 1,
-    minWidth: 0,
-  },
-  descriptionTitle: {
-    fontSize: 16,
-    lineHeight: 21,
-    fontWeight: '900',
-  },
-  descriptionSubtitle: {
+  metaPillText: {
     fontSize: 12,
+    lineHeight: 15,
+    fontWeight: '800',
+  },
+  tripFooter: {
+    marginTop: 16,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(148,163,184,0.16)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  tripRoleRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  tripRoleText: {
+    fontSize: 13,
     lineHeight: 17,
     fontWeight: '700',
-    marginTop: 1,
   },
-  descriptionText: {
-    fontSize: 14,
-    lineHeight: 22,
-    fontWeight: '600',
-  },
-  secondaryButton: {
-    height: 34,
-    borderRadius: 17,
-    paddingHorizontal: 13,
+  manageButton: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 4,
     backgroundColor: Colors.brand.blue,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
   },
-  secondaryButtonText: {
+  manageButtonText: {
     color: '#FFFFFF',
     fontSize: 12,
     lineHeight: 15,
     fontWeight: '900',
   },
-  inlineLoaderSmall: {
-    minHeight: 64,
-    alignItems: 'center',
-    justifyContent: 'center',
+  
+  tripImageTextBox: {
+    gap: 3,
   },
-  previewAvatarsRow: {
+  betterAvatarsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 46,
+    marginTop: 8,
   },
-  previewAvatarWrap: {
+  avatarList: {
+    flexDirection: 'row',
+    marginRight: 12,
+  },
+  avatarBox: {
     borderWidth: 2,
-    borderRadius: 22,
-  },
-  moreParticipantsBadge: {
-    width: 40,
-    height: 40,
     borderRadius: 20,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: -10,
+    borderColor: 'transparent', // będzie się mieszać z tłem
   },
-  moreParticipantsText: {
-    fontSize: 12,
-    lineHeight: 15,
-    fontWeight: '900',
-  },
-  previewParticipantsText: {
+  participantsTextContainer: {
     flex: 1,
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: '700',
-    marginLeft: 12,
+    justifyContent: 'center',
   },
-  scheduleCard: {
+  participantsMainText: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  participantsSubText: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  participantRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 12,
+  },
+  participantName: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+ scheduleCard: {
     borderRadius: 22,
     borderWidth: 1,
     overflow: 'hidden',
@@ -718,5 +580,10 @@ export const styles = StyleSheet.create({
   scheduleBody: {
     paddingHorizontal: 12,
     paddingBottom: 14,
-  },
+  }
+
 });
+
+  
+
+ 

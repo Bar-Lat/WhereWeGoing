@@ -21,10 +21,9 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "permissions": [
-        "android.permission.RECORD_AUDIO",
         "android.permission.RECORD_AUDIO"
       ],
-      "package": "com.chubos.WhereWeGoing"
+      "package": "com.pater10.WhereWeGoing"
     },
     "web": {
       "output": "static",
@@ -54,6 +53,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "23ffce43-ca91-4d2c-b05a-05a41bba24b3"
+      }
     }
   }
 }
