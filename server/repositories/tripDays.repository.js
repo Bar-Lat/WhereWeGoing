@@ -21,7 +21,18 @@ const getTripDaysByTripId = async (tripId) => {
   return { data, error };
 };
 
+const getTripDayById = async (dayId) => {
+  const { data, error } = await supabaseDbClient
+    .from(TABLE)
+    .select('*')
+    .eq('id', dayId)
+    .maybeSingle();
+
+  return { data, error };
+};
+
 module.exports = {
   createTripDays,
   getTripDaysByTripId,
+  getTripDayById,
 };

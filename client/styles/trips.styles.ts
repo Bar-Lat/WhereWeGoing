@@ -681,4 +681,42 @@ export const styles = StyleSheet.create({
     fontWeight: '700',
     marginLeft: 12,
   },
+  scheduleCard: {
+    borderRadius: 22,
+    borderWidth: 1,
+    overflow: 'hidden',
+    marginTop: 18,
+  },
+  scheduleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  scheduleHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+    paddingRight: 12,
+  },
+  scheduleHeaderTextBox: {
+    flex: 1,
+  },
+  scheduleTitle: {
+    fontSize: 16,
+    lineHeight: 21,
+    fontWeight: '900',
+  },
+  scheduleSubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  scheduleBody: {
+    paddingHorizontal: 12,
+    paddingBottom: 14,
+  },
 });

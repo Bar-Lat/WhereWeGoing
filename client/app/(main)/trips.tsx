@@ -17,6 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 
 import ScreenHeader from '@/components/ScreenHeader';
+import TripScheduleSection from '@/components/TripScheduleSection';
 import { useCurrentUserProfile } from '@/hooks/useCurrentUserProfile';
 import { useAuth } from '@/providers/auth.provider';
 import { Colors } from '@/styles/colors';
@@ -24,12 +25,16 @@ import { styles } from '@/styles/trips.styles';
 import { getMyFriends } from '@/services/friends.api';
 import {
   addTripParticipant,
+  createTripScheduleActivity,
+  deleteTripScheduleActivity,
   getMyTrips,
   getTripParticipants,
+  getTripSchedule,
   removeTripParticipant,
+  updateTripScheduleActivity,
 } from '@/services/trips.api';
 import type { FriendProfile } from '@/types/friends';
-import type { TripDto, TripParticipantDto } from '@/types/trips';
+import type { TripDto, TripParticipantDto, TripScheduleDayDto } from '@/types/trips';
 
 const PLACEHOLDER_IMAGES = [
   'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=900',
@@ -165,6 +170,10 @@ export default function Trips() {
   const [friendsLoading, setFriendsLoading] = useState(false);
   const [actionProfileId, setActionProfileId] = useState<string | null>(null);
   const [tripListFilter, setTripListFilter] = useState<TripListFilter>('all');
+  const [scheduleExpanded, setScheduleExpanded] = useState(false);
+  const [scheduleDays, setScheduleDays] = useState<TripScheduleDayDto[]>([]);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [scheduleSaving, setScheduleSaving] = useState(false);
 
   const accessToken = session?.access_token ?? null;
   const bottomPadding = 65 + (insets.bottom > 0 ? insets.bottom : 10) + 24;
@@ -216,11 +225,16 @@ export default function Trips() {
         } else {
           setFriends([]);
         }
+
+        setScheduleLoading(true);
+        const scheduleResponse = await getTripSchedule(accessToken, trip.id);
+        setScheduleDays(scheduleResponse.days);
       } catch (error) {
         Alert.alert('Nie udało się pobrać danych', error instanceof Error ? error.message : 'Spróbuj ponownie.');
       } finally {
         setParticipantsLoading(false);
         setFriendsLoading(false);
+        setScheduleLoading(false);
       }
     },
     [accessToken]
@@ -232,6 +246,8 @@ export default function Trips() {
       setModalTab(tab);
       setParticipants([]);
       setFriends([]);
+      setScheduleDays([]);
+      setScheduleExpanded(false);
       await loadPanelData(trip);
     },
     [loadPanelData]
@@ -242,6 +258,8 @@ export default function Trips() {
     setModalTab('details');
     setParticipants([]);
     setFriends([]);
+    setScheduleDays([]);
+    setScheduleExpanded(false);
     setActionProfileId(null);
   }, []);
 
@@ -285,6 +303,94 @@ export default function Trips() {
 
   const selectedTripDays = selectedTrip ? getTripDays(selectedTrip) : null;
   const selectedStatusMeta = selectedTrip ? getStatusMeta(selectedTrip.status) : null;
+  const scheduleActivityCount = useMemo(
+    () => scheduleDays.reduce((sum, day) => sum + day.activities.length, 0),
+    [scheduleDays]
+  );
+
+  const applyScheduleMutation = useCallback(
+    (response: { days: TripScheduleDayDto[]; totalCost: number | null; participants?: TripParticipantDto[] }) => {
+      setScheduleDays(response.days);
+      if (response.participants?.length) {
+        setParticipants(response.participants);
+      }
+      setSelectedTrip((current) =>
+        current ? { ...current, totalCost: response.totalCost ?? current.totalCost } : current
+      );
+    },
+    []
+  );
+
+  const handleAddScheduleActivity = useCallback(
+    async (dayId: string) => {
+      if (!accessToken || !selectedTrip) return;
+
+      try {
+        setScheduleSaving(true);
+        const response = await createTripScheduleActivity(accessToken, selectedTrip.id, dayId, {
+          name: 'Nowa aktywność',
+          time: '12:00',
+          description: 'Opis aktywności',
+          category: 'inne',
+          location: '',
+          cost: 0,
+        });
+        applyScheduleMutation(response);
+        await loadTrips('refresh');
+      } catch (error) {
+        Alert.alert('Nie udało się dodać punktu', error instanceof Error ? error.message : 'Spróbuj ponownie.');
+      } finally {
+        setScheduleSaving(false);
+      }
+    },
+    [accessToken, applyScheduleMutation, loadTrips, selectedTrip]
+  );
+
+  const handleUpdateScheduleActivity = useCallback(
+    async (
+      activityId: string,
+      payload: {
+        name: string;
+        time: string;
+        description: string;
+        category: string;
+        location: string;
+        cost: number;
+      }
+    ) => {
+      if (!accessToken || !selectedTrip) return;
+
+      try {
+        setScheduleSaving(true);
+        const response = await updateTripScheduleActivity(accessToken, selectedTrip.id, activityId, payload);
+        applyScheduleMutation(response);
+        await loadTrips('refresh');
+      } catch (error) {
+        Alert.alert('Nie udało się zapisać zmian', error instanceof Error ? error.message : 'Spróbuj ponownie.');
+      } finally {
+        setScheduleSaving(false);
+      }
+    },
+    [accessToken, applyScheduleMutation, loadTrips, selectedTrip]
+  );
+
+  const handleDeleteScheduleActivity = useCallback(
+    async (activityId: string) => {
+      if (!accessToken || !selectedTrip) return;
+
+      try {
+        setScheduleSaving(true);
+        const response = await deleteTripScheduleActivity(accessToken, selectedTrip.id, activityId);
+        applyScheduleMutation(response);
+        await loadTrips('refresh');
+      } catch (error) {
+        Alert.alert('Nie udało się usunąć punktu', error instanceof Error ? error.message : 'Spróbuj ponownie.');
+      } finally {
+        setScheduleSaving(false);
+      }
+    },
+    [accessToken, applyScheduleMutation, loadTrips, selectedTrip]
+  );
 
   const handleAddParticipant = useCallback(
     async (friend: FriendProfile) => {
@@ -517,6 +623,51 @@ export default function Trips() {
           <Text style={[styles.descriptionText, { color: currentColors.subtext }]}>
             {selectedTrip.notes?.trim() || 'Ten plan nie ma jeszcze opisu. Organizator może uzupełnić szczegóły podróży w dalszym etapie planowania.'}
           </Text>
+        </View>
+
+        <View style={[styles.scheduleCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}>
+          <TouchableOpacity
+            style={styles.scheduleHeader}
+            activeOpacity={0.85}
+            onPress={() => setScheduleExpanded((value) => !value)}
+          >
+            <View style={styles.scheduleHeaderLeft}>
+              <Ionicons name="list-outline" size={22} color={Colors.brand.blue} />
+              <View style={styles.scheduleHeaderTextBox}>
+                <Text style={[styles.scheduleTitle, { color: currentColors.text }]}>Harmonogram</Text>
+                <Text style={[styles.scheduleSubtitle, { color: currentColors.subtext }]}>
+                  {scheduleLoading
+                    ? 'Ładowanie planu dnia po dniu...'
+                    : `${scheduleDays.length} dni · ${scheduleActivityCount} punktów`}
+                </Text>
+              </View>
+            </View>
+            <Ionicons
+              name={scheduleExpanded ? 'chevron-up' : 'chevron-down'}
+              size={20}
+              color={currentColors.subtext}
+            />
+          </TouchableOpacity>
+
+          {scheduleExpanded && (
+            <View style={styles.scheduleBody}>
+              {selectedTrip.accessRole !== 'owner' && (
+                <Text style={[styles.readOnlyText, { color: currentColors.subtext, marginBottom: 12 }]}>
+                  Możesz przeglądać harmonogram. Edycja dostępna tylko dla organizatora.
+                </Text>
+              )}
+              <TripScheduleSection
+                days={scheduleDays}
+                loading={scheduleLoading}
+                editable={selectedTrip.accessRole === 'owner'}
+                saving={scheduleSaving}
+                currentColors={currentColors}
+                onAddActivity={handleAddScheduleActivity}
+                onUpdateActivity={handleUpdateScheduleActivity}
+                onDeleteActivity={handleDeleteScheduleActivity}
+              />
+            </View>
+          )}
         </View>
       </View>
     );

@@ -53,3 +53,47 @@ export type RemoveTripParticipantResponse = {
   amountPerPerson?: number;
   participants?: TripParticipantDto[];
 };
+
+export type TripScheduleActivityDto = {
+  id: string;
+  dayId: string;
+  time: string;
+  name: string;
+  description: string;
+  category: string;
+  location: string;
+  cost: number;
+  orderIndex: number;
+};
+
+export type TripScheduleDayDto = {
+  id: string;
+  dayNumber: number;
+  date: string;
+  title: string;
+  activities: TripScheduleActivityDto[];
+};
+
+export type TripScheduleResponse = {
+  days: TripScheduleDayDto[];
+  totalCost: number | null;
+  accessRole: TripAccessRole;
+};
+
+export type TripScheduleMutationResponse = {
+  message: string;
+  activity?: TripScheduleActivityDto;
+  days: TripScheduleDayDto[];
+  totalCost: number | null;
+  amountPerPerson?: number;
+  participants?: TripParticipantDto[];
+};
+
+export type TripScheduleActivityInput = {
+  name?: string;
+  time?: string;
+  description?: string;
+  category?: string;
+  location?: string;
+  cost?: number;
+};

@@ -21,6 +21,96 @@ const getActivitiesByDayId = async (dayId) => {
   return { data, error };
 };
 
+const getActivitiesByTripId = async (tripId) => {
+  const { data: days, error: daysError } = await supabaseDbClient
+    .from('trip_days')
+    .select('id')
+    .eq('trip_id', tripId);
+
+  if (daysError) {
+    return { data: [], error: daysError };
+  }
+
+  const dayIds = (days || []).map((day) => day.id).filter(Boolean);
+  if (dayIds.length === 0) {
+    return { data: [], error: null };
+  }
+
+  const { data, error } = await supabaseDbClient
+    .from(TABLE)
+    .select('*')
+    .in('day_id', dayIds)
+    .order('order_index', { ascending: true });
+
+  return { data: data || [], error };
+};
+
+const getActivityWithDay = async (activityId) => {
+  const { data: activity, error } = await supabaseDbClient
+    .from(TABLE)
+    .select('*')
+    .eq('id', activityId)
+    .maybeSingle();
+
+  if (error || !activity) {
+    return { activity: null, day: null, error: error || null };
+  }
+
+  const { data: day, error: dayError } = await supabaseDbClient
+    .from('trip_days')
+    .select('*')
+    .eq('id', activity.day_id)
+    .maybeSingle();
+
+  return { activity, day, error: dayError };
+};
+
+const getNextOrderIndexForDay = async (dayId) => {
+  const { data, error } = await supabaseDbClient
+    .from(TABLE)
+    .select('order_index')
+    .eq('day_id', dayId)
+    .order('order_index', { ascending: false })
+    .limit(1);
+
+  if (error) {
+    return { orderIndex: 0, error };
+  }
+
+  const currentMax = data?.[0]?.order_index;
+  return { orderIndex: typeof currentMax === 'number' ? currentMax + 1 : 0, error: null };
+};
+
+const createActivity = async (activity) => {
+  const { data, error } = await supabaseDbClient
+    .from(TABLE)
+    .insert(activity)
+    .select('*')
+    .single();
+
+  return { data, error };
+};
+
+const updateActivityById = async (activityId, updates) => {
+  const { data, error } = await supabaseDbClient
+    .from(TABLE)
+    .update(updates)
+    .eq('id', activityId)
+    .select('*')
+    .single();
+
+  return { data, error };
+};
+
+const deleteActivityById = async (activityId) => {
+  const { error } = await supabaseDbClient
+    .from(TABLE)
+    .delete()
+    .eq('id', activityId);
+
+  return { error };
+};
+
 const getActivitiesTotalCostByTripId = async (tripId) => {
   const { data: days, error: daysError } = await supabaseDbClient
     .from('trip_days')
@@ -94,7 +184,13 @@ const getActivitiesTotalCostsByTripIds = async (tripIds) => {
 
 module.exports = {
   createActivities,
+  createActivity,
   getActivitiesByDayId,
+  getActivitiesByTripId,
+  getActivityWithDay,
+  getNextOrderIndexForDay,
+  updateActivityById,
+  deleteActivityById,
   getActivitiesTotalCostByTripId,
   getActivitiesTotalCostsByTripIds,
 };
