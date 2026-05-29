@@ -33,8 +33,10 @@ import {
   removeTripParticipant,
   updateTripScheduleActivity,
 } from '@/services/trips.api';
+import { useTripStore, TripPlan } from '@/stores/tripStore';
 import type { FriendProfile } from '@/types/friends';
 import type { TripDto, TripParticipantDto, TripScheduleDayDto } from '@/types/trips';
+import { useTripsListStore } from '@/stores/tripStore';
 
 const PLACEHOLDER_IMAGES = [
   'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=900',
@@ -69,27 +71,36 @@ const getInitials = (name: string) => {
   return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() || '').join('');
 };
 
+const getTripDescription = (notes?: string | null) => {
+  if (!notes) return '';
+  try {
+    const parsed = JSON.parse(notes);
+    return parsed.summary || '';
+  } catch {
+    return notes;
+  }
+};
+
 const formatTripDate = (value: string | null | undefined) => {
   if (!value) return '';
   const date = new Date(`${value}T00:00:00`);
   if (Number.isNaN(date.getTime())) return value;
-
   const day = date.getDate().toString().padStart(2, '0');
   const month = date.toLocaleDateString('pl-PL', { month: 'short' }).replace('.', '');
   return `${day} ${month}`;
 };
 
 const formatTripRange = (trip: TripDto) => {
-  const start = formatTripDate(trip.startDate);
-  const end = formatTripDate(trip.endDate);
+  const start = formatTripDate(trip.startDate || (trip as any).start_date);
+  const end = formatTripDate(trip.endDate || (trip as any).end_date);
   if (!start && !end) return 'Brak daty';
   if (start === end) return start;
   return `${start} - ${end}`;
 };
 
 const getTripDays = (trip: TripDto) => {
-  const start = new Date(`${trip.startDate}T00:00:00`);
-  const end = new Date(`${trip.endDate}T00:00:00`);
+  const start = new Date(`${trip.startDate || (trip as any).start_date}T00:00:00`);
+  const end = new Date(`${trip.endDate || (trip as any).end_date}T00:00:00`);
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
   const diff = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
   return Math.max(diff, 1);
@@ -112,14 +123,16 @@ const formatParticipantCost = (value: number | null | undefined, currency = 'PLN
   if (value === null || value === undefined || Number.isNaN(Number(value))) {
     return 'Brak naliczonego kosztu';
   }
-
   return `${Math.round(Number(value)).toLocaleString('pl-PL')} ${currency}`;
 };
 
 const getStatusMeta = (status: string) => statusLabels[status] || { label: status || 'Plan', color: Colors.brand.blue };
 
-const getTripImage = (trip: TripDto, index: number) => {
-  if (trip.imageUrl && /^https?:\/\//i.test(trip.imageUrl)) return trip.imageUrl;
+const getTripImage = (trip: TripDto | any, index: number) => {
+  const url = trip.imageUrl || trip.image_url;
+  if (url && typeof url === 'string' && url.trim().length > 0) {
+    return url;
+  }
   return PLACEHOLDER_IMAGES[index % PLACEHOLDER_IMAGES.length];
 };
 
@@ -128,24 +141,21 @@ const getFriendSubtitle = (friend: FriendProfile) => {
   return name ? 'Znajomy w WhereWeGoing' : 'Profil bez uzupełnionych danych';
 };
 
-const ProfileAvatar = ({
-  uri,
-  label,
-  size = 42,
-  color = Colors.brand.blue,
-}: {
-  uri?: string | null;
-  label: string;
-  size?: number;
-  color?: string;
-}) => {
-  if (uri) {
-    return <Image source={{ uri }} style={{ width: size, height: size, borderRadius: size / 2 }} />;
+const ProfileAvatar = ({ uri, label, size = 40, color = Colors.brand.blue }: any) => {
+  const isImageValid = typeof uri === 'string' && uri.startsWith('http');
+  if (isImageValid) {
+    return (
+      <Image 
+        source={{ uri }} 
+        style={{ width: size, height: size, borderRadius: size / 2 }} 
+      />
+    );
   }
-
   return (
-    <View style={[styles.avatarFallback, { width: size, height: size, borderRadius: size / 2, backgroundColor: color }]}> 
-      <Text style={[styles.avatarFallbackText, { fontSize: Math.max(12, size * 0.34) }]}>{getInitials(label)}</Text>
+    <View style={[styles.avatarFallback, { width: size, height: size, borderRadius: size / 2, backgroundColor: color }]}>
+      <Text style={styles.avatarFallbackText}>
+        {getInitials(label || '?')}
+      </Text>
     </View>
   );
 };
@@ -155,6 +165,7 @@ export default function Trips() {
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
   const currentColors = Colors[colorScheme];
+  
   const { session } = useAuth();
   const { userAvatarUrl, userInitials } = useCurrentUserProfile();
 
@@ -175,6 +186,16 @@ export default function Trips() {
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [scheduleSaving, setScheduleSaving] = useState(false);
 
+  const getPeopleLabel = (count: number) => {
+    if (count === 1) return '1 osoba';
+    const lastDigit = count % 10;
+    const isTeen = count % 100 >= 11 && count % 100 <= 14;
+    if (lastDigit >= 2 && lastDigit <= 4 && !isTeen) {
+      return `${count} osoby`;
+    }
+    return `${count} osób`;
+  };
+
   const accessToken = session?.access_token ?? null;
   const bottomPadding = 65 + (insets.bottom > 0 ? insets.bottom : 10) + 24;
 
@@ -185,14 +206,13 @@ export default function Trips() {
         setTripsLoading(false);
         return;
       }
-
       try {
         if (mode === 'refresh') setTripsRefreshing(true);
         else setTripsLoading(true);
 
         setTripsError(null);
         const response = await getMyTrips(accessToken);
-        setTrips(response.trips);
+        setTrips(response.trips || response || []);
       } catch (error) {
         setTripsError(error instanceof Error ? error.message : 'Nie udało się pobrać wycieczek');
       } finally {
@@ -210,7 +230,6 @@ export default function Trips() {
   const loadPanelData = useCallback(
     async (trip: TripDto) => {
       if (!accessToken) return;
-
       try {
         setParticipantsLoading(true);
         setFriendsLoading(trip.accessRole === 'owner');
@@ -263,6 +282,32 @@ export default function Trips() {
     setActionProfileId(null);
   }, []);
 
+  const handleTripPress = useCallback((trip: any) => {
+    const rawPlan = trip.notes || trip.plan || trip.itinerary || trip.data || {};
+    let parsedData: any = {};
+    try {
+      parsedData = typeof rawPlan === 'string' ? JSON.parse(rawPlan) : rawPlan;
+    } catch (e) {
+      console.error("❌ BŁĄD PARSOWANIA JSON:", e);
+    }
+
+    const activePlan: TripPlan = {
+      id: trip.id,
+      destination: trip.destination || "Nieznane miejsce",
+      summary: parsedData?.summary || "Brak opisu",
+      totalDays: Array.isArray(parsedData?.days) ? parsedData.days.length : 0,
+      estimatedTotalCost: trip.totalBudget ?? trip.total_budget ?? 0,
+      currency: parsedData?.currency || "PLN",
+      days: Array.isArray(parsedData?.days) ? parsedData.days : [],
+      generalTips: Array.isArray(parsedData?.generalTips) ? parsedData.generalTips : [],
+      bestTransport: parsedData?.bestTransport || "Brak danych",
+      imageUrl: trip.imageUrl || trip.image_url || 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?q=80&w=1000'
+    };
+
+    useTripStore.getState().setTripPlan(activePlan);
+    router.push('../trip-details');
+  }, [router]);
+
   const participantIds = useMemo(
     () => new Set(participants.map((participant) => participant.profileId)),
     [participants]
@@ -284,14 +329,8 @@ export default function Trips() {
   );
 
   const visibleTrips = useMemo(() => {
-    if (tripListFilter === 'owner') {
-      return trips.filter((trip) => trip.accessRole === 'owner');
-    }
-
-    if (tripListFilter === 'participant') {
-      return trips.filter((trip) => trip.accessRole === 'participant');
-    }
-
+    if (tripListFilter === 'owner') return trips.filter((trip) => trip.accessRole === 'owner');
+    if (tripListFilter === 'participant') return trips.filter((trip) => trip.accessRole === 'participant');
     return trips;
   }, [tripListFilter, trips]);
 
@@ -303,6 +342,7 @@ export default function Trips() {
 
   const selectedTripDays = selectedTrip ? getTripDays(selectedTrip) : null;
   const selectedStatusMeta = selectedTrip ? getStatusMeta(selectedTrip.status) : null;
+  
   const scheduleActivityCount = useMemo(
     () => scheduleDays.reduce((sum, day) => sum + day.activities.length, 0),
     [scheduleDays]
@@ -324,7 +364,6 @@ export default function Trips() {
   const handleAddScheduleActivity = useCallback(
     async (dayId: string) => {
       if (!accessToken || !selectedTrip) return;
-
       try {
         setScheduleSaving(true);
         const response = await createTripScheduleActivity(accessToken, selectedTrip.id, dayId, {
@@ -349,17 +388,9 @@ export default function Trips() {
   const handleUpdateScheduleActivity = useCallback(
     async (
       activityId: string,
-      payload: {
-        name: string;
-        time: string;
-        description: string;
-        category: string;
-        location: string;
-        cost: number;
-      }
+      payload: { name: string; time: string; description: string; category: string; location: string; cost: number; }
     ) => {
       if (!accessToken || !selectedTrip) return;
-
       try {
         setScheduleSaving(true);
         const response = await updateTripScheduleActivity(accessToken, selectedTrip.id, activityId, payload);
@@ -377,7 +408,6 @@ export default function Trips() {
   const handleDeleteScheduleActivity = useCallback(
     async (activityId: string) => {
       if (!accessToken || !selectedTrip) return;
-
       try {
         setScheduleSaving(true);
         const response = await deleteTripScheduleActivity(accessToken, selectedTrip.id, activityId);
@@ -395,7 +425,6 @@ export default function Trips() {
   const handleAddParticipant = useCallback(
     async (friend: FriendProfile) => {
       if (!accessToken || !selectedTrip) return;
-
       try {
         setActionProfileId(friend.id);
         const response = await addTripParticipant(accessToken, selectedTrip.id, friend.id);
@@ -420,7 +449,6 @@ export default function Trips() {
   const handleRemoveParticipant = useCallback(
     (participant: TripParticipantDto) => {
       if (!accessToken || !selectedTrip || participant.isOwner) return;
-
       Alert.alert(
         'Usunąć uczestnika?',
         `${participant.displayName} nie będzie już przypisany do tej wycieczki.`,
@@ -459,7 +487,6 @@ export default function Trips() {
     const statusMeta = getStatusMeta(trip.status);
     const days = getTripDays(trip);
     const isOwner = trip.accessRole === 'owner';
-
     return (
       <TouchableOpacity
         key={trip.id}
@@ -479,7 +506,6 @@ export default function Trips() {
               <Text style={styles.accessBadgeText}>{isOwner ? 'Właściciel' : 'Uczestnik'}</Text>
             </View>
           </View>
-
           <View style={styles.tripImageTextBox}>
             <Text style={styles.destination} numberOfLines={2}>{trip.destination}</Text>
             <Text style={styles.tripDates}>{formatTripRange(trip)}</Text>
@@ -490,7 +516,7 @@ export default function Trips() {
           <View style={styles.tripMetaGrid}>
             <View style={[styles.metaPill, { backgroundColor: currentColors.background }]}> 
               <Ionicons name="people-outline" size={16} color={Colors.brand.blue} />
-              <Text style={[styles.metaPillText, { color: currentColors.text }]}>{trip.participantsCount} os.</Text>
+              <Text style={[styles.metaPillText, { color: currentColors.text }]}>{trip.participantsCount || 1} os.</Text>
             </View>
             <View style={[styles.metaPill, { backgroundColor: currentColors.background }]}> 
               <Ionicons name="calendar-outline" size={16} color={Colors.brand.green} />
@@ -506,13 +532,17 @@ export default function Trips() {
             <View style={styles.tripRoleRow}>
               <Ionicons name={isOwner ? 'shield-checkmark-outline' : 'people-outline'} size={16} color={currentColors.subtext} />
               <Text style={[styles.tripRoleText, { color: currentColors.subtext }]} numberOfLines={1}>
-                {isOwner ? 'Twój plan podróży' : 'Plan udostępniony Tobie'}
+                {isOwner ? 'Właściciel' : 'Uczestnik'}
               </Text>
             </View>
-            <View style={styles.manageButton}>
-              <Text style={styles.manageButtonText}>Szczegóły</Text>
+            <TouchableOpacity 
+              style={styles.manageButton}
+              onPress={() => handleTripPress(trip)} 
+              activeOpacity={0.8}
+            >
+              <Text style={styles.manageButtonText}>Pokaż plan podróży</Text>
               <Ionicons name="chevron-forward" size={16} color="#FFFFFF" />
-            </View>
+            </TouchableOpacity>
           </View>
         </View>
       </TouchableOpacity>
@@ -538,7 +568,8 @@ export default function Trips() {
             {formatParticipantCost(participant.amountOwed, participant.currency)}
           </Text>
         </View>
-        {canRemove && (
+        {canRemove && 
+        (
           <TouchableOpacity
             style={[styles.smallActionButton, styles.removeButton]}
             onPress={() => handleRemoveParticipant(participant)}
@@ -553,7 +584,6 @@ export default function Trips() {
 
   const renderFriendCandidate = (friend: FriendProfile) => {
     const isActionLoading = actionProfileId === friend.id;
-
     return (
       <View key={friend.id} style={[styles.personRow, { borderColor: currentColors.border }]}> 
         <ProfileAvatar uri={friend.avatar} label={friend.displayName} color={Colors.brand.green} />
@@ -574,7 +604,6 @@ export default function Trips() {
 
   const renderDetailsTab = () => {
     if (!selectedTrip || !selectedStatusMeta) return null;
-
     return (
       <View>
         <View style={styles.detailsGrid}>
@@ -621,61 +650,85 @@ export default function Trips() {
             </View>
           </View>
           <Text style={[styles.descriptionText, { color: currentColors.subtext }]}>
-            {selectedTrip.notes?.trim() || 'Ten plan nie ma jeszcze opisu. Organizator może uzupełnić szczegóły podróży w dalszym etapie planowania.'}
+            {getTripDescription(selectedTrip.notes)?.trim() || 'Ten plan nie ma jeszcze opisu. Organizator może uzupełnić szczegóły podróży w dalszym etapie planowania.'}
           </Text>
         </View>
 
-        <View style={[styles.scheduleCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}>
-          <TouchableOpacity
-            style={styles.scheduleHeader}
-            activeOpacity={0.85}
-            onPress={() => setScheduleExpanded((value) => !value)}
-          >
-            <View style={styles.scheduleHeaderLeft}>
-              <Ionicons name="list-outline" size={22} color={Colors.brand.blue} />
-              <View style={styles.scheduleHeaderTextBox}>
-                <Text style={[styles.scheduleTitle, { color: currentColors.text }]}>Harmonogram</Text>
-                <Text style={[styles.scheduleSubtitle, { color: currentColors.subtext }]}>
-                  {scheduleLoading
-                    ? 'Ładowanie planu dnia po dniu...'
-                    : `${scheduleDays.length} dni · ${scheduleActivityCount} punktów`}
-                </Text>
+        <TouchableOpacity 
+          style={[styles.descriptionCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}
+          onPress={() => setModalTab('participants')}
+          activeOpacity={0.7}
+        >
+          <View style={styles.descriptionHeader}>
+            <View style={[styles.descriptionIcon, { backgroundColor: Colors.brand.green }]}> 
+              <Ionicons name="people-outline" size={18} color="#FFFFFF" />
+            </View>
+            <View style={styles.descriptionTitleBox}>
+              <Text style={[styles.descriptionTitle, { color: currentColors.text }]}>Uczestnicy</Text>
+              <Text style={[styles.descriptionSubtitle, { color: currentColors.subtext }]}>{participants.length} osób w planie</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={currentColors.subtext} />
+          </View>
+
+          {participantsLoading ? (
+            <ActivityIndicator color={Colors.brand.blue} />
+          ) : (
+            <View style={{ gap: 16 }}>
+              <View>
+                <Text style={[styles.descriptionSubtitle, { color: currentColors.subtext, marginBottom: 8, fontSize: 11 }]}>ORGANIZATOR:</Text>
+                {participants.filter(p => p.isOwner).map(p => (
+                  <View key={p.profileId} style={styles.participantRow}>
+                    <ProfileAvatar uri={p.avatar} label={p.displayName || "Użytkownik"} size={40} color={Colors.brand.green} />
+                    <Text style={[styles.participantName, { color: currentColors.text }]}>{p.displayName}</Text>
+                  </View>
+                ))}
+              </View>
+
+              <View>
+                <Text style={[styles.descriptionSubtitle, { color: currentColors.subtext, marginBottom: 8, fontSize: 11 }]}>UCZESTNICY:</Text>
+                {participants.filter(p => !p.isOwner).slice(0, 3).map(p => (
+                  <View key={p.profileId} style={styles.participantRow}>
+                    <ProfileAvatar uri={p.avatar} label={p.displayName} size={36} color={Colors.brand.blue} />
+                    <Text style={[styles.participantName, { color: currentColors.text }]}>{p.displayName}</Text>
+                  </View>
+                ))}
+                {participants.filter(p => !p.isOwner).length > 3 && (
+                  <Text style={{ color: Colors.brand.blue, fontSize: 12, fontWeight: '700', marginTop: 4 }}>
+                    + {participants.filter(p => !p.isOwner).length - 3} więcej...
+                  </Text>
+                )}
               </View>
             </View>
-            <Ionicons
-              name={scheduleExpanded ? 'chevron-up' : 'chevron-down'}
-              size={20}
-              color={currentColors.subtext}
-            />
-          </TouchableOpacity>
-
-          {scheduleExpanded && (
-            <View style={styles.scheduleBody}>
-              {selectedTrip.accessRole !== 'owner' && (
-                <Text style={[styles.readOnlyText, { color: currentColors.subtext, marginBottom: 12 }]}>
-                  Możesz przeglądać harmonogram. Edycja dostępna tylko dla organizatora.
-                </Text>
-              )}
-              <TripScheduleSection
-                days={scheduleDays}
-                loading={scheduleLoading}
-                editable={selectedTrip.accessRole === 'owner'}
-                saving={scheduleSaving}
-                currentColors={currentColors}
-                onAddActivity={handleAddScheduleActivity}
-                onUpdateActivity={handleUpdateScheduleActivity}
-                onDeleteActivity={handleDeleteScheduleActivity}
-              />
-            </View>
           )}
-        </View>
+        </TouchableOpacity>
+
+        {/* --- PRZYCISK DO OTWARCIA ZAAWANSOWANEGO HARMONOGRAMU --- */}
+        <TouchableOpacity
+          style={{
+            backgroundColor: Colors.brand.blue,
+            paddingVertical: 14,
+            borderRadius: 12,
+            alignItems: 'center',
+            marginTop: 16,
+            flexDirection: 'row',
+            justifyContent: 'center',
+            gap: 8,
+          }}
+          onPress={() => {
+            closeTripPanel();
+            handleTripPress(selectedTrip);
+          }}
+        >
+          <Ionicons name="map-outline" size={20} color="#fff" />
+          <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>Otwórz edytor planu</Text>
+        </TouchableOpacity>
+
       </View>
     );
   };
 
   const renderParticipantsTab = () => {
     if (!selectedTrip) return null;
-
     return (
       <View>
         {selectedTrip.accessRole !== 'owner' && (
@@ -687,7 +740,9 @@ export default function Trips() {
 
         <View style={styles.modalSectionHeader}>
           <Text style={[styles.modalSectionTitle, { color: currentColors.text }]}>Obecni uczestnicy</Text>
-          <Text style={[styles.modalSectionCount, { color: currentColors.subtext }]}>{participants.length} osób</Text>
+          <Text style={[styles.modalSectionCount, { color: currentColors.subtext }]}>
+            {getPeopleLabel(participants.length)}
+          </Text>
         </View>
 
         <View style={[styles.peopleCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
@@ -718,8 +773,15 @@ export default function Trips() {
                 availableFriends.map(renderFriendCandidate)
               ) : (
                 <View style={styles.emptyFriendsBox}>
-                  <Ionicons name="checkmark-circle-outline" size={26} color={Colors.brand.green} />
-                  <Text style={[styles.emptyInlineText, { color: currentColors.subtext }]}>Wszyscy Twoi znajomi są już dodani albo nie masz jeszcze znajomych na liście.</Text>
+                  <Ionicons 
+                    name="checkmark-circle-outline" 
+                    size={26} 
+                    color={Colors.brand.green} 
+                    style={{ marginTop: 12, marginBottom: -12 }} // <-- DODANO MARGINESY
+                  />
+                  <Text style={[styles.emptyInlineText, { color: currentColors.subtext }]}>
+                    Wszyscy Twoi znajomi są już dodani albo nie masz jeszcze znajomych na liście.
+                  </Text>
                 </View>
               )}
             </View>
@@ -733,7 +795,7 @@ export default function Trips() {
     <View style={[styles.container, { backgroundColor: currentColors.background }]}> 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: bottomPadding }}
+        contentContainerStyle={{ paddingBottom: bottomPadding, flexGrow: 1 }}
         refreshControl={
           <RefreshControl refreshing={tripsRefreshing} onRefresh={() => loadTrips('refresh')} tintColor={Colors.brand.blue} />
         }
@@ -747,19 +809,7 @@ export default function Trips() {
           onProfilePress={() => router.push('/(main)/profile')}
           userAvatarUrl={userAvatarUrl}
         />
-
-        <View style={styles.scrollContent}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleBox}>
-              <Text style={[styles.sectionTitle, { color: currentColors.text }]}>Moje plany</Text>
-              <Text style={[styles.sectionSubtitle, { color: currentColors.subtext }]}>Przeglądaj swoje wycieczki i plany, do których dodali Cię znajomi.</Text>
-            </View>
-            <TouchableOpacity style={styles.createSmallButton} onPress={() => router.push('/(main)/create')}>
-              <Ionicons name="add" size={20} color="#FFFFFF" />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.overviewGrid}>
+        <View style={styles.overviewGrid}>
             <View style={[styles.overviewCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
               <Ionicons name="briefcase-outline" size={19} color={Colors.brand.blue} />
               <Text style={[styles.overviewValue, { color: currentColors.text }]}>{trips.length}</Text>
@@ -776,6 +826,7 @@ export default function Trips() {
               <Text style={[styles.overviewLabel, { color: currentColors.subtext }]}>wspólne</Text>
             </View>
           </View>
+        <View style={styles.scrollContent}>
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tripTabsContent} style={styles.tripTabs}>
             {tripListFilters.map((filter) => {

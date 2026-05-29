@@ -291,4 +291,5 @@ module.exports = {
   searchFriendCandidates,
   addFriend,
   removeFriend,
+  resolveAvatarUrl,
 };
