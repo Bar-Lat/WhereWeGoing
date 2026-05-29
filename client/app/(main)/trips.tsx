@@ -35,7 +35,7 @@ import {
   removeTripParticipant,
   updateTripScheduleActivity,
 } from '@/services/trips.api';
-import { getCachedOfflineTrip, saveCachedOfflineTrip } from '@/services/offlineTrip.storage';
+import { getCachedOfflineTrips, removeCachedOfflineTrip, saveCachedOfflineTrip } from '@/services/offlineTrip.storage';
 import { useTripStore, TripPlan } from '@/stores/tripStore';
 import type { FriendProfile } from '@/types/friends';
 import type { TripDto, TripParticipantDto, TripScheduleDayDto } from '@/types/trips';
@@ -210,6 +210,9 @@ export default function Trips() {
   const [scheduleDays, setScheduleDays] = useState<TripScheduleDayDto[]>([]);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [scheduleSaving, setScheduleSaving] = useState(false);
+  const [offlineSaving, setOfflineSaving] = useState(false);
+  const [cachedOfflineTripIds, setCachedOfflineTripIds] = useState<Set<string>>(new Set());
+  const [offlineCacheDirty, setOfflineCacheDirty] = useState(false);
 
   const getPeopleLabel = (count: number) => {
     if (count === 1) return '1 osoba';
@@ -224,6 +227,36 @@ export default function Trips() {
   const accessToken = session?.access_token ?? null;
   const userId = session?.user?.id ?? null;
   const bottomPadding = 65 + (insets.bottom > 0 ? insets.bottom : 10) + 24;
+  const selectedTripIsSavedOffline = Boolean(
+    selectedTrip && cachedOfflineTripIds.has(selectedTrip.id) && !offlineCacheDirty
+  );
+  const selectedTripIsNearestOffline = Boolean(
+    selectedTrip && getNearestTripForOffline(trips)?.id === selectedTrip.id
+  );
+  const selectedTripCanBeRemovedFromOffline = selectedTripIsSavedOffline && !selectedTripIsNearestOffline;
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadCachedTripInfo = async () => {
+      if (!userId) {
+        setCachedOfflineTripIds(new Set());
+        return;
+      }
+
+      const cached = await getCachedOfflineTrips(userId);
+
+      if (isMounted) {
+        setCachedOfflineTripIds(new Set(cached.map((item) => item.trip.id)));
+      }
+    };
+
+    void loadCachedTripInfo();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [userId]);
 
   const cacheNearestTripForOffline = useCallback(
     async (availableTrips: TripDto[]) => {
@@ -253,6 +286,7 @@ export default function Trips() {
           scheduleDays: scheduleResponse.days,
           cachedAt: new Date().toISOString(),
         });
+        setCachedOfflineTripIds((current) => new Set([...current, nearestTrip.id]));
       } catch (error) {
         console.warn('Nie udało się zapisać wycieczki offline:', error);
       }
@@ -273,10 +307,11 @@ export default function Trips() {
           if (mode === 'refresh') setTripsRefreshing(true);
           else setTripsLoading(true);
 
-          const cached = await getCachedOfflineTrip(userId);
+          const cached = await getCachedOfflineTrips(userId);
 
-          if (cached) {
-            setTrips([cached.trip]);
+          if (cached.length > 0) {
+            setTrips(cached.map((item) => item.trip));
+            setCachedOfflineTripIds(new Set(cached.map((item) => item.trip.id)));
             setTripsError(null);
           } else {
             setTrips([]);
@@ -299,10 +334,11 @@ export default function Trips() {
         setTrips(loadedTrips);
         void cacheNearestTripForOffline(loadedTrips);
       } catch (error) {
-        const cached = await getCachedOfflineTrip(userId);
+        const cached = await getCachedOfflineTrips(userId);
 
-        if (cached) {
-          setTrips([cached.trip]);
+        if (cached.length > 0) {
+          setTrips(cached.map((item) => item.trip));
+          setCachedOfflineTripIds(new Set(cached.map((item) => item.trip.id)));
           setTripsError(null);
         } else {
           setTripsError(error instanceof Error ? error.message : 'Nie udało się pobrać wycieczek');
@@ -324,7 +360,8 @@ export default function Trips() {
       if (!accessToken || !userId) return;
 
       if (isOffline) {
-        const cached = await getCachedOfflineTrip(userId);
+        const cachedTrips = await getCachedOfflineTrips(userId);
+        const cached = cachedTrips.find((item) => item.trip.id === trip.id);
 
         if (cached?.trip.id === trip.id) {
           setParticipants(cached.participants);
@@ -375,8 +412,9 @@ export default function Trips() {
             },
             participants: participantsResponse.participants,
             scheduleDays: scheduleResponse.days,
-            cachedAt: new Date().toISOString(),
-          });
+          cachedAt: new Date().toISOString(),
+        });
+          setCachedOfflineTripIds((current) => new Set([...current, trip.id]));
         }
       } catch (error) {
         Alert.alert('Nie udało się pobrać danych', error instanceof Error ? error.message : 'Spróbuj ponownie.');
@@ -397,6 +435,7 @@ export default function Trips() {
       setFriends([]);
       setScheduleDays([]);
       setScheduleExpanded(false);
+      setOfflineCacheDirty(false);
       await loadPanelData(trip);
     },
     [loadPanelData]
@@ -426,7 +465,84 @@ export default function Trips() {
     setScheduleDays([]);
     setScheduleExpanded(false);
     setActionProfileId(null);
+    setOfflineCacheDirty(false);
   }, []);
+
+  const handleSaveSelectedTripOffline = useCallback(async () => {
+    if (!selectedTrip || !userId) {
+      return;
+    }
+
+    try {
+      setOfflineSaving(true);
+
+      if (!isOffline && accessToken) {
+        const [participantsResponse, scheduleResponse] = await Promise.all([
+          getTripParticipants(accessToken, selectedTrip.id),
+          getTripSchedule(accessToken, selectedTrip.id),
+        ]);
+
+        const tripToCache = {
+          ...selectedTrip,
+          participantsCount: participantsResponse.count,
+          totalCost: scheduleResponse.totalCost ?? selectedTrip.totalCost,
+        };
+
+        await saveCachedOfflineTrip(userId, {
+          trip: tripToCache,
+          participants: participantsResponse.participants,
+          scheduleDays: scheduleResponse.days,
+          cachedAt: new Date().toISOString(),
+        });
+
+        setParticipants(participantsResponse.participants);
+        setScheduleDays(scheduleResponse.days);
+        setSelectedTrip(tripToCache);
+      } else {
+        await saveCachedOfflineTrip(userId, {
+          trip: selectedTrip,
+          participants,
+          scheduleDays,
+          cachedAt: new Date().toISOString(),
+        });
+      }
+
+      setCachedOfflineTripIds((current) => new Set([...current, selectedTrip.id]));
+      setOfflineCacheDirty(false);
+      Alert.alert('Zapisano offline', 'Ta wycieczka będzie dostępna bez internetu.');
+    } catch (error) {
+      Alert.alert(
+        'Nie udało się zapisać offline',
+        error instanceof Error ? error.message : 'Spróbuj ponownie, gdy będziesz online.'
+      );
+    } finally {
+      setOfflineSaving(false);
+    }
+  }, [accessToken, isOffline, participants, scheduleDays, selectedTrip, userId]);
+
+  const handleRemoveSelectedTripOffline = useCallback(async () => {
+    if (!selectedTrip || !userId || selectedTripIsNearestOffline) {
+      return;
+    }
+
+    try {
+      const nextCachedTrips = await removeCachedOfflineTrip(userId, selectedTrip.id);
+      setCachedOfflineTripIds(new Set(nextCachedTrips.map((item) => item.trip.id)));
+      setOfflineCacheDirty(false);
+
+      if (isOffline) {
+        setTrips((current) => current.filter((trip) => trip.id !== selectedTrip.id));
+        closeTripPanel();
+      }
+
+      Alert.alert('Usunięto zapis offline', 'Ta wycieczka nie będzie już dostępna bez internetu.');
+    } catch (error) {
+      Alert.alert(
+        'Nie udało się usunąć zapisu',
+        error instanceof Error ? error.message : 'Spróbuj ponownie.'
+      );
+    }
+  }, [closeTripPanel, isOffline, selectedTrip, selectedTripIsNearestOffline, userId]);
 
   const handleTripPress = useCallback((trip: any) => {
     const rawPlan = trip.notes || trip.plan || trip.itinerary || trip.data || {};
@@ -497,6 +613,7 @@ export default function Trips() {
   const applyScheduleMutation = useCallback(
     (response: { days: TripScheduleDayDto[]; totalCost: number | null; participants?: TripParticipantDto[] }) => {
       setScheduleDays(response.days);
+      setOfflineCacheDirty(true);
       if (response.participants?.length) {
         setParticipants(response.participants);
       }
@@ -575,10 +692,12 @@ export default function Trips() {
         setActionProfileId(friend.id);
         const response = await addTripParticipant(accessToken, selectedTrip.id, friend.id);
         if (response.participants?.length) {
+          setOfflineCacheDirty(true);
           setParticipants(response.participants);
           setSelectedTrip((current) => current ? { ...current, participantsCount: response.participants!.length } : current);
         } else {
           const participantsResponse = await getTripParticipants(accessToken, selectedTrip.id);
+          setOfflineCacheDirty(true);
           setParticipants(participantsResponse.participants);
           setSelectedTrip((current) => current ? { ...current, participantsCount: participantsResponse.count } : current);
         }
@@ -608,10 +727,12 @@ export default function Trips() {
                 setActionProfileId(participant.profileId);
                 const response = await removeTripParticipant(accessToken, selectedTrip.id, participant.profileId);
                 if (response.participants?.length !== undefined) {
+                  setOfflineCacheDirty(true);
                   setParticipants(response.participants);
                   setSelectedTrip((current) => current ? { ...current, participantsCount: response.participants!.length } : current);
                 } else {
                   const participantsResponse = await getTripParticipants(accessToken, selectedTrip.id);
+                  setOfflineCacheDirty(true);
                   setParticipants(participantsResponse.participants);
                   setSelectedTrip((current) => current ? { ...current, participantsCount: participantsResponse.count } : current);
                 }
@@ -1116,9 +1237,39 @@ export default function Trips() {
               <Text style={[styles.modalTitle, { color: currentColors.text }]}>Plan podróży</Text>
               <Text style={[styles.modalSubtitle, { color: currentColors.subtext }]} numberOfLines={1}>{selectedTrip?.destination || 'Wycieczka'}</Text>
             </View>
-            <TouchableOpacity style={[styles.closeButton, { backgroundColor: currentColors.card }]} onPress={closeTripPanel}>
-              <Ionicons name="close" size={24} color={currentColors.text} />
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <TouchableOpacity
+                style={[
+                  styles.closeButton,
+                  {
+                    backgroundColor: selectedTripIsSavedOffline
+                      ? 'rgba(16,185,129,0.14)'
+                      : currentColors.card,
+                  },
+                ]}
+                onPress={() => {
+                  if (selectedTripCanBeRemovedFromOffline) {
+                    void handleRemoveSelectedTripOffline();
+                    return;
+                  }
+
+                  void handleSaveSelectedTripOffline();
+                }}
+                disabled={offlineSaving || !selectedTrip || (selectedTripIsSavedOffline && !selectedTripCanBeRemovedFromOffline)}
+                activeOpacity={0.85}
+              >
+                {offlineSaving ? (
+                  <ActivityIndicator size="small" color={Colors.brand.blue} />
+                ) : selectedTripIsSavedOffline ? (
+                  <Ionicons name="checkmark" size={23} color={Colors.brand.green} />
+                ) : (
+                  <Ionicons name="download-outline" size={22} color={Colors.brand.blue} />
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.closeButton, { backgroundColor: currentColors.card }]} onPress={closeTripPanel}>
+                <Ionicons name="close" size={24} color={currentColors.text} />
+              </TouchableOpacity>
+            </View>
           </View>
 
           <ScrollView contentContainerStyle={[styles.modalContent, { paddingBottom: insets.bottom + 32 }]} showsVerticalScrollIndicator={false}>
