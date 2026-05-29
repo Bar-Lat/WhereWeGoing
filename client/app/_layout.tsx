@@ -5,6 +5,9 @@ import { AuthProvider, useAuth } from '@/providers/auth.provider';
 import { ProfileProvider } from '@/providers/profile.provider';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import {NetworkProvider} from '@/providers/network.provider'
+import OfflineBanner from '@/components/OfflineBanner'
+import { NotificationsProvider } from '@/providers/notifications.provider';
 import { useTripsListStore } from '@/stores/tripStore';
 
 
@@ -51,6 +54,7 @@ function AppNavigator() {
                 <Stack.Screen name="trip-loading" options={{ animation: 'fade' }} />
                 <Stack.Screen name="trip-result" options={{ animation: 'slide_from_right' }} />
             </Stack>
+            <OfflineBanner />
 
 
         </SafeAreaProvider>
@@ -60,9 +64,13 @@ function AppNavigator() {
 export default function RootLayout() {
     return (
         <AuthProvider>
-            <ProfileProvider>
-                <AppNavigator />
-            </ProfileProvider>
+            <NotificationsProvider>
+                <NetworkProvider>
+                    <ProfileProvider>
+                        <AppNavigator />
+                    </ProfileProvider>
+                </NetworkProvider>
+            </NotificationsProvider>
         </AuthProvider>
     );
 }

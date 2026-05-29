@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useRef, } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -11,11 +11,12 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  
   useColorScheme,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import ScreenHeader from '../../components/ScreenHeader';
@@ -23,6 +24,7 @@ import { useAuth } from '@/providers/auth.provider';
 import { useCurrentUserProfile } from '@/hooks/useCurrentUserProfile';
 import { Colors } from '@/styles/colors';
 import { styles } from '@/styles/inspiration.styles';
+import { useNotifications } from '@/providers/notifications.provider';
 import {
   createTripFromOffer,
   getInspirationOfferDetails,
@@ -125,6 +127,8 @@ const getStatusLabel = (status: string, source: OfferSource) => {
 export default function Inspiration() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const params = useLocalSearchParams<{ offerId?: string }>();
+  const openedOfferIdRef = useRef<string | null>(null);
   const colorScheme = useColorScheme() ?? 'light';
   const currentColors = Colors[colorScheme];
   const { session } = useAuth();
@@ -276,6 +280,35 @@ export default function Inspiration() {
       setIsDetailsLoading(false);
     }
   };
+  useEffect(() => {
+    const offerId = typeof params.offerId === 'string' ? params.offerId : null;
+
+    if (!offerId || openedOfferIdRef.current === offerId) {
+      return;
+    }
+
+    openedOfferIdRef.current = offerId;
+
+    const openOfferFromNotification = async () => {
+      try {
+        setIsDetailsLoading(true);
+        const response = await getInspirationOfferDetails(offerId);
+        setSelectedOffer({
+          ...response.offer,
+          isSaved: savedOfferIds.has(offerId) || response.offer.isSaved,
+        });
+      } catch (error) {
+        Alert.alert(
+          'Błąd',
+          error instanceof Error ? error.message : 'Nie udało się pobrać inspiracji'
+        );
+      } finally {
+        setIsDetailsLoading(false);
+      }
+    };
+
+    void openOfferFromNotification();
+  }, [params.offerId, savedOfferIds]);
 
   const handleToggleSaved = (offerId: string) => {
     setSavedOfferIds((current) => {
@@ -305,6 +338,7 @@ export default function Inspiration() {
     try {
       setIsCreatingTrip(true);
       await createTripFromOffer(session.access_token, selectedOffer.id);
+      await refreshNotifications();
       Alert.alert('Gotowe', 'Podróż została utworzona na podstawie wybranej inspiracji.');
       setSelectedOffer(null);
     } catch (error) {
@@ -523,6 +557,8 @@ export default function Inspiration() {
 
   const modalOfferIsSaved = selectedOffer ? savedOfferIds.has(selectedOffer.id) || selectedOffer.isSaved : false;
 
+  const { hasUnreadNotifications, refreshNotifications } = useNotifications();
+
   return (
     <View style={[styles.container, { backgroundColor: currentColors.background }]}>
       <ScrollView
@@ -535,9 +571,10 @@ export default function Inspiration() {
         <ScreenHeader
           variant="inspiration"
           userInitials={userInitials}
-          onNotificationPress={() => console.log('Powiadomienia')}
+          onNotificationPress={() => router.push('/notifications')}
           onProfilePress={() => router.push('/(main)/profile')}
           userAvatarUrl={userAvatarUrl}
+          hasUnreadNotifications={hasUnreadNotifications}
         />
 
         <View style={styles.introSection}>

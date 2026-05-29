@@ -19,7 +19,7 @@ const validateProfileUpdate = (req, res, next) => {
 
   if (firstName === undefined && lastName === undefined) {
     return res.status(400).json({
-      message: 'Podaj imię lub nazwisko do aktualizacji',
+      message: 'Brak pól profilu do aktualizacji',
     });
   }
 
