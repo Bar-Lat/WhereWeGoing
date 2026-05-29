@@ -124,6 +124,17 @@ const getStatusLabel = (status: string, source: OfferSource) => {
   return status || 'Propozycja';
 };
 
+const getOfferDescription = (notes?: string | null) => {
+  if (!notes) return '';
+
+  try {
+    const parsed = JSON.parse(notes);
+    return parsed.summary || '';
+  } catch {
+    return notes;
+  }
+};
+
 export default function Inspiration() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -473,7 +484,7 @@ export default function Inspiration() {
             <Text style={styles.featuredLabel}>Polecana inspiracja</Text>
             <Text style={styles.featuredTitle} numberOfLines={2}>{featuredOffer.destination}</Text>
             <Text style={styles.featuredSubtitle} numberOfLines={2}>
-              {featuredOffer.notes || `Propozycja na ${featuredOffer.daysCount} dni · ${featuredOffer.authorName}`}
+              {getOfferDescription(featuredOffer.notes)?.trim() || `Propozycja na ${featuredOffer.daysCount} dni · ${featuredOffer.authorName}`}
             </Text>
             <View style={styles.featuredMetaRow}>
               <View style={styles.priceTag}>
@@ -533,7 +544,7 @@ export default function Inspiration() {
           </View>
 
           <Text style={[styles.offerDescription, { color: currentColors.subtext }]} numberOfLines={2}>
-            {offer.notes || 'Gotowa propozycja podróży przygotowana jako inspiracja do kolejnego wyjazdu.'}
+            {getOfferDescription(offer.notes)?.trim() || 'Gotowa propozycja podróży przygotowana jako inspiracja do kolejnego wyjazdu.'}
           </Text>
 
           <View style={styles.offerMetaRow}>
@@ -795,7 +806,7 @@ export default function Inspiration() {
                 </View>
 
                 <Text style={[styles.modalDescription, { color: currentColors.subtext }]}>
-                  {selectedOffer.notes || 'To gotowa inspiracja, którą możesz zapisać albo wykorzystać jako podstawę własnego planu podróży.'}
+                  {getOfferDescription(selectedOffer.notes)?.trim() || 'To gotowa inspiracja, którą możesz zapisać albo wykorzystać jako podstawę własnego planu podróży.'}
                 </Text>
 
                 <TouchableOpacity

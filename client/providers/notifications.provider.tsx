@@ -45,6 +45,9 @@ type NotificationsContextValue = {
 };
 
 const NotificationsContext = createContext<NotificationsContextValue | undefined>(undefined);
+const READ_NOTIFICATIONS_KEY = 'wherewegoing_read_notifications_v1';
+const NOTIFICATION_OPEN_TIMES_KEY = 'wherewegoing_notification_open_times_v1';
+const DAILY_INSPIRATION_KEY = 'wherewegoing_daily_inspiration_v1';
 
 const getLocalDateKey = (date = new Date()) => {
   const year = date.getFullYear();
@@ -87,13 +90,58 @@ const pickDailyOffer = (offers: InspirationOfferDto[], dateKey: string) => {
   return offers[seed % offers.length];
 };
 
+const getDailyInspirationDateKey = (date = new Date()) => {
+  const inspirationDate = new Date(date);
+
+  if (inspirationDate.getHours() < 8) {
+    inspirationDate.setDate(inspirationDate.getDate() - 1);
+  }
+
+  return getLocalDateKey(inspirationDate);
+};
+
+const getStoredDailyOffer = async (
+  offers: InspirationOfferDto[],
+  dateKey: string
+) => {
+  const raw = await AsyncStorage.getItem(DAILY_INSPIRATION_KEY);
+
+  if (raw) {
+    try {
+      const stored = JSON.parse(raw);
+
+      if (stored?.dateKey === dateKey && typeof stored?.offerId === 'string') {
+        const storedOffer = offers.find((offer) => offer.id === stored.offerId);
+
+        if (storedOffer) {
+          return storedOffer;
+        }
+      }
+    } catch {
+      await AsyncStorage.removeItem(DAILY_INSPIRATION_KEY);
+    }
+  }
+
+  const pickedOffer = pickDailyOffer(offers, dateKey);
+
+  if (pickedOffer) {
+    await AsyncStorage.setItem(
+      DAILY_INSPIRATION_KEY,
+      JSON.stringify({
+        dateKey,
+        offerId: pickedOffer.id,
+      })
+    );
+  }
+
+  return pickedOffer;
+};
+
 export const NotificationsProvider = ({ children }: { children: React.ReactNode }) => {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [readIds, setReadIds] = useState<string[]>([]);
   const { session, isAuthenticated } = useAuth();
   const accessToken = session?.access_token ?? null;
-  const READ_NOTIFICATIONS_KEY = 'wherewegoing_read_notifications_v1';
-  const NOTIFICATION_OPEN_TIMES_KEY = 'wherewegoing_notification_open_times_v1';
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
@@ -109,15 +157,15 @@ export const NotificationsProvider = ({ children }: { children: React.ReactNode 
     const todayAtEight = new Date(now);
     todayAtEight.setHours(8, 0, 0, 0);
 
-    const tomorrowAtMidnight = new Date(now);
-    tomorrowAtMidnight.setDate(now.getDate() + 1);
-    tomorrowAtMidnight.setHours(0, 0, 0, 0);
-
     if (now < todayAtEight) {
       return todayAtEight;
     }
 
-    return tomorrowAtMidnight;
+    const tomorrowAtEight = new Date(now);
+    tomorrowAtEight.setDate(now.getDate() + 1);
+    tomorrowAtEight.setHours(8, 0, 0, 0);
+
+    return tomorrowAtEight;
   };
 
   const registerNotificationsScreenOpen = useCallback(async () => {
@@ -175,6 +223,7 @@ export const NotificationsProvider = ({ children }: { children: React.ReactNode 
   }
 
   const todayKey = getLocalDateKey();
+  const inspirationDateKey = getDailyInspirationDateKey();
   const generated: AppNotification[] = [];
 
   try {
@@ -201,14 +250,14 @@ export const NotificationsProvider = ({ children }: { children: React.ReactNode 
     }
 
     const offersResponse = await getInspirationOffers();
-    const offer = pickDailyOffer(offersResponse.offers, todayKey);
+    const offer = await getStoredDailyOffer(offersResponse.offers, inspirationDateKey);
 
     if (offer) {
       generated.push({
-        id: `daily-inspiration:${offer.id}:${todayKey}`,
+        id: `daily-inspiration:${offer.id}:${inspirationDateKey}`,
         title: 'Inspiracja dnia',
         message: `${offer.destination} może być dobrym pomysłem na kolejną podróż.`,
-        createdAt: `${todayKey}T08:00:00`,
+        createdAt: `${inspirationDateKey}T08:00:00`,
         icon: 'bulb-outline',
         color: '#F59E0B',
         kind: 'daily-inspiration',
