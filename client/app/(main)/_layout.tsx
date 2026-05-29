@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { View, Text, StyleSheet, useColorScheme } from 'react-native';
+import { View, Text, StyleSheet, useColorScheme, Modal, TouchableOpacity } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '@/styles/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,10 +13,13 @@ import { getMyTrips } from '@/services/trip.api';
 import { useTripStore } from '@/stores/tripStore';
 
 // To jest pełnoprawny komponent, więc hooki będą tu działać idealnie i dynamicznie
+
 const TripsTabIcon = ({ color, focused, currentColors }: any) => {
   // Pobieramy stan bezpiecznie. Jeśli jest undefined, podstawiamy []
   const trips = useTripStore((state) => state.trips) || [];
   const count = trips.length;
+  
+
 
   return (
     <View>
@@ -37,6 +40,14 @@ export default function MainLayout() {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme() ?? 'light';
   const currentColors = Colors[colorScheme];
+  const isEditingMode = useTripStore((state) => state.isEditingMode);
+  
+  const [layoutAlert, setLayoutAlert] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    actions: [] as any[]
+  });
   
   const bottomPadding = insets.bottom > 0 ? insets.bottom : 10;
   const barHeight = 65 + bottomPadding;
@@ -76,7 +87,23 @@ export default function MainLayout() {
 const trips = useTripStore((state) => state.trips) || [];
 const tripsCount = trips.length;
   
+const tabPressListener = {
+    tabPress: (e: any) => {
+      if (isEditingMode) {
+        e.preventDefault(); 
+        setLayoutAlert({
+          visible: true,
+          title: "Tryb edycji",
+          message: "Masz niezapisane zmiany w planie!",
+          actions: [{ text: "Ok" }]
+        });
+      }
+    },
+  };
+
+
   return (
+    <>
     <Tabs
       screenOptions={{
         headerShown: false, 
@@ -88,6 +115,7 @@ const tripsCount = trips.length;
           backgroundColor: currentColors.card, 
           borderTopColor: currentColors.border, 
           borderTopWidth: 1,
+          
           
           height: barHeight,
           paddingBottom: bottomPadding,
@@ -109,6 +137,7 @@ const tripsCount = trips.length;
       {/* 1. HOME */}
       <Tabs.Screen
         name="home"
+        listeners={tabPressListener}
         options={{
           title: 'Home',
           tabBarIcon: ({ color, focused }) => (
@@ -120,6 +149,7 @@ const tripsCount = trips.length;
       {/* 2. ODKRYWAJ */}
       <Tabs.Screen
         name="inspiration"
+        listeners={tabPressListener}
         options={{
           title: 'Inspiracje',
           tabBarIcon: ({ color, focused }) => (
@@ -131,6 +161,7 @@ const tripsCount = trips.length;
       {/* 3. ŚRODKOWY PRZYCISK Z TWOIM GRADIENTEM */}
       <Tabs.Screen
         name="create"
+        listeners={tabPressListener}
         options={{
           title: '',
           tabBarIcon: () => isOnCreate ? null : (
@@ -151,6 +182,7 @@ const tripsCount = trips.length;
       {/* ZAKTUALIZOWANA ZAKŁADKA MOJE PLANY */}
       <Tabs.Screen
         name="trips"
+        listeners={tabPressListener}
         options={{
           title: 'Moje plany',
           tabBarIcon: (props) => (
@@ -166,6 +198,7 @@ const tripsCount = trips.length;
       {/* 5. PROFIL */}
       <Tabs.Screen
         name="profile"
+        listeners={tabPressListener}
         options={{
           title: 'Profil',
           tabBarIcon: ({ color, focused }) => (
@@ -182,6 +215,30 @@ const tripsCount = trips.length;
         }}
       />
     </Tabs>
+    {/* NASZ CUSTOMOWY MODAL ALERTU */}
+      <Modal visible={layoutAlert.visible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { backgroundColor: currentColors.background, width: '85%', padding: 24 }]}>
+            <Text style={[{ fontSize: 20, fontWeight: '800', textAlign: 'center', color: currentColors.text, marginBottom: 12 }]}>{layoutAlert.title}</Text>
+            <Text style={[{ fontSize: 15, textAlign: 'center', color: currentColors.subtext, marginBottom: 24, lineHeight: 22 }]}>{layoutAlert.message}</Text>
+            <View style={{ width: '100%', gap: 10 }}>
+              {layoutAlert.actions.map((action, idx) => (
+                  <TouchableOpacity 
+                    key={idx}
+                    onPress={() => {
+                      setLayoutAlert(prev => ({ ...prev, visible: false }));
+                      if (action.onPress) setTimeout(() => action.onPress(), 150);
+                    }}
+                    style={[styles.alertBtn, { backgroundColor: Colors.brand.blue }]}
+                  >
+                    <Text style={[styles.alertBtnText, { color: '#fff' }]}>{action.text}</Text>
+                  </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 }
 
@@ -219,5 +276,34 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 9,
     fontWeight: 'bold',
+  },
+  modalOverlay: { 
+    flex: 1, 
+    backgroundColor: 'rgba(0,0,0,0.5)', 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    padding: 20 
+  },
+  modalCard: { 
+    width: '100%', 
+    borderRadius: 24, 
+    padding: 24, 
+    alignItems: 'center', 
+    shadowColor: '#000', 
+    shadowOffset: { width: 0, height: 10 }, 
+    shadowOpacity: 0.25, 
+    shadowRadius: 20, 
+    elevation: 10 
+  },
+  alertBtn: { 
+    width: '100%', 
+    paddingVertical: 14, 
+    borderRadius: 14, 
+    alignItems: 'center', 
+    justifyContent: 'center' 
+  },
+  alertBtnText: { 
+    fontSize: 16, 
+    fontWeight: '700' 
   },
 });
