@@ -17,6 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 
 import ScreenHeader from '@/components/ScreenHeader';
+import TripScheduleSection from '@/components/TripScheduleSection';
 import { useCurrentUserProfile } from '@/hooks/useCurrentUserProfile';
 import { useAuth } from '@/providers/auth.provider';
 import { Colors } from '@/styles/colors';
@@ -24,13 +25,17 @@ import { styles } from '@/styles/trips.styles';
 import { getMyFriends } from '@/services/friends.api';
 import {
   addTripParticipant,
+  createTripScheduleActivity,
+  deleteTripScheduleActivity,
   getMyTrips,
   getTripParticipants,
+  getTripSchedule,
   removeTripParticipant,
+  updateTripScheduleActivity,
 } from '@/services/trips.api';
 import { useTripStore, TripPlan } from '@/stores/tripStore';
 import type { FriendProfile } from '@/types/friends';
-import type { TripDto, TripParticipantDto } from '@/types/trips';
+import type { TripDto, TripParticipantDto, TripScheduleDayDto } from '@/types/trips';
 import { useTripsListStore } from '@/stores/tripStore';
 
 const PLACEHOLDER_IMAGES = [
@@ -69,11 +74,9 @@ const getInitials = (name: string) => {
 const getTripDescription = (notes?: string | null) => {
   if (!notes) return '';
   try {
-    // Próbujemy odczytać to jako JSON (plan od AI)
     const parsed = JSON.parse(notes);
     return parsed.summary || '';
   } catch {
-    // Jeśli to nie jest JSON, tylko normalny tekst od użytkownika, po prostu go zwracamy
     return notes;
   }
 };
@@ -82,7 +85,6 @@ const formatTripDate = (value: string | null | undefined) => {
   if (!value) return '';
   const date = new Date(`${value}T00:00:00`);
   if (Number.isNaN(date.getTime())) return value;
-
   const day = date.getDate().toString().padStart(2, '0');
   const month = date.toLocaleDateString('pl-PL', { month: 'short' }).replace('.', '');
   return `${day} ${month}`;
@@ -111,15 +113,23 @@ const formatDaysLabel = (days: number | null) => {
 };
 
 const formatBudget = (value: number | null | undefined) => {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) return 'Brak budżetu';
-  return `${Math.round(Number(value))} PLN`;
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return 'Brak kosztu';
+  return `${Math.round(Number(value)).toLocaleString('pl-PL')} PLN`;
+};
+
+const getTripDisplayCost = (trip: TripDto) => trip.totalCost ?? trip.totalBudget;
+
+const formatParticipantCost = (value: number | null | undefined, currency = 'PLN') => {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) {
+    return 'Brak naliczonego kosztu';
+  }
+  return `${Math.round(Number(value)).toLocaleString('pl-PL')} ${currency}`;
 };
 
 const getStatusMeta = (status: string) => statusLabels[status] || { label: status || 'Plan', color: Colors.brand.blue };
 
 const getTripImage = (trip: TripDto | any, index: number) => {
   const url = trip.imageUrl || trip.image_url;
-  // Jeśli url istnieje i nie jest pusty, zwróć go. W przeciwnym razie zwróć placeholder.
   if (url && typeof url === 'string' && url.trim().length > 0) {
     return url;
   }
@@ -130,10 +140,9 @@ const getFriendSubtitle = (friend: FriendProfile) => {
   const name = `${friend.firstName || ''} ${friend.lastName || ''}`.trim();
   return name ? 'Znajomy w WhereWeGoing' : 'Profil bez uzupełnionych danych';
 };
-const ProfileAvatar = ({ uri, label, size = 40, color = Colors.brand.blue }: any) => {
-  // Bezpieczne sprawdzenie typu i zawartości
-  const isImageValid = typeof uri === 'string' && uri.startsWith('http');
 
+const ProfileAvatar = ({ uri, label, size = 40, color = Colors.brand.blue }: any) => {
+  const isImageValid = typeof uri === 'string' && uri.startsWith('http');
   if (isImageValid) {
     return (
       <Image 
@@ -142,8 +151,6 @@ const ProfileAvatar = ({ uri, label, size = 40, color = Colors.brand.blue }: any
       />
     );
   }
-
-  // Fallback, gdy brak poprawnego URL-a
   return (
     <View style={[styles.avatarFallback, { width: size, height: size, borderRadius: size / 2, backgroundColor: color }]}>
       <Text style={styles.avatarFallbackText}>
@@ -153,7 +160,6 @@ const ProfileAvatar = ({ uri, label, size = 40, color = Colors.brand.blue }: any
   );
 };
 
-
 export default function Trips() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -162,7 +168,6 @@ export default function Trips() {
   
   const { session } = useAuth();
   const { userAvatarUrl, userInitials } = useCurrentUserProfile();
-
 
   const [trips, setTrips] = useState<TripDto[]>([]);
   const [tripsLoading, setTripsLoading] = useState(true);
@@ -176,21 +181,20 @@ export default function Trips() {
   const [friendsLoading, setFriendsLoading] = useState(false);
   const [actionProfileId, setActionProfileId] = useState<string | null>(null);
   const [tripListFilter, setTripListFilter] = useState<TripListFilter>('all');
+  const [scheduleExpanded, setScheduleExpanded] = useState(false);
+  const [scheduleDays, setScheduleDays] = useState<TripScheduleDayDto[]>([]);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [scheduleSaving, setScheduleSaving] = useState(false);
 
-const getPeopleLabel = (count: number) => {
-  if (count === 1) return '1 osoba';
-  
-  // Sprawdzamy końcówkę dla liczb kończących się na 2, 3, 4 
-  // (ale wykluczamy nastolatki: 12, 13, 14, które kończą się na "osób")
-  const lastDigit = count % 10;
-  const isTeen = count % 100 >= 11 && count % 100 <= 14;
-
-  if (lastDigit >= 2 && lastDigit <= 4 && !isTeen) {
-    return `${count} osoby`;
-  }
-  
-  return `${count} osób`;
-};
+  const getPeopleLabel = (count: number) => {
+    if (count === 1) return '1 osoba';
+    const lastDigit = count % 10;
+    const isTeen = count % 100 >= 11 && count % 100 <= 14;
+    if (lastDigit >= 2 && lastDigit <= 4 && !isTeen) {
+      return `${count} osoby`;
+    }
+    return `${count} osób`;
+  };
 
   const accessToken = session?.access_token ?? null;
   const bottomPadding = 65 + (insets.bottom > 0 ? insets.bottom : 10) + 24;
@@ -202,14 +206,12 @@ const getPeopleLabel = (count: number) => {
         setTripsLoading(false);
         return;
       }
-
       try {
         if (mode === 'refresh') setTripsRefreshing(true);
         else setTripsLoading(true);
 
         setTripsError(null);
         const response = await getMyTrips(accessToken);
-        // Obsługa formatu dla obu wersji API
         setTrips(response.trips || response || []);
       } catch (error) {
         setTripsError(error instanceof Error ? error.message : 'Nie udało się pobrać wycieczek');
@@ -228,7 +230,6 @@ const getPeopleLabel = (count: number) => {
   const loadPanelData = useCallback(
     async (trip: TripDto) => {
       if (!accessToken) return;
-
       try {
         setParticipantsLoading(true);
         setFriendsLoading(trip.accessRole === 'owner');
@@ -243,11 +244,16 @@ const getPeopleLabel = (count: number) => {
         } else {
           setFriends([]);
         }
+
+        setScheduleLoading(true);
+        const scheduleResponse = await getTripSchedule(accessToken, trip.id);
+        setScheduleDays(scheduleResponse.days);
       } catch (error) {
         Alert.alert('Nie udało się pobrać danych', error instanceof Error ? error.message : 'Spróbuj ponownie.');
       } finally {
         setParticipantsLoading(false);
         setFriendsLoading(false);
+        setScheduleLoading(false);
       }
     },
     [accessToken]
@@ -259,6 +265,8 @@ const getPeopleLabel = (count: number) => {
       setModalTab(tab);
       setParticipants([]);
       setFriends([]);
+      setScheduleDays([]);
+      setScheduleExpanded(false);
       await loadPanelData(trip);
     },
     [loadPanelData]
@@ -269,21 +277,18 @@ const getPeopleLabel = (count: number) => {
     setModalTab('details');
     setParticipants([]);
     setFriends([]);
+    setScheduleDays([]);
+    setScheduleExpanded(false);
     setActionProfileId(null);
   }, []);
 
-  // Wstrzyknięta logika parsowania notatek z JSON i przekazywania do Zustanda
   const handleTripPress = useCallback((trip: any) => {
     const rawPlan = trip.notes || trip.plan || trip.itinerary || trip.data || {};
-    
-    console.log("1. SUROWE DANE Z BAZY (trip.notes):", rawPlan); // <--- DODAJ TO
-
     let parsedData: any = {};
     try {
       parsedData = typeof rawPlan === 'string' ? JSON.parse(rawPlan) : rawPlan;
-      console.log("2. PO PARSOWANIU (parsedData):", parsedData); // <--- DODAJ TO
     } catch (e) {
-      console.error("❌ BŁĄD PARSOWANIA JSON:", e); // <--- DODAJ TO
+      console.error("❌ BŁĄD PARSOWANIA JSON:", e);
     }
 
     const activePlan: TripPlan = {
@@ -324,14 +329,8 @@ const getPeopleLabel = (count: number) => {
   );
 
   const visibleTrips = useMemo(() => {
-    if (tripListFilter === 'owner') {
-      return trips.filter((trip) => trip.accessRole === 'owner');
-    }
-
-    if (tripListFilter === 'participant') {
-      return trips.filter((trip) => trip.accessRole === 'participant');
-    }
-
+    if (tripListFilter === 'owner') return trips.filter((trip) => trip.accessRole === 'owner');
+    if (tripListFilter === 'participant') return trips.filter((trip) => trip.accessRole === 'participant');
     return trips;
   }, [tripListFilter, trips]);
 
@@ -343,21 +342,100 @@ const getPeopleLabel = (count: number) => {
 
   const selectedTripDays = selectedTrip ? getTripDays(selectedTrip) : null;
   const selectedStatusMeta = selectedTrip ? getStatusMeta(selectedTrip.status) : null;
-  const ownerParticipant = useMemo(
-    () => participants.find((participant) => participant.isOwner),
-    [participants]
+  
+  const scheduleActivityCount = useMemo(
+    () => scheduleDays.reduce((sum, day) => sum + day.activities.length, 0),
+    [scheduleDays]
+  );
+
+  const applyScheduleMutation = useCallback(
+    (response: { days: TripScheduleDayDto[]; totalCost: number | null; participants?: TripParticipantDto[] }) => {
+      setScheduleDays(response.days);
+      if (response.participants?.length) {
+        setParticipants(response.participants);
+      }
+      setSelectedTrip((current) =>
+        current ? { ...current, totalCost: response.totalCost ?? current.totalCost } : current
+      );
+    },
+    []
+  );
+
+  const handleAddScheduleActivity = useCallback(
+    async (dayId: string) => {
+      if (!accessToken || !selectedTrip) return;
+      try {
+        setScheduleSaving(true);
+        const response = await createTripScheduleActivity(accessToken, selectedTrip.id, dayId, {
+          name: 'Nowa aktywność',
+          time: '12:00',
+          description: 'Opis aktywności',
+          category: 'inne',
+          location: '',
+          cost: 0,
+        });
+        applyScheduleMutation(response);
+        await loadTrips('refresh');
+      } catch (error) {
+        Alert.alert('Nie udało się dodać punktu', error instanceof Error ? error.message : 'Spróbuj ponownie.');
+      } finally {
+        setScheduleSaving(false);
+      }
+    },
+    [accessToken, applyScheduleMutation, loadTrips, selectedTrip]
+  );
+
+  const handleUpdateScheduleActivity = useCallback(
+    async (
+      activityId: string,
+      payload: { name: string; time: string; description: string; category: string; location: string; cost: number; }
+    ) => {
+      if (!accessToken || !selectedTrip) return;
+      try {
+        setScheduleSaving(true);
+        const response = await updateTripScheduleActivity(accessToken, selectedTrip.id, activityId, payload);
+        applyScheduleMutation(response);
+        await loadTrips('refresh');
+      } catch (error) {
+        Alert.alert('Nie udało się zapisać zmian', error instanceof Error ? error.message : 'Spróbuj ponownie.');
+      } finally {
+        setScheduleSaving(false);
+      }
+    },
+    [accessToken, applyScheduleMutation, loadTrips, selectedTrip]
+  );
+
+  const handleDeleteScheduleActivity = useCallback(
+    async (activityId: string) => {
+      if (!accessToken || !selectedTrip) return;
+      try {
+        setScheduleSaving(true);
+        const response = await deleteTripScheduleActivity(accessToken, selectedTrip.id, activityId);
+        applyScheduleMutation(response);
+        await loadTrips('refresh');
+      } catch (error) {
+        Alert.alert('Nie udało się usunąć punktu', error instanceof Error ? error.message : 'Spróbuj ponownie.');
+      } finally {
+        setScheduleSaving(false);
+      }
+    },
+    [accessToken, applyScheduleMutation, loadTrips, selectedTrip]
   );
 
   const handleAddParticipant = useCallback(
     async (friend: FriendProfile) => {
       if (!accessToken || !selectedTrip) return;
-
       try {
         setActionProfileId(friend.id);
-        await addTripParticipant(accessToken, selectedTrip.id, friend.id);
-        const participantsResponse = await getTripParticipants(accessToken, selectedTrip.id);
-        setParticipants(participantsResponse.participants);
-        setSelectedTrip((current) => current ? { ...current, participantsCount: participantsResponse.count } : current);
+        const response = await addTripParticipant(accessToken, selectedTrip.id, friend.id);
+        if (response.participants?.length) {
+          setParticipants(response.participants);
+          setSelectedTrip((current) => current ? { ...current, participantsCount: response.participants!.length } : current);
+        } else {
+          const participantsResponse = await getTripParticipants(accessToken, selectedTrip.id);
+          setParticipants(participantsResponse.participants);
+          setSelectedTrip((current) => current ? { ...current, participantsCount: participantsResponse.count } : current);
+        }
         await loadTrips('refresh');
       } catch (error) {
         Alert.alert('Nie udało się dodać uczestnika', error instanceof Error ? error.message : 'Spróbuj ponownie.');
@@ -371,7 +449,6 @@ const getPeopleLabel = (count: number) => {
   const handleRemoveParticipant = useCallback(
     (participant: TripParticipantDto) => {
       if (!accessToken || !selectedTrip || participant.isOwner) return;
-
       Alert.alert(
         'Usunąć uczestnika?',
         `${participant.displayName} nie będzie już przypisany do tej wycieczki.`,
@@ -383,10 +460,15 @@ const getPeopleLabel = (count: number) => {
             onPress: async () => {
               try {
                 setActionProfileId(participant.profileId);
-                await removeTripParticipant(accessToken, selectedTrip.id, participant.profileId);
-                const participantsResponse = await getTripParticipants(accessToken, selectedTrip.id);
-                setParticipants(participantsResponse.participants);
-                setSelectedTrip((current) => current ? { ...current, participantsCount: participantsResponse.count } : current);
+                const response = await removeTripParticipant(accessToken, selectedTrip.id, participant.profileId);
+                if (response.participants?.length !== undefined) {
+                  setParticipants(response.participants);
+                  setSelectedTrip((current) => current ? { ...current, participantsCount: response.participants!.length } : current);
+                } else {
+                  const participantsResponse = await getTripParticipants(accessToken, selectedTrip.id);
+                  setParticipants(participantsResponse.participants);
+                  setSelectedTrip((current) => current ? { ...current, participantsCount: participantsResponse.count } : current);
+                }
                 await loadTrips('refresh');
               } catch (error) {
                 Alert.alert('Nie udało się usunąć uczestnika', error instanceof Error ? error.message : 'Spróbuj ponownie.');
@@ -405,7 +487,6 @@ const getPeopleLabel = (count: number) => {
     const statusMeta = getStatusMeta(trip.status);
     const days = getTripDays(trip);
     const isOwner = trip.accessRole === 'owner';
-
     return (
       <TouchableOpacity
         key={trip.id}
@@ -425,7 +506,6 @@ const getPeopleLabel = (count: number) => {
               <Text style={styles.accessBadgeText}>{isOwner ? 'Właściciel' : 'Uczestnik'}</Text>
             </View>
           </View>
-
           <View style={styles.tripImageTextBox}>
             <Text style={styles.destination} numberOfLines={2}>{trip.destination}</Text>
             <Text style={styles.tripDates}>{formatTripRange(trip)}</Text>
@@ -444,7 +524,7 @@ const getPeopleLabel = (count: number) => {
             </View>
             <View style={[styles.metaPill, { backgroundColor: currentColors.background }]}> 
               <Ionicons name="wallet-outline" size={16} color={Colors.brand.yellow} />
-              <Text style={[styles.metaPillText, { color: currentColors.text }]}>{formatBudget(trip.totalBudget || (trip as any).total_budget)}</Text>
+              <Text style={[styles.metaPillText, { color: currentColors.text }]}>{formatBudget(getTripDisplayCost(trip))}</Text>
             </View>
           </View>
 
@@ -457,7 +537,7 @@ const getPeopleLabel = (count: number) => {
             </View>
             <TouchableOpacity 
               style={styles.manageButton}
-              onPress={() => handleTripPress(trip)} // <--- TUTAJ TO ZMIENIAMY
+              onPress={() => handleTripPress(trip)} 
               activeOpacity={0.8}
             >
               <Text style={styles.manageButtonText}>Pokaż plan podróży</Text>
@@ -481,9 +561,15 @@ const getPeopleLabel = (count: number) => {
             <Text style={[styles.personName, { color: currentColors.text }]} numberOfLines={1}>{participant.displayName}</Text>
             {participant.isOwner && <Text style={styles.ownerBadge}>Właściciel</Text>}
           </View>
-          <Text style={[styles.personSubtitle, { color: currentColors.subtext }]}>{participant.isOwner ? 'Organizator wycieczki' : 'Uczestnik wycieczki'}</Text>
+          <Text style={[styles.personSubtitle, { color: currentColors.subtext }]}>
+            {participant.isOwner ? 'Organizator wycieczki' : 'Uczestnik wycieczki'}
+          </Text>
+          <Text style={[styles.personCost, { color: Colors.brand.blue }]}>
+            {formatParticipantCost(participant.amountOwed, participant.currency)}
+          </Text>
         </View>
-        {canRemove && (
+        {canRemove && 
+        (
           <TouchableOpacity
             style={[styles.smallActionButton, styles.removeButton]}
             onPress={() => handleRemoveParticipant(participant)}
@@ -498,7 +584,6 @@ const getPeopleLabel = (count: number) => {
 
   const renderFriendCandidate = (friend: FriendProfile) => {
     const isActionLoading = actionProfileId === friend.id;
-
     return (
       <View key={friend.id} style={[styles.personRow, { borderColor: currentColors.border }]}> 
         <ProfileAvatar uri={friend.avatar} label={friend.displayName} color={Colors.brand.green} />
@@ -519,35 +604,44 @@ const getPeopleLabel = (count: number) => {
 
   const renderDetailsTab = () => {
     if (!selectedTrip || !selectedStatusMeta) return null;
-
     return (
       <View>
         <View style={styles.detailsGrid}>
-          <View style={[styles.detailsCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
-            <Ionicons name="calendar-outline" size={20} color={Colors.brand.blue} />
-            <Text style={[styles.detailsValue, { color: currentColors.text }]}>{formatTripRange(selectedTrip)}</Text>
-            <Text style={[styles.detailsLabel, { color: currentColors.subtext }]}>termin</Text>
+          <View style={styles.detailsGridRow}>
+            <View style={[styles.detailsCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}>
+              <Ionicons name="calendar-outline" size={20} color={Colors.brand.blue} />
+              <Text style={[styles.detailsValue, { color: currentColors.text }]}>{formatTripRange(selectedTrip)}</Text>
+              <Text style={[styles.detailsLabel, { color: currentColors.subtext }]}>termin</Text>
+            </View>
+            <View style={[styles.detailsCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}>
+              <Ionicons name="time-outline" size={20} color={Colors.brand.green} />
+              <Text style={[styles.detailsValue, { color: currentColors.text }]}>{formatDaysLabel(selectedTripDays)}</Text>
+              <Text style={[styles.detailsLabel, { color: currentColors.subtext }]}>długość</Text>
+            </View>
           </View>
-          <View style={[styles.detailsCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
-            <Ionicons name="time-outline" size={20} color={Colors.brand.green} />
-            <Text style={[styles.detailsValue, { color: currentColors.text }]}>{formatDaysLabel(selectedTripDays)}</Text>
-            <Text style={[styles.detailsLabel, { color: currentColors.subtext }]}>długość</Text>
-          </View>
-          <View style={[styles.detailsCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
-            <Ionicons name="wallet-outline" size={20} color={Colors.brand.yellow} />
-            <Text style={[styles.detailsValue, { color: currentColors.text }]}>{formatBudget(selectedTrip.totalBudget || (selectedTrip as any).total_budget)}</Text>
-            <Text style={[styles.detailsLabel, { color: currentColors.subtext }]}>budżet</Text>
-          </View>
-          <View style={[styles.detailsCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
-            <Ionicons name={selectedTrip.accessRole === 'owner' ? 'shield-checkmark-outline' : 'people-outline'} size={20} color={selectedTrip.accessRole === 'owner' ? Colors.brand.blue : Colors.brand.green} />
-            <Text style={[styles.detailsValue, { color: currentColors.text }]}>{selectedTrip.accessRole === 'owner' ? 'Organizator' : 'Uczestnik'}</Text>
-            <Text style={[styles.detailsLabel, { color: currentColors.subtext }]}>Twoja rola</Text>
+          <View style={styles.detailsGridRow}>
+            <View style={[styles.detailsCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}>
+              <Ionicons name="wallet-outline" size={20} color={Colors.brand.yellow} />
+              <Text style={[styles.detailsValue, { color: currentColors.text }]}>{formatBudget(getTripDisplayCost(selectedTrip))}</Text>
+              <Text style={[styles.detailsLabel, { color: currentColors.subtext }]}>koszt</Text>
+            </View>
+            <View style={[styles.detailsCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}>
+              <Ionicons
+                name={selectedTrip.accessRole === 'owner' ? 'shield-checkmark-outline' : 'people-outline'}
+                size={20}
+                color={selectedTrip.accessRole === 'owner' ? Colors.brand.blue : Colors.brand.green}
+              />
+              <Text style={[styles.detailsValue, { color: currentColors.text }]}>
+                {selectedTrip.accessRole === 'owner' ? 'Organizator' : 'Uczestnik'}
+              </Text>
+              <Text style={[styles.detailsLabel, { color: currentColors.subtext }]}>Twoja rola</Text>
+            </View>
           </View>
         </View>
 
-        <View style={[styles.descriptionCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
+        <View style={[styles.descriptionCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}>
           <View style={styles.descriptionHeader}>
-            <View style={[styles.descriptionIcon, { backgroundColor: selectedStatusMeta.color }]}> 
+            <View style={[styles.descriptionIcon, { backgroundColor: selectedStatusMeta.color }]}>
               <Ionicons name="information-outline" size={18} color="#FFFFFF" />
             </View>
             <View style={styles.descriptionTitleBox}>
@@ -560,57 +654,101 @@ const getPeopleLabel = (count: number) => {
           </Text>
         </View>
 
-<TouchableOpacity 
-  style={[styles.descriptionCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}
-  onPress={() => setModalTab('participants')}
-  activeOpacity={0.7}
->
-  <View style={styles.descriptionHeader}>
-    <View style={[styles.descriptionIcon, { backgroundColor: Colors.brand.green }]}> 
-      <Ionicons name="people-outline" size={18} color="#FFFFFF" />
-    </View>
-    <View style={styles.descriptionTitleBox}>
-      <Text style={[styles.descriptionTitle, { color: currentColors.text }]}>Uczestnicy</Text>
-      <Text style={[styles.descriptionSubtitle, { color: currentColors.subtext }]}>{participants.length} osób w planie</Text>
-    </View>
-    <Ionicons name="chevron-forward" size={20} color={currentColors.subtext} />
-  </View>
-
-  {participantsLoading ? (
-    <ActivityIndicator color={Colors.brand.blue} />
-  ) : (
-    <View style={{ gap: 16 }}>
-      {/* Sekcja Organizatora */}
-      <View>
-        <Text style={[styles.descriptionSubtitle, { color: currentColors.subtext, marginBottom: 8, fontSize: 11 }]}>ORGANIZATOR:</Text>
-        {participants.filter(p => p.isOwner).map(p => (
-          <View key={p.profileId} style={styles.participantRow}>
-            <ProfileAvatar uri={p.avatar} label={p.displayName || "Użytkownik"} size={40} color={Colors.brand.green} />
-            <Text style={[styles.participantName, { color: currentColors.text }]}>{p.displayName}</Text>
+        <TouchableOpacity 
+          style={[styles.descriptionCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}
+          onPress={() => setModalTab('participants')}
+          activeOpacity={0.7}
+        >
+          <View style={styles.descriptionHeader}>
+            <View style={[styles.descriptionIcon, { backgroundColor: Colors.brand.green }]}> 
+              <Ionicons name="people-outline" size={18} color="#FFFFFF" />
+            </View>
+            <View style={styles.descriptionTitleBox}>
+              <Text style={[styles.descriptionTitle, { color: currentColors.text }]}>Uczestnicy</Text>
+              <Text style={[styles.descriptionSubtitle, { color: currentColors.subtext }]}>{participants.length} osób w planie</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={currentColors.subtext} />
           </View>
-        ))}
-      </View>
 
-      {/* Sekcja Uczestników (tylko 3 pierwszych dla podglądu) */}
-      <View>
-        <Text style={[styles.descriptionSubtitle, { color: currentColors.subtext, marginBottom: 8, fontSize: 11 }]}>UCZESTNICY:</Text>
-        {participants.filter(p => !p.isOwner).slice(0, 3).map(p => (
-          <View key={p.profileId} style={styles.participantRow}>
-            <ProfileAvatar uri={p.avatar} label={p.displayName} size={36} color={Colors.brand.blue} />
-            <Text style={[styles.participantName, { color: currentColors.text }]}>{p.displayName}</Text>
-          </View>
-        ))}
-        {participants.filter(p => !p.isOwner).length > 3 && (
-          <Text style={{ color: Colors.brand.blue, fontSize: 12, fontWeight: '700', marginTop: 4 }}>
-            + {participants.filter(p => !p.isOwner).length - 3} więcej...
-          </Text>
-        )}
-      </View>
-    </View>
-  )}
-</TouchableOpacity>
+          {participantsLoading ? (
+            <ActivityIndicator color={Colors.brand.blue} />
+          ) : (
+            <View style={{ gap: 16 }}>
+              <View>
+                <Text style={[styles.descriptionSubtitle, { color: currentColors.subtext, marginBottom: 8, fontSize: 11 }]}>ORGANIZATOR:</Text>
+                {participants.filter(p => p.isOwner).map(p => (
+                  <View key={p.profileId} style={styles.participantRow}>
+                    <ProfileAvatar uri={p.avatar} label={p.displayName || "Użytkownik"} size={40} color={Colors.brand.green} />
+                    <Text style={[styles.participantName, { color: currentColors.text }]}>{p.displayName}</Text>
+                  </View>
+                ))}
+              </View>
 
-        {/* --- PRZYCISK DO OTWARCIA HARMONOGRAMU --- */}
+              <View>
+                <Text style={[styles.descriptionSubtitle, { color: currentColors.subtext, marginBottom: 8, fontSize: 11 }]}>UCZESTNICY:</Text>
+                {participants.filter(p => !p.isOwner).slice(0, 3).map(p => (
+                  <View key={p.profileId} style={styles.participantRow}>
+                    <ProfileAvatar uri={p.avatar} label={p.displayName} size={36} color={Colors.brand.blue} />
+                    <Text style={[styles.participantName, { color: currentColors.text }]}>{p.displayName}</Text>
+                  </View>
+                ))}
+                {participants.filter(p => !p.isOwner).length > 3 && (
+                  <Text style={{ color: Colors.brand.blue, fontSize: 12, fontWeight: '700', marginTop: 4 }}>
+                    + {participants.filter(p => !p.isOwner).length - 3} więcej...
+                  </Text>
+                )}
+              </View>
+            </View>
+          )}
+        </TouchableOpacity>
+
+        {/* --- HARMONOGRAM Z MAIN --- */}
+        <View style={[styles.scheduleCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}>
+          <TouchableOpacity
+            style={styles.scheduleHeader}
+            activeOpacity={0.85}
+            onPress={() => setScheduleExpanded((value) => !value)}
+          >
+            <View style={styles.scheduleHeaderLeft}>
+              <Ionicons name="list-outline" size={22} color={Colors.brand.blue} />
+              <View style={styles.scheduleHeaderTextBox}>
+                <Text style={[styles.scheduleTitle, { color: currentColors.text }]}>Harmonogram z bazy</Text>
+                <Text style={[styles.scheduleSubtitle, { color: currentColors.subtext }]}>
+                  {scheduleLoading
+                    ? 'Ładowanie planu dnia po dniu...'
+                    : `${scheduleDays.length} dni · ${scheduleActivityCount} punktów`}
+                </Text>
+              </View>
+            </View>
+            <Ionicons
+              name={scheduleExpanded ? 'chevron-up' : 'chevron-down'}
+              size={20}
+              color={currentColors.subtext}
+            />
+          </TouchableOpacity>
+
+          {scheduleExpanded && (
+            <View style={styles.scheduleBody}>
+              {selectedTrip.accessRole !== 'owner' && (
+                <Text style={[styles.readOnlyText, { color: currentColors.subtext, marginBottom: 12 }]}>
+                  Możesz przeglądać harmonogram. Edycja dostępna tylko dla organizatora.
+                </Text>
+              )}
+              <TripScheduleSection
+                days={scheduleDays}
+                loading={scheduleLoading}
+                editable={selectedTrip.accessRole === 'owner'}
+                saving={scheduleSaving}
+                currentColors={currentColors}
+                onAddActivity={handleAddScheduleActivity}
+                onUpdateActivity={handleUpdateScheduleActivity}
+                onDeleteActivity={handleDeleteScheduleActivity}
+              />
+            </View>
+          )}
+        </View>
+
+        {/* --- PRZYCISK DO OTWARCIA ZAAWANSOWANEGO HARMONOGRAMU --- */}
         <TouchableOpacity
           style={{
             backgroundColor: Colors.brand.blue,
@@ -628,7 +766,7 @@ const getPeopleLabel = (count: number) => {
           }}
         >
           <Ionicons name="map-outline" size={20} color="#fff" />
-          <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>Otwórz Harmonogram wycieczki</Text>
+          <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>Otwórz edytor planu</Text>
         </TouchableOpacity>
 
       </View>
@@ -637,7 +775,6 @@ const getPeopleLabel = (count: number) => {
 
   const renderParticipantsTab = () => {
     if (!selectedTrip) return null;
-
     return (
       <View>
         {selectedTrip.accessRole !== 'owner' && (
@@ -648,11 +785,11 @@ const getPeopleLabel = (count: number) => {
         )}
 
         <View style={styles.modalSectionHeader}>
-  <Text style={[styles.modalSectionTitle, { color: currentColors.text }]}>Obecni uczestnicy</Text>
-  <Text style={[styles.modalSectionCount, { color: currentColors.subtext }]}>
-    {getPeopleLabel(participants.length)}
-  </Text>
-</View>
+          <Text style={[styles.modalSectionTitle, { color: currentColors.text }]}>Obecni uczestnicy</Text>
+          <Text style={[styles.modalSectionCount, { color: currentColors.subtext }]}>
+            {getPeopleLabel(participants.length)}
+          </Text>
+        </View>
 
         <View style={[styles.peopleCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 
           {participantsLoading ? (
@@ -729,9 +866,6 @@ const getPeopleLabel = (count: number) => {
             </View>
           </View>
         <View style={styles.scrollContent}>
-
-
-          
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tripTabsContent} style={styles.tripTabs}>
             {tripListFilters.map((filter) => {

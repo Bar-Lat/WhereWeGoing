@@ -7,9 +7,21 @@ const {
   getParticipantByTripAndUser,
   addParticipant,
   deleteParticipant,
+  updateAllParticipantsAmountOwed,
 } = require('../repositories/tripParticipants.repository');
 const { resolveAvatarUrl } = require('./friends.controller'); // lub ścieżka do Twojego pliku
 
+const {
+  getActivitiesTotalCostByTripId,
+  getActivitiesTotalCostsByTripIds,
+  getActivitiesByTripId,
+  getActivityWithDay,
+  getNextOrderIndexForDay,
+  createActivity,
+  updateActivityById,
+  deleteActivityById,
+} = require('../repositories/activities.repository');
+const { getTripDaysByTripId, getTripDayById } = require('../repositories/tripDays.repository');
 const {
   getFriendRowsBetweenProfiles,
   getProfileById,
@@ -31,13 +43,14 @@ const getDisplayName = (profile) => {
   return name || 'Uzytkownik WhereWeGoing';
 };
 
-const normalizeTrip = (trip, userId, participantsCount = 0) => ({
+const normalizeTrip = (trip, userId, participantsCount = 0, totalCost = null) => ({
   id: trip.id,
   ownerId: trip.owner_id,
   destination: trip.destination,
   startDate: trip.start_date,
   endDate: trip.end_date,
   totalBudget: trip.total_budget === null || trip.total_budget === undefined ? null : Number(trip.total_budget),
+  totalCost: totalCost !== null && totalCost !== undefined && Number(totalCost) > 0 ? Number(totalCost) : null,
   status: trip.status,
   imageUrl: trip.image_url,
   notes: trip.notes,
@@ -57,6 +70,8 @@ const normalizeParticipant = (profile, row, ownerId) => ({
   avatar: profile.avatar || null,
   role: profile.id === ownerId ? 'owner' : row?.role || 'participant',
   isOwner: profile.id === ownerId,
+  amountOwed: row?.amount_owed !== null && row?.amount_owed !== undefined ? Number(row.amount_owed) : null,
+  currency: row?.currency || 'PLN',
 });
 
 const getVisibleTrip = async (tripId, userId) => {
@@ -87,6 +102,38 @@ const getVisibleTrip = async (tripId, userId) => {
   return { trip, error: null, statusCode: 200, accessRole: 'participant' };
 };
 
+const recalculateTripCostSplit = async (tripId) => {
+  const { data: trip, error: tripError } = await getTripById(tripId);
+  if (tripError || !trip) {
+    return { error: tripError || new Error('Wycieczka nie znaleziona') };
+  }
+
+  const { data: participantRows, error: participantsError } = await getParticipantsByTripId(tripId);
+  if (participantsError) {
+    return { error: participantsError };
+  }
+
+  const rows = participantRows || [];
+  if (rows.length === 0) {
+    return { amountPerPerson: 0, participantCount: 0, totalCost: 0 };
+  }
+
+  const { total: activitiesTotal, error: activitiesError } = await getActivitiesTotalCostByTripId(tripId);
+  if (activitiesError) {
+    return { error: activitiesError };
+  }
+
+  const totalCost = activitiesTotal ?? Number(trip.total_budget) ?? 0;
+  const amountPerPerson = totalCost / rows.length;
+  const { error: updateError } = await updateAllParticipantsAmountOwed(tripId, amountPerPerson);
+
+  if (updateError) {
+    return { error: updateError };
+  }
+
+  return { amountPerPerson, participantCount: rows.length, totalCost };
+};
+
 const buildParticipantsList = async (trip) => {
   const { data: participantRows, error } = await getParticipantsByTripId(trip.id);
 
@@ -107,9 +154,11 @@ const buildParticipantsList = async (trip) => {
   // Zbieramy listę surowych uczestników
   const rawParticipants = [];
   
+  const ownerRow = safeParticipantRows.find((row) => row.user_id === trip.owner_id);
   const ownerProfile = profileById.get(trip.owner_id);
   if (ownerProfile) {
     rawParticipants.push(normalizeParticipant(ownerProfile, null, trip.owner_id));
+    participants.push(normalizeParticipant(ownerProfile, ownerRow || null, trip.owner_id));
   }
 
   safeParticipantRows.forEach((row) => {
@@ -169,11 +218,17 @@ const getTrips = async (req, res, next) => {
       return acc;
     }, {});
 
+    const { totalsByTripId, error: totalsError } = await getActivitiesTotalCostsByTripIds(tripIds);
+    if (totalsError) {
+      return res.status(500).json({ message: totalsError.message });
+    }
+
     const normalizedTrips = trips
       .map((trip) => {
         const uniqueParticipantIds = participantsByTripId[trip.id] || new Set();
         uniqueParticipantIds.add(trip.owner_id);
-        return normalizeTrip(trip, userId, uniqueParticipantIds.size);
+        const activityTotal = totalsByTripId[trip.id] ?? null;
+        return normalizeTrip(trip, userId, uniqueParticipantIds.size, activityTotal);
       })
       .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
 
@@ -205,7 +260,8 @@ const getTripByIdHandler = async (req, res, next) => {
     const { data: participantRows } = await getParticipantsByTripId(trip.id);
     const participantIds = new Set((participantRows || []).map((row) => row.user_id).filter(Boolean));
     participantIds.add(trip.owner_id);
-    return res.status(200).json({ trip: normalizeTrip(trip, userId, participantIds.size) });
+    const { total: activityTotal } = await getActivitiesTotalCostByTripId(trip.id);
+    return res.status(200).json({ trip: normalizeTrip(trip, userId, participantIds.size, activityTotal) });
   } catch (err) {
     return next(err);
   }
@@ -348,11 +404,20 @@ const addTripParticipantHandler = async (req, res, next) => {
       return res.status(500).json({ message: 'Nie udalo sie dodac uczestnika' });
     }
 
-    const participant = normalizeParticipant(profile, participantRow, trip.owner_id);
+    const splitResult = await recalculateTripCostSplit(id);
+    if (splitResult.error) {
+      return res.status(500).json({ message: 'Uczestnik dodany, ale nie udalo sie przeliczyc kosztow' });
+    }
+
+    const { participants } = await buildParticipantsList(trip);
+    const participant = participants.find((item) => item.profileId === profileId)
+      || normalizeParticipant(profile, participantRow, trip.owner_id);
 
     return res.status(201).json({
       message: 'Uczestnik zostal dodany.',
       participant,
+      amountPerPerson: splitResult.amountPerPerson,
+      participants,
     });
   } catch (err) {
     return next(err);
@@ -391,7 +456,336 @@ const removeTripParticipantHandler = async (req, res, next) => {
       return res.status(500).json({ message: 'Nie udalo sie usunac uczestnika' });
     }
 
-    return res.status(200).json({ message: 'Uczestnik zostal usuniety.' });
+    const splitResult = await recalculateTripCostSplit(id);
+    if (splitResult.error) {
+      return res.status(500).json({ message: 'Uczestnik usuniety, ale nie udalo sie przeliczyc kosztow' });
+    }
+
+    const { participants } = await buildParticipantsList(trip);
+
+    return res.status(200).json({
+      message: 'Uczestnik zostal usuniety.',
+      amountPerPerson: splitResult.amountPerPerson,
+      participants,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+const formatActivityTime = (value) => {
+  if (!value || typeof value !== 'string') {
+    return '09:00';
+  }
+
+  if (value.includes('T')) {
+    const timePart = value.split('T')[1] || '';
+    return timePart.slice(0, 5) || '09:00';
+  }
+
+  return value.slice(0, 5);
+};
+
+const buildActivityTimestamp = (dayDate, timeValue) => {
+  const safeDate = typeof dayDate === 'string' ? dayDate.slice(0, 10) : '1970-01-01';
+  const safeTime = formatActivityTime(timeValue);
+  return `${safeDate}T${safeTime}:00`;
+};
+
+const normalizeScheduleActivity = (row) => ({
+  id: row.id,
+  dayId: row.day_id,
+  time: formatActivityTime(row.time),
+  name: row.name || 'Aktywność',
+  description: row.description || '',
+  category: row.type || 'inne',
+  location: row.location || '',
+  cost: row.cost !== null && row.cost !== undefined ? Number(row.cost) : 0,
+  orderIndex: typeof row.order_index === 'number' ? row.order_index : 0,
+});
+
+const buildSchedulePayload = async (tripId) => {
+  const { data: dayRows, error: daysError } = await getTripDaysByTripId(tripId);
+  if (daysError) {
+    return { error: daysError };
+  }
+
+  const { data: activityRows, error: activitiesError } = await getActivitiesByTripId(tripId);
+  if (activitiesError) {
+    return { error: activitiesError };
+  }
+
+  const activitiesByDayId = (activityRows || []).reduce((acc, row) => {
+    if (!acc[row.day_id]) {
+      acc[row.day_id] = [];
+    }
+    acc[row.day_id].push(normalizeScheduleActivity(row));
+    return acc;
+  }, {});
+
+  const days = (dayRows || []).map((day) => ({
+    id: day.id,
+    dayNumber: day.day_number,
+    date: day.date,
+    title: day.title || '',
+    activities: (activitiesByDayId[day.id] || []).sort((a, b) => a.orderIndex - b.orderIndex),
+  }));
+
+  const totalCost = days.reduce(
+    (sum, day) => sum + day.activities.reduce((daySum, activity) => daySum + (Number(activity.cost) || 0), 0),
+    0
+  );
+
+  return { days, totalCost: totalCost > 0 ? totalCost : null };
+};
+
+const getTripScheduleHandler = async (req, res, next) => {
+  try {
+    const userId = await getUserIdFromRequest(req);
+    if (!userId) {
+      return res.status(401).json({ message: 'Brak autoryzacji' });
+    }
+
+    const { id } = req.params;
+    const { trip, error, statusCode } = await getVisibleTrip(id, userId);
+
+    if (error) {
+      return res.status(statusCode).json({ message: error.message });
+    }
+
+    if (!trip) {
+      const message = statusCode === 404 ? 'Wycieczka nie znaleziona' : 'Brak dostepu do tej wycieczki';
+      return res.status(statusCode).json({ message });
+    }
+
+    const schedule = await buildSchedulePayload(id);
+    if (schedule.error) {
+      return res.status(500).json({ message: schedule.error.message || 'Nie udalo sie pobrac harmonogramu' });
+    }
+
+    return res.status(200).json({
+      days: schedule.days,
+      totalCost: schedule.totalCost,
+      accessRole: trip.owner_id === userId ? 'owner' : 'participant',
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+const createTripActivityHandler = async (req, res, next) => {
+  try {
+    const userId = await getUserIdFromRequest(req);
+    if (!userId) {
+      return res.status(401).json({ message: 'Brak autoryzacji' });
+    }
+
+    const { id, dayId } = req.params;
+    const { data: trip, error: tripError } = await getTripById(id);
+
+    if (tripError) {
+      return res.status(500).json({ message: tripError.message });
+    }
+
+    if (!trip) {
+      return res.status(404).json({ message: 'Wycieczka nie znaleziona' });
+    }
+
+    if (trip.owner_id !== userId) {
+      return res.status(403).json({ message: 'Tylko wlasciciel moze edytowac harmonogram' });
+    }
+
+    const { data: day, error: dayError } = await getTripDayById(dayId);
+    if (dayError) {
+      return res.status(500).json({ message: dayError.message });
+    }
+
+    if (!day || day.trip_id !== id) {
+      return res.status(404).json({ message: 'Nie znaleziono dnia wycieczki' });
+    }
+
+    const name = typeof req.body?.name === 'string' && req.body.name.trim() ? req.body.name.trim() : 'Nowa aktywnosc';
+    const time = typeof req.body?.time === 'string' ? req.body.time : '12:00';
+    const description = typeof req.body?.description === 'string' ? req.body.description : '';
+    const category = typeof req.body?.category === 'string' ? req.body.category : 'inne';
+    const location = typeof req.body?.location === 'string' ? req.body.location : '';
+    const cost = Number(req.body?.cost) || 0;
+
+    const { orderIndex, error: orderError } = await getNextOrderIndexForDay(dayId);
+    if (orderError) {
+      return res.status(500).json({ message: orderError.message });
+    }
+
+    const { data: created, error: createError } = await createActivity({
+      day_id: dayId,
+      time: buildActivityTimestamp(day.date, time),
+      name,
+      type: category,
+      description,
+      location,
+      coordinates: null,
+      cost,
+      duration_minutes: null,
+      order_index: orderIndex,
+    });
+
+    if (createError || !created) {
+      return res.status(500).json({ message: createError?.message || 'Nie udalo sie dodac aktywnosci' });
+    }
+
+    const splitResult = await recalculateTripCostSplit(id);
+    if (splitResult.error) {
+      return res.status(500).json({ message: 'Aktywnosc dodana, ale nie udalo sie przeliczyc kosztow' });
+    }
+
+    const schedule = await buildSchedulePayload(id);
+    const { participants } = await buildParticipantsList(trip);
+
+    return res.status(201).json({
+      message: 'Aktywnosc zostala dodana.',
+      activity: normalizeScheduleActivity(created),
+      days: schedule.days,
+      totalCost: schedule.totalCost,
+      amountPerPerson: splitResult.amountPerPerson,
+      participants,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+const updateTripActivityHandler = async (req, res, next) => {
+  try {
+    const userId = await getUserIdFromRequest(req);
+    if (!userId) {
+      return res.status(401).json({ message: 'Brak autoryzacji' });
+    }
+
+    const { id, activityId } = req.params;
+    const { data: trip, error: tripError } = await getTripById(id);
+
+    if (tripError) {
+      return res.status(500).json({ message: tripError.message });
+    }
+
+    if (!trip) {
+      return res.status(404).json({ message: 'Wycieczka nie znaleziona' });
+    }
+
+    if (trip.owner_id !== userId) {
+      return res.status(403).json({ message: 'Tylko wlasciciel moze edytowac harmonogram' });
+    }
+
+    const { activity, day, error: activityError } = await getActivityWithDay(activityId);
+    if (activityError) {
+      return res.status(500).json({ message: activityError.message });
+    }
+
+    if (!activity || !day || day.trip_id !== id) {
+      return res.status(404).json({ message: 'Nie znaleziono aktywnosci' });
+    }
+
+    const updates = {};
+    if (typeof req.body?.name === 'string' && req.body.name.trim()) {
+      updates.name = req.body.name.trim();
+    }
+    if (typeof req.body?.description === 'string') {
+      updates.description = req.body.description;
+    }
+    if (typeof req.body?.category === 'string') {
+      updates.type = req.body.category;
+    }
+    if (typeof req.body?.location === 'string') {
+      updates.location = req.body.location;
+    }
+    if (req.body?.cost !== undefined && req.body?.cost !== null) {
+      updates.cost = Number(req.body.cost) || 0;
+    }
+    if (typeof req.body?.time === 'string') {
+      updates.time = buildActivityTimestamp(day.date, req.body.time);
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ message: 'Brak danych do aktualizacji' });
+    }
+
+    const { data: updated, error: updateError } = await updateActivityById(activityId, updates);
+    if (updateError || !updated) {
+      return res.status(500).json({ message: updateError?.message || 'Nie udalo sie zaktualizowac aktywnosci' });
+    }
+
+    const splitResult = await recalculateTripCostSplit(id);
+    if (splitResult.error) {
+      return res.status(500).json({ message: 'Aktywnosc zaktualizowana, ale nie udalo sie przeliczyc kosztow' });
+    }
+
+    const schedule = await buildSchedulePayload(id);
+    const { participants } = await buildParticipantsList(trip);
+
+    return res.status(200).json({
+      message: 'Aktywnosc zostala zaktualizowana.',
+      activity: normalizeScheduleActivity(updated),
+      days: schedule.days,
+      totalCost: schedule.totalCost,
+      amountPerPerson: splitResult.amountPerPerson,
+      participants,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+const deleteTripActivityHandler = async (req, res, next) => {
+  try {
+    const userId = await getUserIdFromRequest(req);
+    if (!userId) {
+      return res.status(401).json({ message: 'Brak autoryzacji' });
+    }
+
+    const { id, activityId } = req.params;
+    const { data: trip, error: tripError } = await getTripById(id);
+
+    if (tripError) {
+      return res.status(500).json({ message: tripError.message });
+    }
+
+    if (!trip) {
+      return res.status(404).json({ message: 'Wycieczka nie znaleziona' });
+    }
+
+    if (trip.owner_id !== userId) {
+      return res.status(403).json({ message: 'Tylko wlasciciel moze edytowac harmonogram' });
+    }
+
+    const { activity, day, error: activityError } = await getActivityWithDay(activityId);
+    if (activityError) {
+      return res.status(500).json({ message: activityError.message });
+    }
+
+    if (!activity || !day || day.trip_id !== id) {
+      return res.status(404).json({ message: 'Nie znaleziono aktywnosci' });
+    }
+
+    const { error: deleteError } = await deleteActivityById(activityId);
+    if (deleteError) {
+      return res.status(500).json({ message: deleteError.message });
+    }
+
+    const splitResult = await recalculateTripCostSplit(id);
+    if (splitResult.error) {
+      return res.status(500).json({ message: 'Aktywnosc usunieta, ale nie udalo sie przeliczyc kosztow' });
+    }
+
+    const schedule = await buildSchedulePayload(id);
+    const { participants } = await buildParticipantsList(trip);
+
+    return res.status(200).json({
+      message: 'Aktywnosc zostala usunieta.',
+      days: schedule.days,
+      totalCost: schedule.totalCost,
+      amountPerPerson: splitResult.amountPerPerson,
+      participants,
+    });
   } catch (err) {
     return next(err);
   }
@@ -404,4 +798,8 @@ module.exports = {
   getTripParticipantsHandler,
   addTripParticipantHandler,
   removeTripParticipantHandler,
+  getTripScheduleHandler,
+  createTripActivityHandler,
+  updateTripActivityHandler,
+  deleteTripActivityHandler,
 };
