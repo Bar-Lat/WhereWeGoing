@@ -59,6 +59,8 @@ interface TripStore {
   isLoading: boolean;
   error: string | null;
   trips: TripDto[]; 
+  isEditingMode: boolean; // dodaj to
+  setIsEditingMode: (val: boolean) => void; // dodaj to
   setTrips: (trips: TripDto[]) => void;
   setFormData: (data: TripFormData) => void;
   setTripPlan: (plan: TripPlan) => void;
@@ -81,6 +83,8 @@ export const useTripStore = create<TripStore>((set) => ({
   isLoading: false,
   error: null,
   trips: [],
+  isEditingMode: false,
+  setIsEditingMode: (val) => set({ isEditingMode: val }),
   setTrips: (trips) => set({ trips }),
   setFormData: (data) => set({ formData: data }),
   setTripPlan: (plan) => set({ tripPlan: plan }),
@@ -88,7 +92,7 @@ export const useTripStore = create<TripStore>((set) => ({
   setLoading: (val) => set({ isLoading: val }),
   setError: (msg) => set({ error: msg }),
   
-  reset: () => set({ formData: null, tripPlan: null, savedTripId: null, isLoading: false, error: null }),
+  reset: () => set({ formData: null, tripPlan: null, savedTripId: null, isLoading: false, error: null, isEditingMode: false }),
   
   updateBudget: (newBudget) => set((state) => {
     if (!state.tripPlan) return state;
