@@ -14,9 +14,8 @@
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/HereWeGoLogo.png",
-        "backgroundImage": "./assets/images/HereWeGoLogo.png",
-        "monochromeImage": "./assets/images/HereWeGoLogo.png"
+        "foregroundImage": "./assets/images/HereWeGoAdaptiveLogo.png",
+        "monochromeImage": "./assets/images/HereWeGoAdaptiveLogo.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
