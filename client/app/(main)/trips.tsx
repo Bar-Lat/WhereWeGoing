@@ -980,51 +980,7 @@ export default function Trips() {
           )}
         </TouchableOpacity>
 
-        <View style={[styles.scheduleCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}>
-          <TouchableOpacity
-            style={styles.scheduleHeader}
-            activeOpacity={0.85}
-            onPress={() => setScheduleExpanded((value) => !value)}
-          >
-            <View style={styles.scheduleHeaderLeft}>
-              <Ionicons name="list-outline" size={22} color={Colors.brand.blue} />
-              <View style={styles.scheduleHeaderTextBox}>
-                <Text style={[styles.scheduleTitle, { color: currentColors.text }]}>Plan podróży</Text>
-                <Text style={[styles.scheduleSubtitle, { color: currentColors.subtext }]}>
-                  {scheduleLoading
-                    ? 'Ładowanie planu...'
-                    : `${scheduleDays.length} dni · ${scheduleActivityCount} punktów`}
-                </Text>
-              </View>
-            </View>
-            <Ionicons
-              name={scheduleExpanded ? 'chevron-up' : 'chevron-down'}
-              size={20}
-              color={currentColors.subtext}
-            />
-          </TouchableOpacity>
-
-          {scheduleExpanded && (
-            <View style={styles.scheduleBody}>
-              {scheduleIsReadOnly && (
-                <Text style={[styles.readOnlyText, { color: currentColors.subtext, marginBottom: 12 }]}>
-                  Harmonogram jest dostępny tylko do odczytu.
-                </Text>
-              )}
-              <TripScheduleSection
-                days={scheduleDays}
-                loading={scheduleLoading}
-                editable={!scheduleIsReadOnly}
-                saving={scheduleSaving}
-                currentColors={currentColors}
-                onAddActivity={handleAddScheduleActivity}
-                onUpdateActivity={handleUpdateScheduleActivity}
-                onDeleteActivity={handleDeleteScheduleActivity}
-              />
-            </View>
-          )}
-        </View>
-
+        
         {/* --- PRZYCISK DO OTWARCIA ZAAWANSOWANEGO HARMONOGRAMU --- */}
         <TouchableOpacity
           style={{

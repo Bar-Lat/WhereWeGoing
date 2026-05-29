@@ -92,15 +92,41 @@ export default function TripLoadingScreen() {
       try {
         if (!formData) throw new Error('Brak danych formularza');
         
+        // 1. Generowanie planu przez AI
         const plan = await generateTripPlan(formData, session?.access_token ?? undefined);
         
+        // --- 🛠️ FIX NA BŁĄD BAZY DANYCH (BIGINT) ---
+        // Baza danych odrzuca ułamki. Wymuszamy liczby całkowite dla wszystkich kosztów.
+        plan.estimatedTotalCost = Math.round(Number(plan.estimatedTotalCost) || 0);
+        
+        if (plan.days && Array.isArray(plan.days)) {
+          plan.days = plan.days.map(day => ({
+            ...day,
+            estimatedDayCost: Math.round(Number(day.estimatedDayCost) || 0),
+            activities: (day.activities || []).map(act => ({
+              ...act,
+              estimatedCost: Math.round(Number(act.estimatedCost) || 0)
+            }))
+          }));
+        }
+        
+        // Upewniamy się, że z samego formularza też idzie pełna liczba
+        const safeFormData = {
+          ...formData,
+          budget: Math.round(Number(formData.budget) || 0)
+        };
+        // -------------------------------------------
+
+        // 2. Automatyczny zapis w tle 
         if (session?.access_token) {
-          const response = await acceptTripPlan(formData, plan, session.access_token);
+          // Używamy bezpiecznej wersji formData i zaokrąglonego planu
+          const response = await acceptTripPlan(safeFormData, plan, session.access_token);
           plan.id = response.tripId;
           setSavedTripId(response.tripId);
           await refreshNotifications();
         }
 
+        // 3. Wrzucenie gotowego planu do Store'a
         setTripPlan(plan);
         apiDoneRef.current = true;
         tryNavigate();
