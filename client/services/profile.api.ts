@@ -11,9 +11,42 @@ export type UserProfile = {
   updatedAt: string | null;
 };
 
+export type ProfileStats = {
+  tripsCount: number;
+  friendsCount: number;
+  tripDaysCount: number;
+  activitiesCount: number;
+  plannedTripsCount: number;
+  totalBudget: number;
+};
+
+export type AchievementLevel = 'bronze' | 'silver' | 'gold' | 'diamond';
+
+export type ProfileAchievement = {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  level: AchievementLevel;
+  isUnlocked: boolean;
+  progress: number;
+  target: number;
+  progressLabel?: string;
+};
+
 type ProfileResponse = {
   message: string;
   profile: UserProfile;
+};
+
+type ProfileStatsResponse = {
+  message: string;
+  stats: ProfileStats;
+};
+
+type ProfileAchievementsResponse = {
+  message: string;
+  achievements: ProfileAchievement[];
 };
 
 const getApiErrorMessage = (error: unknown, fallback: string) => {
@@ -78,3 +111,20 @@ export const uploadMyAvatar = async (
   }
 };
 
+export const getMyProfileStats = async (accessToken: string) => {
+  try {
+    const { data } = await api.get<ProfileStatsResponse>('/profile/stats', authHeaders(accessToken));
+    return data;
+  } catch (error) {
+    throw new Error(getApiErrorMessage(error, 'Nie udalo sie pobrac statystyk profilu'));
+  }
+};
+
+export const getMyProfileAchievements = async (accessToken: string) => {
+  try {
+    const { data } = await api.get<ProfileAchievementsResponse>('/profile/achievements', authHeaders(accessToken));
+    return data;
+  } catch (error) {
+    throw new Error(getApiErrorMessage(error, 'Nie udalo sie pobrac osiagniec profilu'));
+  }
+};

@@ -10,12 +10,15 @@ import {
   Modal,
   TextInput,
   Alert,
+  ActivityIndicator,
   useColorScheme,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Colors } from '@/styles/colors';
 import { useTripStore, TripPlan, DayPlan } from '@/stores/tripStore';
+import { useAuth } from '@/providers/auth.provider';
+import { acceptTripPlan } from '@/services/openaiService';
 
 // ─── TYPY ────────────────────────────────────────────────────────────────────
 
@@ -66,6 +69,51 @@ function formatDate(dateStr: string): string {
     'lipca', 'sierpnia', 'września', 'października', 'listopada', 'grudnia',
   ];
   return `${parseInt(day)} ${months[parseInt(month)] ?? ''}`;
+}
+
+function getDayScheduleCost(day: DayPlan): number {
+  const fromActivities = (day.activities || []).reduce(
+    (sum, activity) => sum + (Number(activity.estimatedCost) || 0),
+    0
+  );
+
+  if (fromActivities > 0) {
+    return fromActivities;
+  }
+
+  if (typeof day.estimatedDayCost === 'number' && day.estimatedDayCost > 0) {
+    return day.estimatedDayCost;
+  }
+
+  return 0;
+}
+
+function getScheduleTotalCost(plan: TripPlan): number {
+  const fromDays = (plan.days || []).reduce((sum, day) => sum + getDayScheduleCost(day), 0);
+  if (fromDays > 0) {
+    return fromDays;
+  }
+
+  return Number(plan.estimatedTotalCost) || 0;
+}
+
+function getParticipantCount(formData: { travelers?: number; selectedFriendIds?: string[] } | null): number {
+  if (!formData) {
+    return 1;
+  }
+
+  const fromFriends = 1 + (formData.selectedFriendIds?.length ?? 0);
+  const fromTravelers = formData.travelers ?? 1;
+  return Math.max(1, fromFriends, fromTravelers);
+}
+
+function formatPln(value: number): string {
+  return `${Math.round(value).toLocaleString('pl-PL')} PLN`;
+}
+
+function getParticipantLabel(count: number): string {
+  if (count === 1) return '1 uczestnik';
+  return `${count} uczestników`;
 }
 
 // ─── KOMPONENT AKTYWNOŚCI ─────────────────────────────────────────────────────
@@ -402,9 +450,17 @@ export default function TripResult() {
   const colorScheme = useColorScheme() ?? 'light';
   const currentColors = Colors[colorScheme];
 
-  const { tripPlan, formData, setTripPlan } = useTripStore();
+  const { tripPlan, formData, setTripPlan, savedTripId, setSavedTripId } = useTripStore();
+  const { session } = useAuth();
   const [activeTab, setActiveTab] = useState<'schedule' | 'map' | 'budget' | 'share'>('schedule');
   const [localPlan, setLocalPlan] = useState<TripPlan | null>(tripPlan);
+  const [isAccepting, setIsAccepting] = useState(false);
+  const [acceptSuccessModal, setAcceptSuccessModal] = useState<{
+    amountPerPerson: number;
+    participantCount: number;
+  } | null>(null);
+  const accessToken = session?.access_token ?? null;
+  const isAccepted = Boolean(savedTripId);
 
   if (!localPlan) {
     return (
@@ -417,12 +473,42 @@ export default function TripResult() {
     );
   }
 
+  const travelers = getParticipantCount(formData);
+  const scheduleTotalCost = getScheduleTotalCost(localPlan);
+  const costPerPerson = travelers > 0 ? scheduleTotalCost / travelers : scheduleTotalCost;
+
   const handleUpdateDay = (dayIndex: number, updated: DayPlan) => {
     const newDays = [...localPlan.days];
     newDays[dayIndex] = updated;
     const newPlan = { ...localPlan, days: newDays };
     setLocalPlan(newPlan);
     setTripPlan(newPlan);
+  };
+
+  const handleAcceptTrip = async () => {
+    if (!formData || !accessToken || isAccepted) {
+      if (!accessToken) {
+        Alert.alert('Zaloguj się', 'Musisz być zalogowany, aby zapisać wycieczkę.');
+      }
+      return;
+    }
+
+    try {
+      setIsAccepting(true);
+      const response = await acceptTripPlan(formData, localPlan, accessToken);
+      setSavedTripId(response.tripId);
+      setAcceptSuccessModal({
+        amountPerPerson: response.amountPerPerson,
+        participantCount: response.participantCount,
+      });
+    } catch (error) {
+      Alert.alert(
+        'Nie udało się zapisać',
+        error instanceof Error ? error.message : 'Spróbuj ponownie.'
+      );
+    } finally {
+      setIsAccepting(false);
+    }
   };
 
   const TABS = [
@@ -446,12 +532,23 @@ export default function TripResult() {
               <Text style={styles.heroNavIcon}>←</Text>
             </TouchableOpacity>
             <View style={styles.heroNavRight}>
-              <TouchableOpacity style={styles.heroNavBtn}>
-                <Text style={styles.heroNavIcon}>⬇</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.heroNavBtn, { marginLeft: 8 }]}>
-                <Text style={styles.heroNavIcon}>↗</Text>
-              </TouchableOpacity>
+              {!isAccepted ? (
+                <TouchableOpacity
+                  style={[styles.acceptButton, isAccepting && styles.acceptButtonDisabled]}
+                  onPress={handleAcceptTrip}
+                  disabled={isAccepting}
+                >
+                  {isAccepting ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.acceptButtonText}>Akceptuj</Text>
+                  )}
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.acceptedBadge}>
+                  <Text style={styles.acceptedBadgeText}>Zapisano</Text>
+                </View>
+              )}
             </View>
           </View>
 
@@ -473,11 +570,13 @@ export default function TripResult() {
               </View>
               <View style={styles.heroBadge}>
                 <Text style={styles.heroBadgeIcon}>👥</Text>
-                <Text style={styles.heroBadgeText}>{formData?.travelers ?? 1} {(formData?.travelers ?? 1) === 1 ? 'osoba' : 'osoby'}</Text>
+                <Text style={styles.heroBadgeText}>
+                  {travelers} {travelers === 1 ? 'osoba' : 'osoby'}
+                </Text>
               </View>
               <View style={styles.heroBadge}>
                 <Text style={styles.heroBadgeIcon}>💰</Text>
-                <Text style={styles.heroBadgeText}>{(formData?.budget ?? localPlan.estimatedTotalCost).toLocaleString()} PLN</Text>
+                <Text style={styles.heroBadgeText}>{formatPln(costPerPerson)}/os.</Text>
               </View>
             </View>
           </View>
@@ -553,17 +652,100 @@ export default function TripResult() {
         </ScrollView>
       )}
 
+      {activeTab === 'budget' && (
+        <ScrollView
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 30 }]}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={[styles.budgetCard, { backgroundColor: currentColors.card }]}>
+            <Text style={[styles.budgetCardLabel, { color: currentColors.subtext }]}>
+              Koszt na jedną osobę
+            </Text>
+            <Text style={styles.budgetCardValue}>{formatPln(costPerPerson)}</Text>
+            <Text style={[styles.budgetCardHint, { color: currentColors.subtext }]}>
+              Łączny koszt wycieczki: {formatPln(scheduleTotalCost)} · {getParticipantLabel(travelers)}
+            </Text>
+          </View>
+
+          <Text style={[styles.budgetSectionTitle, { color: currentColors.text }]}>
+            Koszt każdego dnia
+          </Text>
+
+          {localPlan.days.map((day) => {
+            const dayCost = getDayScheduleCost(day);
+            return (
+              <View
+                key={day.day}
+                style={[
+                  styles.budgetDayRow,
+                  { backgroundColor: currentColors.card, borderColor: currentColors.border },
+                ]}
+              >
+                <View style={styles.budgetDayInfo}>
+                  <Text style={[styles.budgetDayTitle, { color: currentColors.text }]}>
+                    Dzień {day.day}
+                  </Text>
+                  <Text style={[styles.budgetDayDate, { color: currentColors.subtext }]}>
+                    {formatDate(day.date)}
+                  </Text>
+                </View>
+                <Text style={styles.budgetDayCost}>{formatPln(dayCost)}</Text>
+              </View>
+            );
+          })}
+        </ScrollView>
+      )}
+
       {/* Pozostałe zakładki — placeholder */}
-      {activeTab !== 'schedule' && (
+      {activeTab !== 'schedule' && activeTab !== 'budget' && (
         <View style={styles.tabPlaceholder}>
           <Text style={styles.tabPlaceholderIcon}>
-            {activeTab === 'map' ? '🗺️' : activeTab === 'budget' ? '💰' : '↗️'}
+            {activeTab === 'map' ? '🗺️' : '↗️'}
           </Text>
           <Text style={[styles.tabPlaceholderText, { color: currentColors.subtext }]}>
             Sekcja {TABS.find(t => t.id === activeTab)?.label} — wkrótce
           </Text>
         </View>
       )}
+
+      <Modal
+        visible={acceptSuccessModal !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAcceptSuccessModal(null)}
+      >
+        <View style={styles.acceptModalOverlay}>
+          <View style={[styles.acceptModalCard, { backgroundColor: currentColors.card }]}>
+            <Text style={[styles.acceptModalTitle, { color: currentColors.text }]}>
+              Wycieczka zapisana
+            </Text>
+            <Text style={[styles.acceptModalBody, { color: currentColors.subtext }]}>
+              Plan trafił do Moje plany. Koszt{' '}
+              {formatPln(acceptSuccessModal?.amountPerPerson ?? 0)} na osobę (
+              {getParticipantLabel(acceptSuccessModal?.participantCount ?? 1)}).
+            </Text>
+            <View style={styles.acceptModalActions}>
+              <TouchableOpacity
+                style={styles.acceptModalBtn}
+                onPress={() => setAcceptSuccessModal(null)}
+              >
+                <Text style={[styles.acceptModalBtnSecondary, { color: currentColors.subtext }]}>
+                  Zostań tutaj
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.acceptModalBtn}
+                onPress={() => {
+                  setAcceptSuccessModal(null);
+                  router.replace('/(main)/trips');
+                }}
+              >
+                <Text style={styles.acceptModalBtnPrimary}>Moje plany</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -588,7 +770,37 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
   },
-  heroNavRight: { flexDirection: 'row' },
+  heroNavRight: { flexDirection: 'row', alignItems: 'center' },
+  acceptButton: {
+    backgroundColor: '#10b981',
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    minWidth: 96,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  acceptButtonDisabled: {
+    opacity: 0.75,
+  },
+  acceptButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  acceptedBadge: {
+    backgroundColor: 'rgba(16,185,129,0.25)',
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(16,185,129,0.45)',
+  },
+  acceptedBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
   heroNavBtn: {
     width: 38,
     height: 38,
@@ -864,6 +1076,105 @@ const styles = StyleSheet.create({
   },
   tabPlaceholderIcon: { fontSize: 48, marginBottom: 12 },
   tabPlaceholderText: { fontSize: 16 },
+
+  budgetCard: {
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 20,
+  },
+  budgetCardLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  budgetCardValue: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: '#6366f1',
+    marginBottom: 10,
+  },
+  budgetCardHint: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  budgetSectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  budgetDayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginBottom: 10,
+  },
+  budgetDayInfo: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  budgetDayTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  budgetDayDate: {
+    fontSize: 13,
+  },
+  budgetDayCost: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#6366f1',
+  },
+
+  acceptModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  acceptModalCard: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 20,
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 16,
+  },
+  acceptModalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    marginBottom: 10,
+  },
+  acceptModalBody: {
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: 20,
+  },
+  acceptModalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  acceptModalBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  acceptModalBtnSecondary: {
+    fontSize: 14,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  acceptModalBtnPrimary: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#6366f1',
+    textTransform: 'uppercase',
+  },
 
   // Fallback
   emptyText: { fontSize: 16, marginBottom: 16 },

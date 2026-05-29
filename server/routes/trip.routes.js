@@ -1,19 +1,32 @@
 const express = require('express');
-const { generateTripPlan } = require('../controllers/trip.controller');
-const { getTrips, getTripByIdHandler, deleteTripHandler } = require('../controllers/trips.controller');
+const { generateTripPlan, getTripHistory, acceptTripPlan } = require('../controllers/trip.controller');
+const {
+  getTrips,
+  getTripByIdHandler,
+  deleteTripHandler,
+  getTripParticipantsHandler,
+  addTripParticipantHandler,
+  removeTripParticipantHandler,
+  getTripScheduleHandler,
+  createTripActivityHandler,
+  updateTripActivityHandler,
+  deleteTripActivityHandler,
+} = require('../controllers/trips.controller');
 
 const router = express.Router();
 
-// Generowanie planu wycieczki przez AI + zapis do bazy
 router.post('/generate', generateTripPlan);
-
-// Pobranie wszystkich wycieczek zalogowanego użytkownika
+router.post('/accept', acceptTripPlan);
+router.get('/history', getTripHistory);
 router.get('/', getTrips);
-
-// Pobranie szczegółów jednej wycieczki
+router.get('/:id/schedule', getTripScheduleHandler);
+router.get('/:id/participants', getTripParticipantsHandler);
+router.post('/:id/participants', addTripParticipantHandler);
+router.post('/:id/days/:dayId/activities', createTripActivityHandler);
+router.put('/:id/activities/:activityId', updateTripActivityHandler);
+router.delete('/:id/participants/:profileId', removeTripParticipantHandler);
+router.delete('/:id/activities/:activityId', deleteTripActivityHandler);
 router.get('/:id', getTripByIdHandler);
-
-// Usunięcie wycieczki
 router.delete('/:id', deleteTripHandler);
 
 module.exports = router;

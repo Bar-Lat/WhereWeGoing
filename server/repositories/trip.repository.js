@@ -22,6 +22,21 @@ const getTripsByOwnerId = async (ownerId) => {
   return { data, error };
 };
 
+
+const getTripsByIds = async (tripIds) => {
+  if (!Array.isArray(tripIds) || tripIds.length === 0) {
+    return { data: [], error: null };
+  }
+
+  const { data, error } = await supabaseDbClient
+    .from(TABLE)
+    .select('*')
+    .in('id', tripIds)
+    .order('created_at', { ascending: false });
+
+  return { data: data || [], error };
+};
+
 const getTripById = async (tripId) => {
   const { data, error } = await supabaseDbClient
     .from(TABLE)
@@ -45,5 +60,6 @@ module.exports = {
   createTrip,
   getTripsByOwnerId,
   getTripById,
+  getTripsByIds,
   deleteTripById,
 };

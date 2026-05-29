@@ -1,13 +1,18 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   PanResponder,
+  Image,
+  ActivityIndicator,
 } from 'react-native';
 import { styles } from '@/styles/create.styles';
 import DateRangePicker from './DateRangePicker';
+import { getMyFriends } from '@/services/friends.api';
+import type { FriendProfile } from '@/types/friends';
+import { Colors } from '@/styles/colors';
 
 // ─── TYPY ────────────────────────────────────────────────────────────────────
 
@@ -20,12 +25,14 @@ export interface TripFormData {
   interests: string[];
   transport: string[];
   attractionsPerDay: number;
+  selectedFriendIds: string[];
 }
 
 interface StepProps {
   formData: TripFormData;
   setFormData: (data: TripFormData) => void;
   currentColors: any;
+  accessToken?: string | null;
 }
 
 // ─── DANE STATYCZNE ───────────────────────────────────────────────────────────
@@ -183,8 +190,75 @@ export function Step2({ formData, setFormData, currentColors }: StepProps) {
 
 // ─── KROK 3 — Travelers & Budget ─────────────────────────────────────────────
 
-export function Step3({ formData, setFormData, currentColors }: StepProps) {
-  const budgetPerPerson = Math.round(formData.budget / formData.travelers);
+const FriendAvatar = ({ friend }: { friend: FriendProfile }) => {
+  const label = `${friend.firstName?.[0] ?? ''}${friend.lastName?.[0] ?? ''}`.toUpperCase() || 'Z';
+
+  if (friend.avatar) {
+    return <Image source={{ uri: friend.avatar }} style={styles.friendAvatar} />;
+  }
+
+  return (
+    <View style={[styles.friendAvatarFallback, { backgroundColor: Colors.brand.blue }]}>
+      <Text style={styles.friendAvatarText}>{label}</Text>
+    </View>
+  );
+};
+
+export function Step3({ formData, setFormData, currentColors, accessToken }: StepProps) {
+  const [friends, setFriends] = useState<FriendProfile[]>([]);
+  const [friendsLoading, setFriendsLoading] = useState(false);
+  const [friendsError, setFriendsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!accessToken) {
+      setFriends([]);
+      return;
+    }
+
+    let isActive = true;
+
+    const loadFriends = async () => {
+      setFriendsLoading(true);
+      setFriendsError(null);
+
+      try {
+        const response = await getMyFriends(accessToken);
+        if (isActive) {
+          setFriends(response.friends);
+        }
+      } catch (error) {
+        if (isActive) {
+          setFriendsError(error instanceof Error ? error.message : 'Nie udało się pobrać znajomych');
+          setFriends([]);
+        }
+      } finally {
+        if (isActive) {
+          setFriendsLoading(false);
+        }
+      }
+    };
+
+    void loadFriends();
+
+    return () => {
+      isActive = false;
+    };
+  }, [accessToken]);
+
+  const toggleFriend = (friendId: string) => {
+    const isSelected = formData.selectedFriendIds.includes(friendId);
+    const selectedFriendIds = isSelected
+      ? formData.selectedFriendIds.filter((id) => id !== friendId)
+      : [...formData.selectedFriendIds, friendId];
+
+    setFormData({
+      ...formData,
+      selectedFriendIds,
+      travelers: 1 + selectedFriendIds.length,
+    });
+  };
+
+  const budgetPerPerson = Math.round(formData.budget / Math.max(formData.travelers, 1));
 
   return (
     <View style={styles.stepContainer}>
@@ -195,53 +269,56 @@ export function Step3({ formData, setFormData, currentColors }: StepProps) {
       <Text style={[styles.label, { color: currentColors.text, marginTop: 20 }]}>
         Liczba podróżujących
       </Text>
+      <Text style={[styles.stepSubtitle, { color: currentColors.subtext, marginBottom: 12 }]}>
+        Ty + {formData.selectedFriendIds.length} {formData.selectedFriendIds.length === 1 ? 'znajomy' : 'znajomych'} ({formData.travelers} {formData.travelers === 1 ? 'osoba' : 'osób'})
+      </Text>
 
-      <View style={[styles.travelersCard, { backgroundColor: currentColors.card }]}>
-        <View style={styles.travelersCounter}>
-          <TouchableOpacity
-            style={[styles.counterButton, { backgroundColor: currentColors.border }]}
-            onPress={() =>
-              formData.travelers > 1 &&
-              setFormData({ ...formData, travelers: formData.travelers - 1 })
-            }
-          >
-            <Text style={styles.counterButtonText}>−</Text>
-          </TouchableOpacity>
-
-          <Text style={[styles.travelersCount, { color: currentColors.text }]}>
-            {formData.travelers}
+      <View style={[styles.friendsListCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}>
+        {!accessToken ? (
+          <Text style={[styles.friendsEmptyText, { color: currentColors.subtext }]}>
+            Zaloguj się, aby wybrać znajomych do wspólnej wycieczki.
           </Text>
+        ) : friendsLoading ? (
+          <View style={styles.friendsLoader}>
+            <ActivityIndicator size="small" color={Colors.brand.blue} />
+          </View>
+        ) : friendsError ? (
+          <Text style={[styles.friendsEmptyText, { color: currentColors.subtext }]}>{friendsError}</Text>
+        ) : friends.length === 0 ? (
+          <Text style={[styles.friendsEmptyText, { color: currentColors.subtext }]}>
+            Nie masz jeszcze znajomych. Możesz dodać ich w profilu.
+          </Text>
+        ) : (
+          friends.map((friend) => {
+            const isSelected = formData.selectedFriendIds.includes(friend.id);
+            const fullName = `${friend.firstName || ''} ${friend.lastName || ''}`.trim() || friend.displayName;
 
-          <TouchableOpacity
-            style={[styles.counterButton, { backgroundColor: '#6366f1' }]}
-            onPress={() =>
-              formData.travelers < 15 &&
-              setFormData({ ...formData, travelers: formData.travelers + 1 })
-            }
-          >
-            <Text style={[styles.counterButtonText, { color: '#fff' }]}>+</Text>
-          </TouchableOpacity>
-        </View>
-
-        <Text style={[styles.travelersLabel, { color: currentColors.subtext }]}>osoby</Text>
-
-        <View style={[styles.travelersDots, { flexWrap: 'wrap', justifyContent: 'center' }]}>
-          {Array.from({ length: formData.travelers }).map((_, index) => (
-            <View
-              key={index}
-              style={[
-                styles.travelerDot,
-                {
-                  backgroundColor:
-                    index % 3 === 0 ? '#a5b4fc' :
-                    index % 3 === 1 ? '#c4b5fd' : '#f0abfc',
-                },
-              ]}
-            >
-              <Text style={styles.travelerDotText}>{String.fromCharCode(65 + index)}</Text>
-            </View>
-          ))}
-        </View>
+            return (
+              <TouchableOpacity
+                key={friend.id}
+                style={[styles.friendRow, { borderBottomColor: currentColors.border }]}
+                onPress={() => toggleFriend(friend.id)}
+                activeOpacity={0.85}
+              >
+                <View
+                  style={[
+                    styles.friendCheckbox,
+                    {
+                      borderColor: isSelected ? '#6366f1' : currentColors.border,
+                      backgroundColor: isSelected ? '#6366f1' : 'transparent',
+                    },
+                  ]}
+                >
+                  {isSelected ? <Text style={styles.friendCheckboxMark}>✓</Text> : null}
+                </View>
+                <FriendAvatar friend={friend} />
+                <Text style={[styles.friendName, { color: currentColors.text }]} numberOfLines={1}>
+                  {fullName}
+                </Text>
+              </TouchableOpacity>
+            );
+          })
+        )}
       </View>
 
       <Text style={[styles.label, { color: currentColors.text, marginTop: 30 }]}>
