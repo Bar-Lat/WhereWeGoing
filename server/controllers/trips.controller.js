@@ -136,7 +136,6 @@ const recalculateTripCostSplit = async (tripId) => {
 
 const buildParticipantsList = async (trip) => {
   const { data: participantRows, error } = await getParticipantsByTripId(trip.id);
-
   if (error) {
     return { participants: [], error };
   }
@@ -151,14 +150,14 @@ const buildParticipantsList = async (trip) => {
 
   const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
   
-  // Zbieramy listę surowych uczestników
-  const rawParticipants = [];
+  // Tego brakowało - musimy stworzyć tymczasową tablicę!
+  const rawParticipants = []; 
   
   const ownerRow = safeParticipantRows.find((row) => row.user_id === trip.owner_id);
   const ownerProfile = profileById.get(trip.owner_id);
   if (ownerProfile) {
-    rawParticipants.push(normalizeParticipant(ownerProfile, null, trip.owner_id));
-    participants.push(normalizeParticipant(ownerProfile, ownerRow || null, trip.owner_id));
+    // Wrzucamy do rawParticipants, a nie do niezainicjalizowanego participants
+    rawParticipants.push(normalizeParticipant(ownerProfile, ownerRow || null, trip.owner_id)); 
   }
 
   safeParticipantRows.forEach((row) => {
@@ -167,18 +166,18 @@ const buildParticipantsList = async (trip) => {
       rawParticipants.push(normalizeParticipant(profile, row, trip.owner_id));
     }
   });
-
-  // Teraz mapujemy surowych uczestników na listę z pełnymi adresami URL avatarów
+  
+  // Teraz mapujemy surowych uczestników na końcową listę z pełnymi adresami URL avatarów
   const participants = await Promise.all(
     rawParticipants.map(async (p) => ({
       ...p,
-
       avatar: await resolveAvatarUrl(p.avatar || null) 
     }))
   );
-
+  
   return { participants, error: null };
 };
+
 
 const getTrips = async (req, res, next) => {
   try {

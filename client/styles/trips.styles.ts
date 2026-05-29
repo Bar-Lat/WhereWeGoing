@@ -228,6 +228,18 @@ export const styles = StyleSheet.create({
     marginBottom: 10,
     marginTop: 2,
   },
+  tripImage: {
+    width: '100%',
+    height: 176,
+  },
+  metaPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    borderRadius: 999,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+  },
   modalSectionTitle: {
     fontSize: 18,
     lineHeight: 24,

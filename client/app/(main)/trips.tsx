@@ -702,52 +702,6 @@ export default function Trips() {
           )}
         </TouchableOpacity>
 
-        {/* --- HARMONOGRAM Z MAIN --- */}
-        <View style={[styles.scheduleCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}>
-          <TouchableOpacity
-            style={styles.scheduleHeader}
-            activeOpacity={0.85}
-            onPress={() => setScheduleExpanded((value) => !value)}
-          >
-            <View style={styles.scheduleHeaderLeft}>
-              <Ionicons name="list-outline" size={22} color={Colors.brand.blue} />
-              <View style={styles.scheduleHeaderTextBox}>
-                <Text style={[styles.scheduleTitle, { color: currentColors.text }]}>Harmonogram z bazy</Text>
-                <Text style={[styles.scheduleSubtitle, { color: currentColors.subtext }]}>
-                  {scheduleLoading
-                    ? 'Ładowanie planu dnia po dniu...'
-                    : `${scheduleDays.length} dni · ${scheduleActivityCount} punktów`}
-                </Text>
-              </View>
-            </View>
-            <Ionicons
-              name={scheduleExpanded ? 'chevron-up' : 'chevron-down'}
-              size={20}
-              color={currentColors.subtext}
-            />
-          </TouchableOpacity>
-
-          {scheduleExpanded && (
-            <View style={styles.scheduleBody}>
-              {selectedTrip.accessRole !== 'owner' && (
-                <Text style={[styles.readOnlyText, { color: currentColors.subtext, marginBottom: 12 }]}>
-                  Możesz przeglądać harmonogram. Edycja dostępna tylko dla organizatora.
-                </Text>
-              )}
-              <TripScheduleSection
-                days={scheduleDays}
-                loading={scheduleLoading}
-                editable={selectedTrip.accessRole === 'owner'}
-                saving={scheduleSaving}
-                currentColors={currentColors}
-                onAddActivity={handleAddScheduleActivity}
-                onUpdateActivity={handleUpdateScheduleActivity}
-                onDeleteActivity={handleDeleteScheduleActivity}
-              />
-            </View>
-          )}
-        </View>
-
         {/* --- PRZYCISK DO OTWARCIA ZAAWANSOWANEGO HARMONOGRAMU --- */}
         <TouchableOpacity
           style={{
@@ -819,8 +773,15 @@ export default function Trips() {
                 availableFriends.map(renderFriendCandidate)
               ) : (
                 <View style={styles.emptyFriendsBox}>
-                  <Ionicons name="checkmark-circle-outline" size={26} color={Colors.brand.green} />
-                  <Text style={[styles.emptyInlineText, { color: currentColors.subtext }]}>Wszyscy Twoi znajomi są już dodani albo nie masz jeszcze znajomych na liście.</Text>
+                  <Ionicons 
+                    name="checkmark-circle-outline" 
+                    size={26} 
+                    color={Colors.brand.green} 
+                    style={{ marginTop: 12, marginBottom: -12 }} // <-- DODANO MARGINESY
+                  />
+                  <Text style={[styles.emptyInlineText, { color: currentColors.subtext }]}>
+                    Wszyscy Twoi znajomi są już dodani albo nie masz jeszcze znajomych na liście.
+                  </Text>
                 </View>
               )}
             </View>
