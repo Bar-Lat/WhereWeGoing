@@ -210,7 +210,7 @@ const persistTripPlan = async ({ ownerId, formData, tripPlan }) => {
 const addTripParticipantsWithSplit = async ({ tripId, ownerId, selectedFriendIds, totalCost }) => {
   const uniqueFriendIds = Array.from(new Set((selectedFriendIds || []).filter((id) => typeof id === 'string' && id !== ownerId)));
   const participantIds = [ownerId, ...uniqueFriendIds];
-  const amountPerPerson = participantIds.length > 0 ? totalCost / participantIds.length : 0;
+  const amountPerPerson = participantIds.length > 0 ? Math.floor(totalCost / participantIds.length) : 0;
 
   for (const friendId of uniqueFriendIds) {
     const { data: friendship, error: friendshipError } = await getFriendRowsBetweenProfiles(ownerId, friendId);
