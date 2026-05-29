@@ -28,6 +28,10 @@ app.use('/api/inspiration', inspirationRoutes);
 
 app.use(errorHandler);
 
-app.listen(PORT, () => {
-  console.log(`Serwer działa na http://localhost:${PORT}`);
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Serwer działa na http://localhost:${PORT}`);
+  });
+}
+
+module.exports = app;
