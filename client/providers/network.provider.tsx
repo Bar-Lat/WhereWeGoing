@@ -5,6 +5,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 type NetworkContextValue = {
   isOnline: boolean;
   isOffline: boolean;
+  isForceOffline: boolean;
+  hasNetworkConnection: boolean;
   goOffline: () => Promise<void>;
   goOnline: () => Promise<void>;
   toggleOffline: () => Promise<void>;
@@ -88,6 +90,8 @@ export const NetworkProvider = ({ children }: { children: React.ReactNode }) => 
       () => ({
         isOnline: effectiveOnline,
         isOffline: !effectiveOnline,
+        isForceOffline: forceOffline,
+        hasNetworkConnection: isOnline,
         goOffline,
         goOnline,
         toggleOffline,
