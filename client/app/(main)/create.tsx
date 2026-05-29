@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, useColorScheme, Animated, Easing } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons'; // <-- DODANO IMPORT IKON
 import { Colors } from '@/styles/colors';
 import GradientButton from '../../components/GradientButton';
 import { useTripStore } from '@/stores/tripStore';
@@ -45,7 +46,7 @@ export default function Create() {
   const { session } = useAuth();
   const accessToken = session?.access_token ?? null;
 
-  // Błędy
+  // --- Błędy ---
 
   const showError = useCallback((message: string) => {
     setErrorMessages([message]);
@@ -66,7 +67,7 @@ export default function Create() {
     ]).start(() => setErrorMessages([]));
   }, []);
 
-  // Walidacja
+  // --- Walidacja ---
 
   const validateStep1 = () => {
     if (!formData.destination.trim()) {
@@ -115,7 +116,7 @@ export default function Create() {
     }
   };
 
-  // Nawigacja
+  // --- Nawigacja ---
 
   const handleNext = () => {
     if (validateCurrentStep()) {
@@ -132,14 +133,14 @@ export default function Create() {
   };
 
   const handleGeneratePlan = () => {
-    if (validateStep4()) {
+    if (validateStep4()) { // Tu warto upewnić się, czy na pewno chcesz tu walidować Step 4, zazwyczaj to Step 5 (jeśli ma walidację) lub ogólna.
       setStoreFormData(formData);
       useTripStore.getState().setSavedTripId(null);
       router.push('/trip-loading');
     }
   };
 
-  // Progress bar
+  // --- Progress bar ---
 
   const renderProgressBar = () => (
     <View style={styles.progressBarContainer}>
@@ -152,7 +153,7 @@ export default function Create() {
             <View
               style={[
                 styles.progressDot,
-                { backgroundColor: isActive || isCompleted ? '#6366f1' : currentColors.border },
+                { backgroundColor: isActive || isCompleted ? Colors.brand.blue : currentColors.border },
                 isActive && styles.progressDotActive,
               ]}
             >
@@ -162,7 +163,7 @@ export default function Create() {
               <View
                 style={[
                   styles.progressLine,
-                  { backgroundColor: isCompleted ? '#6366f1' : currentColors.border },
+                  { backgroundColor: isCompleted ? Colors.brand.blue : currentColors.border },
                 ]}
               />
             )}
@@ -172,7 +173,7 @@ export default function Create() {
     </View>
   );
 
-  // Render
+  // --- Render ---
 
   const stepProps = { formData, setFormData, currentColors, accessToken };
   const bottomOffset = 65 + (insets.bottom > 0 ? insets.bottom : 10);
@@ -180,10 +181,15 @@ export default function Create() {
   return (
     <View style={[styles.container, { backgroundColor: currentColors.background }]}>
       {/* Header */}
-      <View style={styles.headerTop}>
-        <TouchableOpacity onPress={handleBack} style={styles.backButtonTop}>
-          <Text style={styles.backButtonTextTop}>←</Text>
+      <View style={[styles.headerTop, { paddingTop: insets.top + 10 }]}>
+        <TouchableOpacity 
+          onPress={handleBack} 
+          style={[styles.backButtonTop, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}
+        >
+          {/* ZAMIAST TEKSTU UŻYWAMY IKONY */}
+          <Ionicons name="chevron-back" size={22} color={currentColors.text} />
         </TouchableOpacity>
+        
         <View style={styles.headerTextContainer}>
           <Text style={[styles.stepIndicator, { color: currentColors.subtext }]}>
             Krok {currentStep} z {TOTAL_STEPS}
@@ -192,7 +198,9 @@ export default function Create() {
             {STEP_TITLES[currentStep]}
           </Text>
         </View>
-        <View style={styles.headerSpacer} />
+        
+        {/* Spacer dla zachowania proporcji (żeby tytuł był na środku) */}
+        <View style={{ width: 40 }} /> 
       </View>
 
       {/* Treść */}
@@ -208,35 +216,49 @@ export default function Create() {
         {currentStep === 5 && <Step5 {...stepProps} />}
       </ScrollView>
 
-      {/* Błąd */}
+      {/* Dymek z błędem */}
       {errorMessages.length > 0 && (
         <Animated.View
           style={[
             styles.errorContainer,
             {
               opacity: errorAnim,
-              bottom: bottomOffset + 56 + 16,
+              bottom: bottomOffset + 70,
+              flexDirection: 'row', // Wyrównanie ikony z tekstem
+              alignItems: 'center',
+              gap: 8,
+              shadowColor: '#EF4444', // Delikatny cień dla błędu
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.3,
+              shadowRadius: 8,
+              elevation: 5,
             },
           ]}
         >
-          <Text style={styles.errorContainerText}>{errorMessages[0]}</Text>
+          {/* IKONA BŁĘDU */}
+          <Ionicons name="alert-circle" size={20} color="#FFFFFF" />
+          <Text style={[styles.errorContainerText, { flexShrink: 1 }]}>
+            {errorMessages[0]}
+          </Text>
         </Animated.View>
       )}
 
-      {/* Przycisk */}
+      {/* Pływający przycisk na dole */}
       <View
         style={[
           styles.fixedButtonContainer,
           {
             backgroundColor: currentColors.background,
             bottom: bottomOffset,
+            borderTopWidth: 1,
+            borderTopColor: 'rgba(0,0,0,0.03)'
           },
         ]}
       >
         {currentStep < TOTAL_STEPS ? (
-          <GradientButton onPress={handleNext} title="Dalej →" />
+          <GradientButton onPress={handleNext} title="Dalej" />
         ) : (
-          <GradientButton onPress={handleGeneratePlan} title="✨ Generuj mój plan" />
+          <GradientButton onPress={handleGeneratePlan} title="Wygeneruj plan" />
         )}
       </View>
     </View>
