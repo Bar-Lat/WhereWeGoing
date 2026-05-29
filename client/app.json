@@ -19,7 +19,11 @@
         "monochromeImage": "./assets/images/HereWeGoLogo.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.pater10.WhereWeGoing"
     },
     "web": {
       "output": "static",
@@ -49,6 +53,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "23ffce43-ca91-4d2c-b05a-05a41bba24b3"
+      }
     }
   }
 }
