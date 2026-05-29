@@ -19,11 +19,65 @@ export default function NotificationsScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const currentColors = Colors[colorScheme];
 
-  const { notifications, markAllAsRead, markAsUnread } = useNotifications();
+  const { notifications, markAllAsRead, registerNotificationsScreenOpen } = useNotifications();
 
     useEffect(() => {
-        markAllAsRead();
-    }, [markAllAsRead]);
+      const openScreen = async () => {
+        await registerNotificationsScreenOpen();
+        await markAllAsRead();
+      };
+
+      void openScreen();
+    }, [markAllAsRead, registerNotificationsScreenOpen]);
+
+    const handleNotificationPress = (item: typeof notifications[number]) => {
+      if (item.target?.type === 'inspiration') {
+        router.push({
+          pathname: '/(main)/inspiration',
+          params: {
+            offerId: item.target.offerId,
+          },
+        });
+      }
+      if (item.target?.type === 'trip') {
+        router.push({
+          pathname: '/(main)/trips',
+          params: {
+            tripId: item.target.tripId,
+          },
+        });
+      }
+    };
+
+    const formatNotificationTime = (item: { createdAt: string; time?: string }) => {
+    const today = new Date();
+    const todayKey = [
+      today.getFullYear(),
+      String(today.getMonth() + 1).padStart(2, '0'),
+      String(today.getDate()).padStart(2, '0'),
+    ].join('-');
+
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+
+    const yesterdayKey = [
+      yesterday.getFullYear(),
+      String(yesterday.getMonth() + 1).padStart(2, '0'),
+      String(yesterday.getDate()).padStart(2, '0'),
+    ].join('-');
+
+    const itemDateKey = item.createdAt.slice(0, 10);
+
+    if (itemDateKey === todayKey) {
+      return item.time ?? '';
+    }
+
+    if (itemDateKey === yesterdayKey) {
+      return 'Wczoraj';
+    }
+
+    return itemDateKey;
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: currentColors.background }]}>
@@ -63,6 +117,7 @@ export default function NotificationsScreen() {
           <TouchableOpacity
             key={item.id}
             activeOpacity={0.85}
+            onPress={() => handleNotificationPress(item)}
             style={[
               styles.notificationCard,
               {
@@ -84,7 +139,7 @@ export default function NotificationsScreen() {
                   {item.title}
                 </Text>
                 <Text style={[styles.notificationTime, { color: currentColors.subtext }]}>
-                  {item.time}
+                  {formatNotificationTime(item)}
                 </Text>
               </View>
 

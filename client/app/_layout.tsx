@@ -65,14 +65,14 @@ function AppNavigator() {
 
 export default function RootLayout() {
     return (
-        <NotificationsProvider>
-            <AuthProvider>
+        <AuthProvider>
+            <NotificationsProvider>
                 <NetworkProvider>
                     <ProfileProvider>
                         <AppNavigator />
                     </ProfileProvider>
                 </NetworkProvider>
-            </AuthProvider>
-        </NotificationsProvider>
+            </NotificationsProvider>
+        </AuthProvider>
     );
 }

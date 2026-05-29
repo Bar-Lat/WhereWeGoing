@@ -5,8 +5,14 @@ import React, {
   useEffect,
   useMemo,
   useState,
+  useRef,
 } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuth } from '@/providers/auth.provider';
+import { getMyTrips } from '@/services/trips.api';
+import { getInspirationOffers } from '@/services/inspiration.api';
+import type { TripDto } from '@/types/trips';
+import type { InspirationOfferDto } from '@/types/inspiration';
 
 export type AppNotification = {
   id: string;
@@ -15,7 +21,17 @@ export type AppNotification = {
   createdAt: string;
   icon: string;
   color: string;
-  time: string;
+  time?: string;
+  kind: 'trip-reminder' | 'daily-inspiration';
+  target?:
+  | {
+      type: 'inspiration';
+      offerId: string;
+    }
+  | {
+      type: 'trip';
+      tripId: string;
+    };
 };
 
 type NotificationsContextValue = {
@@ -24,38 +40,223 @@ type NotificationsContextValue = {
   markAllAsRead: () => Promise<void>;
   addNotification: (notification: AppNotification) => void;
   markAsUnread: () => void;
+  registerNotificationsScreenOpen: () => Promise<void>;
+  refreshNotifications: () => Promise<void>;
 };
 
 const NotificationsContext = createContext<NotificationsContextValue | undefined>(undefined);
 
-const READ_NOTIFICATIONS_KEY = 'wherewegoing_read_notifications_v1';
+const getLocalDateKey = (date = new Date()) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
-const today = new Date().toISOString().slice(0, 10);
+const getDaysUntil = (dateKey: string) => {
+  const today = new Date(`${getLocalDateKey()}T00:00:00`);
+  const target = new Date(`${dateKey}T00:00:00`);
 
-const MOCK_NOTIFICATIONS: AppNotification[] = [
-  {
-    id: `daily-inspiration:${today}`,
-    title: 'Inspiracja dnia',
-    message: 'Barcelona może być świetnym kierunkiem na kolejny city break.',
-    createdAt: today,
-    icon: 'bulb-outline',
-    color: '#F59E0B',
-    time: 'Dzisiaj',
-  },
-  {
-    id: `trip-reminder:paris:${today}`,
-    title: 'Zbliżająca się wycieczka',
-    message: 'Za 10 dni wycieczka do Paryża.',
-    createdAt: today,
-    icon: 'airplane-outline',
-    color: '#6366f1',
-    time: 'Dzisiaj',
-  },
-];
+  if (Number.isNaN(target.getTime())) {
+    return null;
+  }
+
+  return Math.ceil((target.getTime() - today.getTime()) / 86_400_000);
+};
+
+const getNearestUpcomingTrip = (trips: TripDto[]) => {
+  return trips
+    .map((trip) => ({
+      trip,
+      daysUntil: getDaysUntil(trip.startDate),
+    }))
+    .filter((item): item is { trip: TripDto; daysUntil: number } =>
+      item.daysUntil !== null && item.daysUntil >= 0 && item.daysUntil < 14
+    )
+    .sort((a, b) => a.daysUntil - b.daysUntil)[0] ?? null;
+};
+
+const pickDailyOffer = (offers: InspirationOfferDto[], dateKey: string) => {
+  if (offers.length === 0) return null;
+
+  let seed = 0;
+  for (let i = 0; i < dateKey.length; i += 1) {
+    seed += dateKey.charCodeAt(i);
+  }
+
+  return offers[seed % offers.length];
+};
 
 export const NotificationsProvider = ({ children }: { children: React.ReactNode }) => {
-  const [notifications, setNotifications] = useState<AppNotification[]>(MOCK_NOTIFICATIONS);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [readIds, setReadIds] = useState<string[]>([]);
+  const { session, isAuthenticated } = useAuth();
+  const accessToken = session?.access_token ?? null;
+  const READ_NOTIFICATIONS_KEY = 'wherewegoing_read_notifications_v1';
+  const NOTIFICATION_OPEN_TIMES_KEY = 'wherewegoing_notification_open_times_v1';
+
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
+  const getClockTime = (date = new Date()) => {
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${hours}:${minutes}`;
+  };
+
+  const getNextNotificationRefreshDate = () => {
+    const now = new Date();
+
+    const todayAtEight = new Date(now);
+    todayAtEight.setHours(8, 0, 0, 0);
+
+    const tomorrowAtMidnight = new Date(now);
+    tomorrowAtMidnight.setDate(now.getDate() + 1);
+    tomorrowAtMidnight.setHours(0, 0, 0, 0);
+
+    if (now < todayAtEight) {
+      return todayAtEight;
+    }
+
+    return tomorrowAtMidnight;
+  };
+
+  const registerNotificationsScreenOpen = useCallback(async () => {
+    const raw = await AsyncStorage.getItem(NOTIFICATION_OPEN_TIMES_KEY);
+    let storedTimes: Record<string, string> = {};
+
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          storedTimes = parsed;
+        }
+      } catch {
+        storedTimes = {};
+      }
+    }
+
+    const nowTime = getClockTime();
+    let changed = false;
+
+    const nextNotifications = notifications.map((notification) => {
+      if (notification.kind !== 'trip-reminder') {
+        return notification;
+      }
+
+      const existingTime = storedTimes[notification.id];
+
+      if (existingTime) {
+        return {
+          ...notification,
+          time: existingTime,
+        };
+      }
+
+      storedTimes[notification.id] = nowTime;
+      changed = true;
+
+      return {
+        ...notification,
+        time: nowTime,
+      };
+    });
+
+    setNotifications(nextNotifications);
+
+    if (changed) {
+      await AsyncStorage.setItem(NOTIFICATION_OPEN_TIMES_KEY, JSON.stringify(storedTimes));
+    }
+  }, [notifications]);
+
+  const buildNotifications = useCallback(async () => {
+  if (!isAuthenticated || !accessToken) {
+    setNotifications([]);
+    return;
+  }
+
+  const todayKey = getLocalDateKey();
+  const generated: AppNotification[] = [];
+
+  try {
+    const tripsResponse = await getMyTrips(accessToken);
+    const nearest = getNearestUpcomingTrip(tripsResponse.trips);
+
+    if (nearest) {
+      generated.push({
+        id: `trip-reminder:${nearest.trip.id}:${todayKey}`,
+        title: 'Zbliżająca się wycieczka',
+        message:
+          nearest.daysUntil === 0
+            ? `Twoja wycieczka do ${nearest.trip.destination} zaczyna się dzisiaj.`
+            : `Do wycieczki do ${nearest.trip.destination} zostało ${nearest.daysUntil} dni.`,
+        createdAt: todayKey,
+        icon: 'airplane-outline',
+        color: '#6366f1',
+        kind: 'trip-reminder',
+        target: {
+          type: 'trip',
+          tripId: nearest.trip.id,
+        },
+      });
+    }
+
+    const offersResponse = await getInspirationOffers();
+    const offer = pickDailyOffer(offersResponse.offers, todayKey);
+
+    if (offer) {
+      generated.push({
+        id: `daily-inspiration:${offer.id}:${todayKey}`,
+        title: 'Inspiracja dnia',
+        message: `${offer.destination} może być dobrym pomysłem na kolejną podróż.`,
+        createdAt: `${todayKey}T08:00:00`,
+        icon: 'bulb-outline',
+        color: '#F59E0B',
+        kind: 'daily-inspiration',
+        time: '08:00',
+        target: {
+          type: 'inspiration',
+          offerId: offer.id,
+        },
+      });
+    }
+
+    setNotifications(generated);
+  } catch {
+    setNotifications([]);
+  }
+}, [accessToken, isAuthenticated]);
+
+  useEffect(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+
+    if (!isAuthenticated || !accessToken) {
+      setNotifications([]);
+      return;
+    }
+
+    const now = new Date();
+
+    if (now.getHours() >= 8) {
+      void buildNotifications();
+    }
+
+    const nextRefresh = getNextNotificationRefreshDate();
+    const delayMs = nextRefresh.getTime() - now.getTime();
+
+    timerRef.current = setTimeout(() => {
+      void buildNotifications();
+    }, delayMs);
+
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [accessToken, buildNotifications, isAuthenticated]);
 
   useEffect(() => {
     const loadReadIds = async () => {
@@ -142,6 +343,8 @@ export const NotificationsProvider = ({ children }: { children: React.ReactNode 
       markAllAsRead,
       addNotification,
       markAsUnread,
+      registerNotificationsScreenOpen,
+      refreshNotifications: buildNotifications,
     }),
     [
       notifications,
@@ -149,6 +352,8 @@ export const NotificationsProvider = ({ children }: { children: React.ReactNode 
       markAllAsRead,
       addNotification,
       markAsUnread,
+      registerNotificationsScreenOpen,
+      buildNotifications,
     ]
   );
 

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -14,7 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import ScreenHeader from '@/components/ScreenHeader';
 import TripScheduleSection from '@/components/TripScheduleSection';
@@ -154,6 +154,8 @@ const ProfileAvatar = ({
 export default function Trips() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const params = useLocalSearchParams<{ tripId?: string }>();
+  const openedTripIdRef = useRef<string | null>(null);
   const colorScheme = useColorScheme() ?? 'light';
   const currentColors = Colors[colorScheme];
   const { session } = useAuth();
@@ -253,6 +255,22 @@ export default function Trips() {
     },
     [loadPanelData]
   );
+  useEffect(() => {
+    const tripId = typeof params.tripId === 'string' ? params.tripId : null;
+
+    if (!tripId || tripsLoading || openedTripIdRef.current === tripId) {
+      return;
+    }
+
+    const tripToOpen = trips.find((trip) => trip.id === tripId);
+
+    if (!tripToOpen) {
+      return;
+    }
+
+    openedTripIdRef.current = tripId;
+    void openTripPanel(tripToOpen, 'details');
+  }, [openTripPanel, params.tripId, trips, tripsLoading]);
 
   const closeTripPanel = useCallback(() => {
     setSelectedTrip(null);
