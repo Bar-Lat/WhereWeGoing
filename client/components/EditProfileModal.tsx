@@ -27,6 +27,8 @@ import {
   uploadMyAvatar,
 } from '@/services/profile.api';
 import { useProfile } from '@/providers/profile.provider';
+import { saveCachedProfile } from '@/services/profile.storage';
+import { downloadAvatarToCache } from '@/services/avatar.storage';
 
 type EditProfileModalProps = {
   visible: boolean;
@@ -83,6 +85,22 @@ export default function EditProfileModal({
     return email.slice(0, 2).toUpperCase() || 'U';
   }, [firstName, initialProfile?.email, lastName]);
 
+  const cacheProfile = useCallback(async (profile: UserProfile) => {
+    let profileToCache = profile;
+
+    if (profile.avatar && /^https?:\/\//i.test(profile.avatar)) {
+      const cachedAvatarUri = await downloadAvatarToCache(profile.id, profile.avatar);
+
+      profileToCache = {
+        ...profile,
+        avatar: cachedAvatarUri ?? profile.avatar,
+      };
+    }
+
+    await saveCachedProfile(profileToCache);
+    return profileToCache;
+  }, []);
+
   // Zapisujemy tylko podstawowe dane tekstowe profilu.
   const onSave = useCallback(async () => {
     if (!accessToken || isSaving) return;
@@ -93,18 +111,19 @@ export default function EditProfileModal({
         firstName: firstName.trim(),
         lastName: lastName.trim(),
       });
-      setFirstName(response.profile.firstName);
-      setLastName(response.profile.lastName);
-      setAvatar(response.profile.avatar);
-      setProfile(response.profile);
-      onProfileUpdated(response.profile);
+      const profileToStore = await cacheProfile(response.profile);
+      setFirstName(profileToStore.firstName);
+      setLastName(profileToStore.lastName);
+      setAvatar(profileToStore.avatar);
+      setProfile(profileToStore);
+      onProfileUpdated(profileToStore);
       onClose();
     } catch (error) {
       console.error("Błąd zapisu profilu:", error);
     } finally {
       setIsSaving(false);
     }
-  }, [accessToken, firstName, isSaving, lastName, onClose, onProfileUpdated, setProfile]);
+  }, [accessToken, cacheProfile, firstName, isSaving, lastName, onClose, onProfileUpdated, setProfile]);
 
   // Wybieramy zdjęcie z galerii i wysyłamy je jako avatar.
   const onPickAvatar = useCallback(async () => {
@@ -147,15 +166,16 @@ export default function EditProfileModal({
         base64Data: asset.base64,
         mimeType: asset.mimeType || 'image/jpeg',
       });
-      setAvatar(response.profile.avatar);
-      setProfile(response.profile);
-      onProfileUpdated(response.profile);
+      const profileToStore = await cacheProfile(response.profile);
+      setAvatar(profileToStore.avatar);
+      setProfile(profileToStore);
+      onProfileUpdated(profileToStore);
     } catch (error) {
       console.error("Błąd wgrywania awatara:", error);
     } finally {
       setIsUploadingAvatar(false);
     }
-  }, [accessToken, isUploadingAvatar, onProfileUpdated, setProfile]);
+  }, [accessToken, cacheProfile, isUploadingAvatar, onProfileUpdated, setProfile]);
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -14,7 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import ScreenHeader from '@/components/ScreenHeader';
 import TripScheduleSection from '@/components/TripScheduleSection';
@@ -22,6 +22,7 @@ import { useCurrentUserProfile } from '@/hooks/useCurrentUserProfile';
 import { useAuth } from '@/providers/auth.provider';
 import { Colors } from '@/styles/colors';
 import { styles } from '@/styles/trips.styles';
+import { useNotifications } from '@/providers/notifications.provider';
 import { getMyFriends } from '@/services/friends.api';
 import {
   addTripParticipant,
@@ -163,6 +164,8 @@ const ProfileAvatar = ({ uri, label, size = 40, color = Colors.brand.blue }: any
 export default function Trips() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const params = useLocalSearchParams<{ tripId?: string }>();
+  const openedTripIdRef = useRef<string | null>(null);
   const colorScheme = useColorScheme() ?? 'light';
   const currentColors = Colors[colorScheme];
   
@@ -271,6 +274,22 @@ export default function Trips() {
     },
     [loadPanelData]
   );
+  useEffect(() => {
+    const tripId = typeof params.tripId === 'string' ? params.tripId : null;
+
+    if (!tripId || tripsLoading || openedTripIdRef.current === tripId) {
+      return;
+    }
+
+    const tripToOpen = trips.find((trip) => trip.id === tripId);
+
+    if (!tripToOpen) {
+      return;
+    }
+
+    openedTripIdRef.current = tripId;
+    void openTripPanel(tripToOpen, 'details');
+  }, [openTripPanel, params.tripId, trips, tripsLoading]);
 
   const closeTripPanel = useCallback(() => {
     setSelectedTrip(null);
@@ -791,6 +810,8 @@ export default function Trips() {
     );
   };
 
+  const { hasUnreadNotifications } = useNotifications();
+
   return (
     <View style={[styles.container, { backgroundColor: currentColors.background }]}> 
       <ScrollView
@@ -805,9 +826,10 @@ export default function Trips() {
           title="Twoje Podróże"
           tripCount={trips.length}
           userInitials={userInitials}
-          onNotificationPress={() => {}}
           onProfilePress={() => router.push('/(main)/profile')}
           userAvatarUrl={userAvatarUrl}
+          hasUnreadNotifications={hasUnreadNotifications}
+          onNotificationPress={() => router.push('/notifications')}
         />
         <View style={styles.overviewGrid}>
             <View style={[styles.overviewCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}> 

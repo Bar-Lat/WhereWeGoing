@@ -1,7 +1,8 @@
-﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'expo-router'
 import {
-  ActivityIndicator,
   Alert,
+  ActivityIndicator,
   BackHandler,
   Image,
   KeyboardAvoidingView,
@@ -26,6 +27,8 @@ import { useAuth } from '@/providers/auth.provider';
 import EditProfileModal from '@/components/EditProfileModal';
 import { useCurrentUserProfile } from '@/hooks/useCurrentUserProfile';
 import { useProfile } from '@/providers/profile.provider';
+import {useNetwork} from '@/providers/network.provider'
+import { useNotifications } from '@/providers/notifications.provider';
 import type { FriendProfile } from '@/types/friends';
 import {
   type AchievementLevel,
@@ -189,6 +192,16 @@ export default function Profile() {
 
   const [avatarLoadError, setAvatarLoadError] = useState(false);
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
+  
+  const {isOffline, toggleOffline} = useNetwork();
+
+  const { hasUnreadNotifications } = useNotifications();
+
+  const accessToken = session?.access_token ?? null;
+
+  const router = useRouter();
+
+  // Resetujemy błąd ładowania obrazka, jeśli zmieni się link do awatara
   const navigation = useNavigation<BottomTabNavigationProp<Record<string, object | undefined>>>();
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [history, setHistory] = useState<TripHistoryItem[]>([]);
@@ -214,7 +227,6 @@ export default function Profile() {
   const [insightsError, setInsightsError] = useState<string | null>(null);
   const [newAchievementNotice, setNewAchievementNotice] = useState<ProfileAchievement | null>(null);
 
-  const accessToken = session?.access_token ?? null;
 
   useEffect(() => {
     setAvatarLoadError(false);
@@ -427,15 +439,39 @@ export default function Profile() {
     );
   }, []);
 
-  const menuItems = [
-    { label: 'Edytuj profil', icon: 'person-outline' },
-    { label: 'Wyloguj się', icon: 'log-out-outline' },
-  ] as const;
+  useEffect(() => {
+    if (isOffline) {
+      setIsEditModalVisible(false);
+    }
+  }, [isOffline]);
+
+  const menuItems = useMemo(() => {
+    const items = [
+      { label: 'Edytuj profil', icon: 'person-outline' },
+      { label: isOffline ? 'Tryb online' : 'Tryb offline', icon: isOffline ? 'cloud-outline' : 'cloud-offline-outline' },
+      { label: 'Wyloguj się', icon: 'log-out-outline' },
+    ] as const;
+
+    return isOffline ? items.filter((item) => item.label !== 'Edytuj profil') : items;
+  }, [isOffline]);
+
+  const openEditProfile = useCallback(() => {
+    if (isOffline) {
+      Alert.alert('Brak internetu', 'Edycja profilu jest dostępna tylko online.');
+      return;
+    }
+
+    setIsEditModalVisible(true);
+  }, [isOffline]);
 
   const onMenuItemPress = useCallback(
     (label: typeof menuItems[number]['label']) => {
       if (label === 'Edytuj profil') {
-        setIsEditModalVisible(true);
+        openEditProfile();
+        return;
+      }
+      if (label === 'Tryb offline' || label === 'Tryb online') {
+        toggleOffline();
         return;
       }
 
@@ -443,7 +479,7 @@ export default function Profile() {
         signOut('manual');
       }
     },
-    [signOut]
+    [openEditProfile, signOut, toggleOffline]
   );
 
   const handleAddFriend = useCallback(
@@ -660,6 +696,7 @@ export default function Profile() {
 
   return (
     <View style={[styles.container, { backgroundColor: currentColors.background }]}>
+      
       {isHistoryOpen ? (
         <>
           <View
@@ -772,7 +809,8 @@ export default function Profile() {
         variant="default"
         title="Mój Profil"
         showProfile={false}
-        onNotificationPress={() => {}}
+        hasUnreadNotifications={hasUnreadNotifications}
+        onNotificationPress={() => router.push('/notifications')}
       />
 
       <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPadding }]}> 
@@ -795,12 +833,14 @@ export default function Profile() {
                     <Text style={styles.avatarText}>{avatarInitials}</Text>
                   </View>
                 )}
-                <TouchableOpacity
-                  style={[styles.editBadge, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}
-                  onPress={() => setIsEditModalVisible(true)}
-                >
-                  <Ionicons name="pencil" size={14} color={currentColors.text} />
-                </TouchableOpacity>
+                {!isOffline && (
+                  <TouchableOpacity 
+                    style={[styles.editBadge, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}
+                    onPress={() => setIsEditModalVisible(true)}
+                  >
+                    <Ionicons name="pencil" size={14} color={currentColors.text} />
+                  </TouchableOpacity>
+                )}
               </View>
 
               <Text style={[styles.userName, { color: currentColors.text }]}>{userNameLabel}</Text>
