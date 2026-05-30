@@ -492,6 +492,34 @@ const buildActivityTimestamp = (dayDate, timeValue) => {
   return `${safeDate}T${safeTime}:00`;
 };
 
+const parseActivityCoordinates = (value) => {
+  if (!value) return null;
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    try {
+      return parseActivityCoordinates(JSON.parse(trimmed));
+    } catch {
+      const parts = trimmed.split(',').map((part) => Number(part.trim()));
+      if (parts.length >= 2 && Number.isFinite(parts[0]) && Number.isFinite(parts[1])) {
+        return { latitude: parts[0], longitude: parts[1] };
+      }
+    }
+    return null;
+  }
+
+  if (typeof value === 'object') {
+    const latitude = Number(value.latitude ?? value.lat);
+    const longitude = Number(value.longitude ?? value.lng ?? value.lon);
+    if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+      return { latitude, longitude };
+    }
+  }
+
+  return null;
+};
+
 const normalizeScheduleActivity = (row) => ({
   id: row.id,
   dayId: row.day_id,
@@ -506,6 +534,7 @@ const normalizeScheduleActivity = (row) => ({
     row.duration_minutes !== null && row.duration_minutes !== undefined
       ? Number(row.duration_minutes)
       : null,
+  coordinates: parseActivityCoordinates(row.coordinates),
 });
 
 const normalizeScheduleTransit = (transit, index) => ({

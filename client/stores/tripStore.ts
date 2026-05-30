@@ -34,6 +34,8 @@ export interface DayPlan {
     estimatedCost: number;
     location: string;
     durationMinutes?: number;
+    coordinates?: { latitude: number; longitude: number } | null;
+    imageUrl?: string | null;
   }[];
   transits?: DayTransit[];
   estimatedDayCost: number;

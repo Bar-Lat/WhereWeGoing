@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Colors } from '@/styles/colors';
 import ScheduleDayTimeline, { type TimelineActivityItem } from '@/components/ScheduleDayTimeline';
+import TripMapTab from '@/components/TripMapTab';
 import { useTripStore, TripPlan, DayPlan } from '@/stores/tripStore';
 import { useAuth } from '@/providers/auth.provider';
 import { useNetwork } from '@/providers/network.provider';
@@ -41,6 +42,7 @@ import type { TripScheduleDayDto } from '@/types/trips';
 import { normalizeTripPlanNumbers } from '@/utils/normalizeTripPlan';
 import { validateTripPlanSchedule } from '@/utils/scheduleValidation';
 import { buildTransitsForActivities, mapDayTransitsToOverrides } from '@/utils/scheduleTransit';
+import { parseActivityCoordinates } from '@/utils/activityMap';
 
 // ─── HELPERY ─────────────────────────────────────────────────────────────────
 const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
@@ -138,6 +140,11 @@ const mergePlanWithSchedule = (
           scheduleActivity.durationMinutes ??
           planActivity?.durationMinutes ??
           undefined,
+        coordinates:
+          planActivity?.coordinates ??
+          parseActivityCoordinates((scheduleActivity as { coordinates?: unknown }).coordinates) ??
+          undefined,
+        imageUrl: planActivity?.imageUrl ?? undefined,
       };
     });
     day.activities.forEach((activity, index) => {
@@ -366,7 +373,7 @@ export default function TripDetails() {
   const colorScheme = useColorScheme() ?? 'light';
   const currentColors = Colors[colorScheme];
 
-  const [activeTab, setActiveTab] = useState<'schedule' | 'budget'>('schedule');
+  const [activeTab, setActiveTab] = useState<'schedule' | 'budget' | 'map'>('schedule');
   const scrollY = useRef(new Animated.Value(0)).current;
 
   const HEADER_MAX_HEIGHT = 240;
@@ -1074,6 +1081,14 @@ export default function TripDetails() {
               </View>
           )}
 
+          {activeTab === 'map' && (
+              <TripMapTab
+                days={tripPlan.days || []}
+                destination={tripPlan.destination}
+                currentColors={currentColors}
+              />
+          )}
+
           {activeTab === 'budget' && (
               <View>
                 <View style={[styles.budgetSummaryCard, { backgroundColor: currentColors.card }]}>
@@ -1204,6 +1219,10 @@ export default function TripDetails() {
             <TouchableOpacity style={styles.tab} onPress={() => setActiveTab('budget')}>
               <Text style={[styles.tabText, { color: activeTab === 'budget' ? Colors.brand.blue : currentColors.subtext }]}>Budżet</Text>
               {activeTab === 'budget' && <View style={[styles.tabUnderline, { backgroundColor: Colors.brand.blue }]} />}
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.tab} onPress={() => setActiveTab('map')}>
+              <Text style={[styles.tabText, { color: activeTab === 'map' ? Colors.brand.blue : currentColors.subtext }]}>Mapa</Text>
+              {activeTab === 'map' && <View style={[styles.tabUnderline, { backgroundColor: Colors.brand.blue }]} />}
             </TouchableOpacity>
           </View>
         </Animated.View>
@@ -1395,8 +1414,8 @@ const styles = StyleSheet.create({
   heroBadgeText: { color: '#fff', fontSize: 13, fontWeight: '600' },
   tabBar: { height: 54, flexDirection: 'row', borderBottomWidth: 1 },
   tab: { flex: 1, alignItems: 'center', justifyContent: 'center', position: 'relative' },
-  tabText: { fontSize: 14, fontWeight: '700' },
-  tabUnderline: { position: 'absolute', bottom: 0, left: '15%', right: '15%', height: 3, borderTopLeftRadius: 3, borderTopRightRadius: 3 },
+  tabText: { fontSize: 13, fontWeight: '700' },
+  tabUnderline: { position: 'absolute', bottom: 0, left: '10%', right: '10%', height: 3, borderTopLeftRadius: 3, borderTopRightRadius: 3 },
   scrollContent: { paddingHorizontal: 16 },
   dayWrapper: { marginBottom: 16, borderRadius: 16, overflow: 'hidden' },
   dayHeader: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 16 },

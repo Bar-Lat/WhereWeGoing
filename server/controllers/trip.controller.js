@@ -96,6 +96,34 @@ const toISO = (ddmmyyyy) => {
   return `${year}-${month}-${day}`;
 };
 
+const parseActivityCoordinates = (value) => {
+  if (!value) return null;
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    try {
+      return parseActivityCoordinates(JSON.parse(trimmed));
+    } catch {
+      const parts = trimmed.split(',').map((part) => Number(part.trim()));
+      if (parts.length >= 2 && Number.isFinite(parts[0]) && Number.isFinite(parts[1])) {
+        return { latitude: parts[0], longitude: parts[1] };
+      }
+    }
+    return null;
+  }
+
+  if (typeof value === 'object') {
+    const latitude = Number(value.latitude ?? value.lat);
+    const longitude = Number(value.longitude ?? value.lng ?? value.lon);
+    if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+      return { latitude, longitude };
+    }
+  }
+
+  return null;
+};
+
 const getUnsplashImage = async (searchQuery) => {
   const accessKey = process.env.UNSPLASH_ACCESS_KEY;
   const encodedQuery = encodeURIComponent(searchQuery || 'city');
@@ -193,6 +221,7 @@ const persistTripPlan = async ({ ownerId, formData, tripPlan }) => {
         location: act.location ?? null,
         coordinates: null,
         cost: act.estimatedCost ?? null,
+        coordinates: parseActivityCoordinates(act.coordinates),
         duration_minutes: null,
         order_index: actIndex,
       });
@@ -375,6 +404,7 @@ const updateTripHandler = async (req, res, next) => {
               description: act.description ?? null,
               location: act.location ?? null,
               cost: act.estimatedCost ?? null,
+              coordinates: parseActivityCoordinates(act.coordinates),
               duration_minutes:
                 typeof act.durationMinutes === 'number' && act.durationMinutes > 0
                   ? act.durationMinutes

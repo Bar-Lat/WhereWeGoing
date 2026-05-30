@@ -65,6 +65,7 @@ export type TripScheduleActivityDto = {
   cost: number;
   orderIndex: number;
   durationMinutes?: number | null;
+  coordinates?: { latitude: number; longitude: number } | null;
 };
 
 export type TripScheduleTransitDto = {
