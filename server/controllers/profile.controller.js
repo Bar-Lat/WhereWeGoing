@@ -1,6 +1,4 @@
 const { supabaseAuthClient, supabaseDbClient } = require('../configs/supabaseClient');
-const UserResponseDTO = require('../dtos/UserResponseDTO');
-const ProfileUpdateRequestDTO = require('../dtos/ProfileUpdateRequestDTO');
 const {
   getUserProfileById,
   upsertUserProfile,
@@ -118,15 +116,6 @@ const deleteAvatarObject = async (avatarValue) => {
   await supabaseDbClient.storage.from(avatarBucket).remove([avatarPath]);
 };
 
-const normalizeProfileResponse = async (profile, user) => ({
-  id: user.id,
-  email: user.email || null,
-  firstName: profile?.first_name || '',
-  lastName: profile?.last_name || '',
-  avatar: await resolveAvatarUrl(profile?.avatar || null),
-  createdAt: profile?.created_at || null,
-  updatedAt: profile?.updated_at || null,
-});
 
 const getMyProfile = async (req, res, next) => {
   try {
@@ -144,15 +133,19 @@ const getMyProfile = async (req, res, next) => {
       });
     }
 
-    // Zwróć response za pomocą UserResponseDTO
+    // Zwróć uproszczoną odpowiedź
     const avatar = await resolveAvatarUrl(data?.avatar || null);
-    const responseDTO = UserResponseDTO.fromProfile(user, {
-      ...data,
-      avatar: avatar
-    });
     return res.status(200).json({
       message: 'Profil pobrany poprawnie.',
-      profile: responseDTO.toJSON(),
+      profile: {
+        id: user.id,
+        email: user.email || null,
+        firstName: data?.first_name || '',
+        lastName: data?.last_name || '',
+        avatar,
+        createdAt: data?.created_at || null,
+        updatedAt: data?.updated_at || null,
+      },
     });
   } catch (err) {
     return next(err);
@@ -167,11 +160,23 @@ const updateMyProfile = async (req, res, next) => {
       return;
     }
 
-    // Konwertuj request na DTO (middleware już waliduje)
-    const updateDTO = new ProfileUpdateRequestDTO(req.body);
+    // Pobierz aktualny profil, żeby zachować avatar jeśli nie podano nowego
+    const { data: currentProfile, error: profileReadError } = await getUserProfileById(user.id);
+    if (profileReadError) {
+      return res.status(500).json({
+        message: `Nie udalo sie odczytac profilu z ${profileSchema}.${profileTable}`,
+      });
+    }
 
-    const profilePatch = updateDTO.toProfileRow(user.id);
-
+    // Przyjmij tylko dozwolone pola z requesta
+    const { firstName = '', lastName = '', avatar } = req.body;
+    const profilePatch = {
+      id: user.id,
+      first_name: firstName,
+      last_name: lastName,
+      avatar: typeof avatar !== 'undefined' ? avatar : currentProfile?.avatar || null,
+      updated_at: new Date().toISOString(),
+    };
     const { error: upsertError } = await upsertUserProfile(profilePatch);
 
     if (upsertError) {
@@ -189,14 +194,18 @@ const updateMyProfile = async (req, res, next) => {
     }
 
     // Obsługuj avatar za pomocą resolveAvatarUrl
-    const avatar = await resolveAvatarUrl(profileData?.avatar || null);
-    const responseDTO = UserResponseDTO.fromProfile(user, {
-      ...profileData,
-      avatar: avatar
-    });
+    const avatarUrl = await resolveAvatarUrl(profileData?.avatar || null);
     return res.status(200).json({
       message: 'Profil zaktualizowany poprawnie.',
-      profile: responseDTO.toJSON(),
+      profile: {
+        id: user.id,
+        email: user.email || null,
+        firstName: profileData?.first_name || '',
+        lastName: profileData?.last_name || '',
+        avatar: avatarUrl,
+        createdAt: profileData?.created_at || null,
+        updatedAt: profileData?.updated_at || null,
+      },
     });
   } catch (err) {
     return next(err);
@@ -282,14 +291,18 @@ const uploadMyAvatar = async (req, res, next) => {
     }
 
     // Obsługuj avatar za pomocą resolveAvatarUrl
-    const avatar = await resolveAvatarUrl(profileData?.avatar || null);
-    const responseDTO = UserResponseDTO.fromProfile(user, {
-      ...profileData,
-      avatar: avatar
-    });
+    const avatarUrl = await resolveAvatarUrl(profileData?.avatar || null);
     return res.status(200).json({
       message: 'Avatar zapisany poprawnie.',
-      profile: responseDTO.toJSON(),
+      profile: {
+        id: user.id,
+        email: user.email || null,
+        firstName: profileData?.first_name || '',
+        lastName: profileData?.last_name || '',
+        avatar: avatarUrl,
+        createdAt: profileData?.created_at || null,
+        updatedAt: profileData?.updated_at || null,
+      },
     });
   } catch (err) {
     return next(err);
@@ -301,5 +314,4 @@ module.exports = {
   updateMyProfile,
   uploadMyAvatar,
 };
-
 

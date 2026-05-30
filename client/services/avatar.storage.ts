@@ -69,7 +69,7 @@ export const downloadAvatarToCache = async (
       idempotent: true,
     });
 
-    return downloadedFile.uri;
+    return `${downloadedFile.uri}?t=${Date.now()}`;
   } catch (error) {
     console.warn('Failed to cache avatar', error);
     return null;

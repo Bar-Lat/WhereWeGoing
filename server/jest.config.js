@@ -16,7 +16,6 @@ module.exports = {
 
   // Pokrycie kodu
   collectCoverageFrom: [
-    'dtos/**/*.js',
     'controllers/**/*.js',
     'middleware/**/*.js',
     '!**/*.test.js'
@@ -42,4 +41,3 @@ module.exports = {
   // Verbose output
   verbose: true
 };
-

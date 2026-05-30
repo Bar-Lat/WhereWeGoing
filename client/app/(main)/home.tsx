@@ -213,7 +213,7 @@ export default function Home() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: bottomPadding }}
       >
-        <ScreenHeader 
+        <ScreenHeader
           variant="dashboard"
           userInitials={userInitials}
           onSearchFocus={() => router.push('/(main)/create')}

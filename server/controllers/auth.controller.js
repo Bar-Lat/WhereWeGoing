@@ -1,8 +1,4 @@
 const { supabaseAuthClient } = require('../configs/supabaseClient');
-const User = require('../models/User');
-const UserResponseDTO = require('../dtos/UserResponseDTO');
-const LoginRequestDTO = require('../dtos/LoginRequestDTO');
-const RegisterRequestDTO = require('../dtos/RegisterRequestDTO');
 const {
   upsertUserProfile,
   profileSchema,
@@ -10,11 +6,16 @@ const {
 } = require('../repositories/profile.repository');
 
 const ensureProfile = async ({ userId, email }) => {
-  const userModel = User.fromRegistration({ email });
-  const profileRow = userModel.toProfileRow(userId);
-
+  // Tworzy pusty profil po rejestracji
+  const profileRow = {
+    id: userId,
+    first_name: '',
+    last_name: '',
+    avatar: null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
   const { error: profileError } = await upsertUserProfile(profileRow);
-
   if (profileError) {
     return {
       ok: false,
@@ -25,7 +26,6 @@ const ensureProfile = async ({ userId, email }) => {
       },
     };
   }
-
   return { ok: true };
 };
 
@@ -78,42 +78,38 @@ const formatAuthResponse = (data, fallbackEmail = null) => ({
 // Rejestruje konto w auth.users i tworzy rekord profilu 1:1.
 const register = async (req, res, next) => {
   try {
-    // Konwertuj request na DTO (middleware już waliduje)
-    const registerDTO = new RegisterRequestDTO(req.body);
-    const userModel = User.fromRegistration({ email: registerDTO.email });
-
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Email i hasło są wymagane.' });
+    }
     const signUpOptions = {};
-
     if (process.env.SUPABASE_EMAIL_REDIRECT_URL) {
       signUpOptions.emailRedirectTo = process.env.SUPABASE_EMAIL_REDIRECT_URL;
     }
-
     const { data, error } = await supabaseAuthClient.auth.signUp({
-      email: registerDTO.email,
-      password: registerDTO.password,
+      email,
+      password,
       options: signUpOptions,
     });
-
     if (error) {
       const mapped = mapSupabaseError(error);
       return res.status(mapped.statusCode).json({ message: mapped.message });
     }
-
     if (data?.user?.id) {
       const profileResult = await ensureProfile({
         userId: data.user.id,
-        email: data?.user?.email || registerDTO.email,
+        email: data?.user?.email || email,
       });
       if (!profileResult.ok) {
         return res.status(profileResult.statusCode).json(profileResult.body);
       }
     }
-
-    // Zwróć response za pomocą UserResponseDTO
-    const responseDTO = UserResponseDTO.fromAuth(data, registerDTO.email);
     return res.status(201).json({
       message: 'Konto utworzone poprawnie.',
-      user: responseDTO.toJSON(),
+      user: {
+        id: data?.user?.id || null,
+        email: data?.user?.email || email,
+      },
     });
   } catch (err) {
     return next(err);
@@ -123,24 +119,24 @@ const register = async (req, res, next) => {
 // Logowanie e-mail + hasło i zwrot sesji do klienta mobilnego.
 const login = async (req, res, next) => {
   try {
-    // Konwertuj request na DTO (middleware już waliduje)
-    const loginDTO = new LoginRequestDTO(req.body);
-
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Email i hasło są wymagane.' });
+    }
     const { data, error } = await supabaseAuthClient.auth.signInWithPassword({
-      email: loginDTO.email,
-      password: loginDTO.password,
+      email,
+      password,
     });
-
     if (error) {
       const mapped = mapSupabaseError(error);
       return res.status(mapped.statusCode).json({ message: mapped.message });
     }
-
-    // Zwróć response za pomocą UserResponseDTO
-    const responseDTO = UserResponseDTO.fromAuth(data, loginDTO.email);
     return res.status(200).json({
       message: 'Logowanie zakończone poprawnie.',
-      user: responseDTO.toJSON(),
+      user: {
+        id: data?.user?.id || null,
+        email: data?.user?.email || email,
+      },
       session: data?.session || null,
     });
   } catch (err) {
@@ -164,7 +160,11 @@ const refreshSession = async (req, res, next) => {
 
     return res.status(200).json({
       message: 'Sesja odświeżona poprawnie.',
-      ...formatAuthResponse(data),
+      user: {
+        id: data?.user?.id || null,
+        email: data?.user?.email || null,
+      },
+      session: data?.session || null,
     });
   } catch (err) {
     return next(err);
