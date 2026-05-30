@@ -15,6 +15,12 @@ import {
   type TransitLegOverride,
 } from '@/utils/scheduleTransit';
 import { formatActivityTimeRange, recalculateActivityTimesAfterReorder } from '@/utils/activityTime';
+import { getCategoryColor, getCategoryIcon } from '@/utils/activityCategory';
+import {
+  openGoogleMapsBetweenActivities,
+  openGoogleMapsFromCurrentLocation,
+  type MapLocationInput,
+} from '@/utils/googleMapsLinks';
 
 export type TimelineActivityItem = {
   key: string;
@@ -25,6 +31,8 @@ export type TimelineActivityItem = {
   location?: string;
   cost: number;
   durationMinutes?: number | null;
+  coordinates?: unknown;
+  imageUrl?: string | null;
 };
 
 type ActivityInput = {
@@ -46,6 +54,7 @@ type ScheduleColors = {
 
 type ScheduleDayTimelineProps = {
   activities: TimelineActivityItem[];
+  destination: string;
   editable?: boolean;
   saving?: boolean;
   preferredTransport?: string[];
@@ -59,29 +68,32 @@ type ScheduleDayTimelineProps = {
   scrollOffsetRef?: React.RefObject<number>;
 };
 
-const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
-  transport: 'bus-outline',
-  jedzenie: 'restaurant-outline',
-  atrakcja: 'business-outline',
-  nocleg: 'bed-outline',
-  inne: 'bookmark-outline',
-};
+const toMapLocation = (item: TimelineActivityItem): MapLocationInput => ({
+  name: item.name,
+  location: item.location,
+  coordinates: item.coordinates,
+});
 
-const getCategoryIcon = (category: string): keyof typeof Ionicons.glyphMap =>
-  CATEGORY_ICONS[category?.toLowerCase()] ?? 'location-outline';
+function MapsPillButton({ onPress }: { onPress: () => void }) {
+  return (
+    <TouchableOpacity style={styles.mapsPill} onPress={onPress} activeOpacity={0.8}>
+      <Ionicons name="navigate-outline" size={14} color={Colors.brand.blue} />
+      <Text style={styles.mapsPillText}>Maps</Text>
+    </TouchableOpacity>
+  );
+}
 
-const getCategoryColor = (category: string) => {
-  const map: Record<string, string> = {
-    transport: '#f59e0b',
-    jedzenie: '#10b981',
-    atrakcja: Colors.brand.blue,
-    nocleg: '#3b82f6',
-    inne: '#8b5cf6',
-  };
-  return map[category?.toLowerCase()] ?? Colors.brand.blue;
-};
-
-function TransitLegRow({ leg }: { leg: TransitLeg }) {
+function TransitLegRow({
+  leg,
+  fromActivity,
+  toActivity,
+  destination,
+}: {
+  leg: TransitLeg;
+  fromActivity: TimelineActivityItem;
+  toActivity: TimelineActivityItem;
+  destination: string;
+}) {
   return (
     <View style={styles.transitRow}>
       <View style={styles.transitLeftSpacer} />
@@ -95,6 +107,15 @@ function TransitLegRow({ leg }: { leg: TransitLeg }) {
           <Text style={styles.transitTime}>{leg.timeRangeLabel}</Text>
         </View>
       </View>
+      <MapsPillButton
+        onPress={() => {
+          void openGoogleMapsBetweenActivities(
+            toMapLocation(fromActivity),
+            toMapLocation(toActivity),
+            destination
+          );
+        }}
+      />
     </View>
   );
 }
@@ -114,6 +135,8 @@ function TimelineRow({
   onEdit,
   onDelete,
   rowRef,
+  destination,
+  showMapActions,
 }: {
   item: TimelineActivityItem;
   index: number;
@@ -129,6 +152,8 @@ function TimelineRow({
   onEdit?: () => void;
   onDelete?: () => void;
   rowRef: (ref: View | null) => void;
+  destination: string;
+  showMapActions: boolean;
 }) {
   const catColor = getCategoryColor(item.category);
   const isReorderMode = reorderIndex === index;
@@ -233,6 +258,17 @@ function TimelineRow({
               )}
             </View>
           )}
+
+          {showMapActions && (
+            <TouchableOpacity
+              style={styles.openMapsBtn}
+              onPress={() => {
+                void openGoogleMapsFromCurrentLocation(toMapLocation(item), destination);
+              }}
+            >
+              <Ionicons name="open-outline" size={20} color={Colors.brand.blue} />
+            </TouchableOpacity>
+          )}
         </View>
       </TouchableOpacity>
     </View>
@@ -241,6 +277,7 @@ function TimelineRow({
 
 export default function ScheduleDayTimeline({
   activities,
+  destination,
   editable = false,
   saving = false,
   preferredTransport,
@@ -374,9 +411,16 @@ export default function ScheduleDayTimeline({
             rowRef={(ref) => {
               rowRefs.current[index] = ref;
             }}
+            destination={destination}
+            showMapActions={!editable}
           />
           {index < items.length - 1 && transitLegs[index] && (
-            <TransitLegRow leg={transitLegs[index]!} />
+            <TransitLegRow
+              leg={transitLegs[index]!}
+              fromActivity={items[index]}
+              toActivity={items[index + 1]}
+              destination={destination}
+            />
           )}
         </View>
       ))}
@@ -417,6 +461,15 @@ const styles = StyleSheet.create({
   activityDesc: { fontSize: 13, lineHeight: 18 },
   actionRow: { flexDirection: 'row', marginLeft: 4 },
   actionBtn: { padding: 6 },
+  openMapsBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(99, 102, 241, 0.08)',
+    marginLeft: 4,
+  },
   reorderControls: { alignItems: 'center', gap: 4, marginTop: 8 },
   reorderArrowBtn: {
     width: 32,
@@ -428,19 +481,33 @@ const styles = StyleSheet.create({
   },
   reorderArrowBtnDisabled: { opacity: 0.45 },
   confirmBtn: { marginTop: 0 },
-  transitRow: { flexDirection: 'row', marginBottom: 6 },
+  transitRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6, gap: 8 },
   transitLeftSpacer: { width: 44 },
   transitBubble: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
     backgroundColor: 'rgba(148, 163, 184, 0.14)',
   },
   transitTextBox: { flex: 1, minWidth: 0 },
   transitTitle: { fontSize: 11, fontWeight: '600', color: '#64748b' },
   transitTime: { fontSize: 10, color: '#94a3b8', marginTop: 1 },
+  mapsPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: 'rgba(99, 102, 241, 0.1)',
+  },
+  mapsPillText: {
+    color: Colors.brand.blue,
+    fontSize: 12,
+    fontWeight: '700',
+  },
 });

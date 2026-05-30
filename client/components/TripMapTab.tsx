@@ -1,25 +1,17 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Linking,
-  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '@/styles/colors';
 import type { DayPlan } from '@/stores/tripStore';
-import PlanMapMarker from '@/components/PlanMapMarker';
-import {
-  buildGoogleMapsDirectionsUrl,
-  getMapRegionForPoints,
-  resolveMapActivityPoints,
-  type MapActivityPoint,
-} from '@/utils/activityMap';
+import LeafletTripMap from '@/components/LeafletTripMap';
+import { resolveMapActivityPoints, type MapActivityPoint } from '@/utils/activityMap';
 
 type TripMapTabProps = {
   days: DayPlan[];
@@ -59,9 +51,9 @@ function DayMapPanel({
   onToggle: () => void;
   currentColors: TripMapTabProps['currentColors'];
 }) {
-  const mapRef = useRef<MapView | null>(null);
   const [points, setPoints] = useState<MapActivityPoint[]>([]);
   const [loading, setLoading] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(0);
 
   useEffect(() => {
     if (!expanded) return;
@@ -69,6 +61,7 @@ function DayMapPanel({
     let cancelled = false;
     const loadPoints = async () => {
       setLoading(true);
+      setSelectedIndex(0);
       const resolved = await resolveMapActivityPoints(
         day.activities.map((activity, actIndex) => ({
           key: activity.id ?? `${dayIndex}-${actIndex}`,
@@ -93,20 +86,24 @@ function DayMapPanel({
     };
   }, [day.activities, dayIndex, destination, expanded]);
 
-  const region = useMemo(() => getMapRegionForPoints(points.map((point) => point.coordinates)), [points]);
+  const focusPoint = (index: number) => {
+    if (points.length === 0) return;
+    setSelectedIndex(index);
+  };
 
-  useEffect(() => {
-    if (!expanded || points.length === 0) return;
-    mapRef.current?.animateToRegion(region, 350);
-  }, [expanded, points, region]);
+  const goToPreviousPoint = () => {
+    if (points.length === 0) return;
+    focusPoint((selectedIndex - 1 + points.length) % points.length);
+  };
 
-  const googleMapsUrl = useMemo(
-    () => buildGoogleMapsDirectionsUrl(points.map((point) => point.coordinates)),
-    [points]
-  );
+  const goToNextPoint = () => {
+    if (points.length === 0) return;
+    focusPoint((selectedIndex + 1) % points.length);
+  };
 
   const textColor = expanded ? '#fff' : currentColors.text;
   const subtextColor = expanded ? 'rgba(255,255,255,0.85)' : currentColors.subtext;
+  const selectedPoint = points[selectedIndex];
 
   return (
     <View style={[styles.dayCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}>
@@ -149,59 +146,57 @@ function DayMapPanel({
           {loading ? (
             <View style={styles.mapPlaceholder}>
               <ActivityIndicator color={Colors.brand.blue} />
-              <Text style={[styles.placeholderText, { color: currentColors.subtext }]}>Ładowanie mapy...</Text>
+              <Text style={[styles.placeholderText, { color: currentColors.subtext }]}>
+                Wyszukiwanie punktów na mapie...
+              </Text>
             </View>
           ) : points.length === 0 ? (
             <View style={styles.mapPlaceholder}>
               <Ionicons name="map-outline" size={28} color={currentColors.subtext} />
               <Text style={[styles.placeholderText, { color: currentColors.subtext }]}>
-                Brak współrzędnych dla atrakcji tego dnia.
+                Brak lokalizacji do wyświetlenia dla atrakcji tego dnia.
               </Text>
             </View>
           ) : (
-            <MapView
-              ref={mapRef}
-              style={styles.map}
-              provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-              initialRegion={region}
-              scrollEnabled
-              zoomEnabled
-              rotateEnabled={false}
-              pitchEnabled={false}
-            >
-              {points.map((point) => (
-                <Marker
-                  key={point.key}
-                  coordinate={point.coordinates}
-                  title={point.name}
-                  anchor={{ x: 0.5, y: 0.5 }}
-                  tracksViewChanges={false}
-                >
-                  <PlanMapMarker
-                    orderNumber={point.orderNumber}
-                    category={point.category}
-                    imageUrl={point.imageUrl}
-                  />
-                </Marker>
-              ))}
-            </MapView>
-          )}
+            <>
+              <View style={styles.mapContainer}>
+                <LeafletTripMap
+                  points={points}
+                  selectedIndex={selectedIndex}
+                  onMarkerPress={focusPoint}
+                />
+              </View>
 
-          <TouchableOpacity
-            style={[
-              styles.googleBtn,
-              { opacity: googleMapsUrl ? 1 : 0.45 },
-            ]}
-            disabled={!googleMapsUrl}
-            onPress={() => {
-              if (googleMapsUrl) {
-                void Linking.openURL(googleMapsUrl);
-              }
-            }}
-          >
-            <Ionicons name="navigate-outline" size={16} color="#fff" />
-            <Text style={styles.googleBtnText}>Pokaż na mapach google</Text>
-          </TouchableOpacity>
+              <View style={styles.pointNavigator}>
+                <TouchableOpacity
+                  style={[styles.navArrowBtn, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}
+                  onPress={goToPreviousPoint}
+                  accessibilityLabel="Poprzedni punkt"
+                >
+                  <Ionicons name="chevron-back" size={18} color={Colors.brand.blue} />
+                </TouchableOpacity>
+
+                <View style={styles.pointCounterBox}>
+                  <Text style={[styles.pointCounter, { color: currentColors.text }]}>
+                    {selectedIndex + 1}/{points.length}
+                  </Text>
+                  {selectedPoint && (
+                    <Text style={[styles.pointName, { color: currentColors.subtext }]} numberOfLines={1}>
+                      {selectedPoint.name}
+                    </Text>
+                  )}
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.navArrowBtn, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}
+                  onPress={goToNextPoint}
+                  accessibilityLabel="Następny punkt"
+                >
+                  <Ionicons name="chevron-forward" size={18} color={Colors.brand.blue} />
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
         </View>
       )}
     </View>
@@ -276,9 +271,8 @@ const styles = StyleSheet.create({
   },
   mapSection: {
     padding: 12,
-    gap: 10,
   },
-  map: {
+  mapContainer: {
     width: '100%',
     height: 260,
     borderRadius: 14,
@@ -298,19 +292,34 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: 24,
   },
-  googleBtn: {
+  pointNavigator: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    backgroundColor: Colors.brand.blue,
-    borderRadius: 12,
-    paddingVertical: 12,
+    gap: 12,
+    marginTop: 10,
   },
-  googleBtnText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '700',
+  navArrowBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pointCounterBox: {
+    minWidth: 120,
+    alignItems: 'center',
+    gap: 2,
+  },
+  pointCounter: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  pointName: {
+    fontSize: 12,
+    textAlign: 'center',
+    maxWidth: 180,
   },
   emptyText: {
     fontSize: 14,

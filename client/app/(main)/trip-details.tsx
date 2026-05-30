@@ -167,6 +167,7 @@ function formatDate(dateStr: string): string {
 function DayCardView({
                        day,
                        index,
+                       tripDestination,
                        currentColors,
                        isEditingMode,
                        preferredTransport,
@@ -181,6 +182,7 @@ function DayCardView({
                      }: {
   day: DayPlan;
   index: number;
+  tripDestination: string;
   currentColors: any;
   isEditingMode: boolean;
   preferredTransport?: string[];
@@ -281,6 +283,7 @@ function DayCardView({
 
               {day.activities?.length ? (
                 <ScheduleDayTimeline
+                  destination={tripDestination}
                   activities={day.activities.map((activity, actIndex): TimelineActivityItem => ({
                     key: activity.id ?? `${index}-${actIndex}`,
                     name: activity.name,
@@ -290,6 +293,8 @@ function DayCardView({
                     location: activity.location,
                     cost: activity.estimatedCost,
                     durationMinutes: activity.durationMinutes ?? null,
+                    coordinates: activity.coordinates,
+                    imageUrl: activity.imageUrl,
                   }))}
                   editable={isEditingMode}
                   showTransits={!isEditingMode}
@@ -1058,6 +1063,7 @@ export default function TripDetails() {
                         key={index}
                         day={day}
                         index={index}
+                        tripDestination={tripPlan.destination}
                         currentColors={currentColors}
                         isEditingMode={isEditingMode}
                         preferredTransport={formData?.transport}

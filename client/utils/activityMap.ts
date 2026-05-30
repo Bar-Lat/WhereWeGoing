@@ -104,12 +104,16 @@ export const getMapRegionForPoints = (
 
 const geocodeCache = new Map<string, ActivityCoordinates | null>();
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export const geocodeActivityLocation = async (
   location: string,
-  destination: string
+  destination = ''
 ): Promise<ActivityCoordinates | null> => {
-  const query = `${location.trim()}, ${destination.trim()}`.trim();
-  if (!location.trim() || !destination.trim()) return null;
+  const locationText = location.trim();
+  if (!locationText) return null;
+
+  const query = destination.trim() ? `${locationText}, ${destination.trim()}` : locationText;
 
   if (geocodeCache.has(query)) {
     return geocodeCache.get(query) ?? null;
@@ -171,9 +175,20 @@ export const resolveMapActivityPoints = async (
     const activity = activities[index];
     let coordinates = parseActivityCoordinates(activity.coordinates);
 
-    if (!coordinates && activity.location?.trim()) {
-      coordinates = await geocodeActivityLocation(activity.location, destination);
-      await new Promise((resolve) => setTimeout(resolve, 350));
+    if (!coordinates) {
+      const queries = [
+        [activity.name, activity.location, destination].filter(Boolean).join(', '),
+        [activity.location, destination].filter(Boolean).join(', '),
+        [activity.name, destination].filter(Boolean).join(', '),
+        activity.location?.trim() || '',
+        activity.name?.trim() || '',
+      ].filter((query, queryIndex, list) => query && list.indexOf(query) === queryIndex);
+
+      for (const query of queries) {
+        coordinates = await geocodeActivityLocation(query, '');
+        if (coordinates) break;
+        await sleep(250);
+      }
     }
 
     if (!coordinates) continue;
@@ -186,6 +201,8 @@ export const resolveMapActivityPoints = async (
       imageUrl: activity.imageUrl,
       coordinates,
     });
+
+    await sleep(250);
   }
 
   return points;
