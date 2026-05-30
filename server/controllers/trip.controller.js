@@ -171,6 +171,15 @@ const calculateTripTotalCost = (tripPlan, fallbackBudget) => {
   return typeof fallbackBudget === 'number' ? fallbackBudget : 0;
 };
 
+const getTripPlanSummary = (tripPlan, destination) => {
+  if (typeof tripPlan?.summary === 'string' && tripPlan.summary.trim()) {
+    return tripPlan.summary.trim();
+  }
+
+  const safeDestination = destination || tripPlan?.destination || 'wybranego miejsca';
+  return `Plan podróży do ${safeDestination}.`;
+};
+
 const persistTripPlan = async ({ ownerId, formData, tripPlan }) => {
   const { destination, departureDate, returnDate, budget } = formData;
   const totalCost = calculateTripTotalCost(tripPlan, budget);
@@ -188,7 +197,7 @@ const persistTripPlan = async ({ ownerId, formData, tripPlan }) => {
     total_budget: budget,
     status: 'planned',
     image_url: generatedImageUrl,
-    notes: JSON.stringify(tripPlan), // Zachowujemy JSON w bazie!
+    notes: getTripPlanSummary(tripPlan, destination),
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
@@ -363,7 +372,7 @@ const updateTripHandler = async (req, res, next) => {
     if (trip.owner_id !== ownerId) return res.status(403).json({ message: 'Brak dostępu do tej wycieczki' });
 
     const updateData = {
-      notes: JSON.stringify(tripPlan),
+      notes: getTripPlanSummary(tripPlan, trip.destination),
       total_budget: tripPlan.estimatedTotalCost || trip.total_budget,
       image_url: tripPlan.imageUrl || trip.image_url,
       updated_at: new Date().toISOString()

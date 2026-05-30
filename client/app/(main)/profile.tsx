@@ -1,5 +1,5 @@
 ﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'expo-router'
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   Alert,
   ActivityIndicator,
@@ -183,6 +183,7 @@ const ProfileAvatar = ({
 
 export default function Profile() {
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ panel?: string }>();
   const colorScheme = useColorScheme() ?? 'light';
   const currentColors = Colors[colorScheme];
   const { signOut, session } = useAuth();
@@ -227,6 +228,12 @@ export default function Profile() {
   const [insightsError, setInsightsError] = useState<string | null>(null);
   const [newAchievementNotice, setNewAchievementNotice] = useState<ProfileAchievement | null>(null);
 
+
+  useEffect(() => {
+    if (params.panel === 'friends') {
+      setIsFriendsPanelVisible(true);
+    }
+  }, [params.panel]);
 
   useEffect(() => {
     setAvatarLoadError(false);

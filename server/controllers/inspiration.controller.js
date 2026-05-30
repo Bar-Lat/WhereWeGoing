@@ -3,6 +3,7 @@ const {
   getOffers,
   getOfferById,
   getProfilesByIds,
+  getParticipatingTripIds,
   createTripFromOffer: createTripFromOfferRepository,
 } = require('../repositories/inspiration.repository');
 
@@ -28,6 +29,22 @@ const resolveAuthenticatedUser = async (req, res) => {
 
   if (error || !data?.user?.id) {
     res.status(401).json({ message: 'Niepoprawny lub wygasły access token' });
+    return null;
+  }
+
+  return data.user;
+};
+
+const resolveOptionalAuthenticatedUser = async (req) => {
+  const accessToken = parseAccessToken(req);
+
+  if (!accessToken) {
+    return null;
+  }
+
+  const { data, error } = await supabaseAuthClient.auth.getUser(accessToken);
+
+  if (error || !data?.user?.id) {
     return null;
   }
 
@@ -196,6 +213,34 @@ const resolveDuration = (daysCount) => {
   return { id: 'long', label: 'Dłuższy wyjazd' };
 };
 
+const getNotesSummary = (notes) => {
+  if (!notes) return null;
+  const trimmedNotes = String(notes).trim();
+
+  try {
+    const parsed = JSON.parse(trimmedNotes);
+    if (typeof parsed?.summary === 'string' && parsed.summary.trim()) {
+      return parsed.summary.trim();
+    }
+  } catch {
+    const start = trimmedNotes.indexOf('{');
+    const end = trimmedNotes.lastIndexOf('}');
+
+    if (start >= 0 && end > start) {
+      try {
+        const parsed = JSON.parse(trimmedNotes.slice(start, end + 1));
+        if (typeof parsed?.summary === 'string' && parsed.summary.trim()) {
+          return parsed.summary.trim();
+        }
+      } catch {
+        return trimmedNotes.startsWith('{') || trimmedNotes.startsWith('[') ? null : trimmedNotes;
+      }
+    }
+  }
+
+  return trimmedNotes.startsWith('{') || trimmedNotes.startsWith('[') ? null : trimmedNotes;
+};
+
 const normalizeTrip = (trip, profilesMap = new Map()) => {
   const profile = profilesMap.get(trip.owner_id);
   const daysCount = getDaysCount(trip.start_date, trip.end_date);
@@ -213,7 +258,7 @@ const normalizeTrip = (trip, profilesMap = new Map()) => {
     endDate: trip.end_date,
     priceFrom,
     imageUrl: trip.image_url,
-    notes: trip.notes || null,
+    notes: getNotesSummary(trip.notes),
     status: trip.status,
     daysCount,
     source: getOfferSource(trip.status),
@@ -273,6 +318,19 @@ const filterNormalizedOffers = (offers, filters) => offers.filter((offer) => {
 
 const listOffers = async (req, res, next) => {
   try {
+    const user = await resolveOptionalAuthenticatedUser(req);
+    let excludeTripIds = [];
+
+    if (user?.id) {
+      const { data: participatingTripIds, error: participatingError } = await getParticipatingTripIds(user.id);
+
+      if (participatingError) {
+        return res.status(500).json({ message: 'Nie udało się pobrać Twoich planów do filtrowania inspiracji' });
+      }
+
+      excludeTripIds = participatingTripIds;
+    }
+
     const filters = {
       searchText: typeof req.query.searchText === 'string' ? req.query.searchText.trim() : undefined,
       minBudget: parseBudget(req.query.minBudget),
@@ -285,6 +343,8 @@ const listOffers = async (req, res, next) => {
       durationType: parseSelectFilter(req.query.durationType, ['short', 'week', 'long']),
       startDateFrom: parseDate(req.query.startDateFrom),
       startDateTo: parseDate(req.query.startDateTo),
+      excludeOwnerId: user?.id,
+      excludeTripIds,
     };
 
     const { data, error } = await getOffers(filters);
@@ -349,6 +409,19 @@ const createTripFromOffer = async (req, res, next) => {
 
     if (!offer) {
       return res.status(404).json({ message: 'Nie znaleziono oferty' });
+    }
+
+    if (offer.owner_id === user.id) {
+      return res.status(400).json({ message: 'Ta inspiracja jest już Twoim planem' });
+    }
+
+    const { data: existingPlanIds, error: existingPlansError } = await getParticipatingTripIds(user.id);
+    if (existingPlansError) {
+      return res.status(500).json({ message: 'Nie udało się sprawdzić Twoich planów' });
+    }
+
+    if ((existingPlanIds || []).includes(offer.id)) {
+      return res.status(400).json({ message: 'Ta inspiracja jest już na Twojej liście planów' });
     }
 
     const { data: trip, error: insertError } = await createTripFromOfferRepository({

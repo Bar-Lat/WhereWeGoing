@@ -61,6 +61,51 @@ const normalizeTrip = (trip, userId, participantsCount = 0, totalCost = null) =>
   accessRole: trip.owner_id === userId ? 'owner' : 'participant',
 });
 
+const getTripStartTime = (trip) => {
+  const parsed = new Date(`${trip.startDate || trip.start_date || ''}T00:00:00`).getTime();
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
+const getTripEndTime = (trip) => {
+  const parsed = new Date(`${trip.endDate || trip.end_date || ''}T00:00:00`).getTime();
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
+const getTripDateRank = (trip, todayTime) => {
+  const startTime = getTripStartTime(trip);
+  const endTime = getTripEndTime(trip);
+
+  if (startTime !== null && endTime !== null && startTime <= todayTime && endTime >= todayTime) return 0;
+  if (startTime !== null && startTime > todayTime) return 1;
+  if (endTime !== null && endTime < todayTime) return 2;
+  return 3;
+};
+
+const sortTripsByNearestDate = (trips) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayTime = today.getTime();
+
+  return [...trips].sort((a, b) => {
+    const aStart = getTripStartTime(a);
+    const bStart = getTripStartTime(b);
+    const aRank = getTripDateRank(a, todayTime);
+    const bRank = getTripDateRank(b, todayTime);
+
+    if (aRank !== bRank) return aRank - bRank;
+
+    if (aStart === null && bStart === null) {
+      return new Date(b.createdAt || b.created_at || 0).getTime() - new Date(a.createdAt || a.created_at || 0).getTime();
+    }
+
+    if (aStart === null) return 1;
+    if (bStart === null) return -1;
+
+    if (aRank === 2) return bStart - aStart;
+    return aStart - bStart;
+  });
+};
+
 const normalizeParticipant = (profile, row, ownerId) => ({
   id: profile.id,
   profileId: profile.id,
@@ -223,14 +268,13 @@ const getTrips = async (req, res, next) => {
       return res.status(500).json({ message: totalsError.message });
     }
 
-    const normalizedTrips = trips
+    const normalizedTrips = sortTripsByNearestDate(trips
       .map((trip) => {
         const uniqueParticipantIds = participantsByTripId[trip.id] || new Set();
         uniqueParticipantIds.add(trip.owner_id);
         const activityTotal = totalsByTripId[trip.id] ?? null;
         return normalizeTrip(trip, userId, uniqueParticipantIds.size, activityTotal);
-      })
-      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      }));
 
     return res.status(200).json({ trips: normalizedTrips });
   } catch (err) {

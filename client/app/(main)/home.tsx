@@ -16,6 +16,7 @@ import { useNotifications } from '@/providers/notifications.provider';
 import { useTripStore, TripPlan } from '@/stores/tripStore';
 import { getTripSchedule } from '@/services/trips.api';
 import { useAuth } from '@/providers/auth.provider';
+import { getCachedOfflineTrips, type CachedOfflineTrip } from '@/services/offlineTrip.storage';
 
 // --- HELPERY DO DAT ---
 // Zakładamy, że startDate przychodzi z bazy jako ISO string, np. "2024-06-12T00:00:00.000Z" lub "2024-06-12"
@@ -26,6 +27,36 @@ function formatShortDate(dateStr?: string | null) {
   const months = ['Sty', 'Lut', 'Mar', 'Kwi', 'Maj', 'Cze', 'Lip', 'Sie', 'Wrz', 'Paź', 'Lis', 'Gru'];
   return `${date.getDate()} ${months[date.getMonth()]}`;
 }
+
+const getTripStartTime = (trip: any) => {
+  const parsed = new Date(`${trip.startDate || trip.start_date || ''}T00:00:00`).getTime();
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
+const sortTripsByNearestDate = <T extends { trip: any }>(items: T[]) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayTime = today.getTime();
+
+  return [...items].sort((a, b) => {
+    const aStart = getTripStartTime(a.trip);
+    const bStart = getTripStartTime(b.trip);
+
+    if (aStart === null && bStart === null) {
+      return 0;
+    }
+
+    if (aStart === null) return 1;
+    if (bStart === null) return -1;
+
+    const aUpcoming = aStart >= todayTime;
+    const bUpcoming = bStart >= todayTime;
+
+    if (aUpcoming && bUpcoming) return aStart - bStart;
+    if (!aUpcoming && !bUpcoming) return bStart - aStart;
+    return aUpcoming ? -1 : 1;
+  });
+};
 
 
 
@@ -42,20 +73,51 @@ export default function Home() {
   
   const { session } = useAuth(); 
   const [isLoadingTrip, setIsLoadingTrip] = useState(false);
+  const [cachedOfflineTrips, setCachedOfflineTrips] = useState<CachedOfflineTrip[]>([]);
   
 
 
   const bottomPadding = 65 + (insets.bottom > 0 ? insets.bottom : 10) + 20;
+  const userId = session?.user?.id ?? null;
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadOfflineTrips = async () => {
+      if (!userId) {
+        setCachedOfflineTrips([]);
+        return;
+      }
+
+      const cached = await getCachedOfflineTrips(userId);
+      if (isMounted) {
+        setCachedOfflineTrips(sortTripsByNearestDate(cached));
+      }
+    };
+
+    if (isOffline) {
+      void loadOfflineTrips();
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isOffline, userId]);
+
+  const homeTrips = useMemo(
+    () => (isOffline ? cachedOfflineTrips.map((item) => item.trip) : trips),
+    [cachedOfflineTrips, isOffline, trips]
+  );
 
   // --- LOGIKA WYLICZANIA NAJBLIŻSZEJ WYCIECZKI (Bazuje na TripDto) ---
   const { upcomingTrip, daysLeft, isOngoing, isPast } = useMemo(() => {
-    if (!trips || trips.length === 0) return { upcomingTrip: null, daysLeft: 0, isOngoing: false, isPast: false };
+    if (!homeTrips || homeTrips.length === 0) return { upcomingTrip: null, daysLeft: 0, isOngoing: false, isPast: false };
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     // Sortowanie wycieczek od najbliższej po polu startDate
-    const sortedTrips = [...trips].sort((a, b) => {
+    const sortedTrips = [...homeTrips].sort((a, b) => {
       const aDate = a.startDate ? new Date(a.startDate).getTime() : 0;
       const bDate = b.startDate ? new Date(b.startDate).getTime() : 0;
       return aDate - bDate;
@@ -94,7 +156,12 @@ export default function Home() {
     }
 
     return { upcomingTrip: closest, daysLeft, isOngoing, isPast };
-  }, [trips]);
+  }, [homeTrips]);
+
+  const offlineUpcomingCache = useMemo(
+    () => (isOffline && upcomingTrip ? cachedOfflineTrips.find((item) => item.trip.id === upcomingTrip.id) : null),
+    [cachedOfflineTrips, isOffline, upcomingTrip]
+  );
 
   // --- PRZYGOTOWANIE ZMIENNYCH DLA WIDOKU ---
   const heroImage = upcomingTrip?.imageUrl || 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?q=80&w=1000&auto=format&fit=crop';
@@ -108,24 +175,27 @@ export default function Home() {
   const isOverBudget = spent > budget;
 
   const handleOpenUpcomingTrip = async () => {
-    if (!upcomingTrip || !session?.access_token) return;
+    if (!upcomingTrip) return;
 
     try {
       setIsLoadingTrip(true);
-      
-      // POPRAWKA: Kolejność argumentów to (accessToken, tripId)
-      const scheduleResponse = await getTripSchedule(session.access_token, upcomingTrip.id);
+
+      const scheduleDays = isOffline
+        ? offlineUpcomingCache?.scheduleDays || []
+        : session?.access_token
+          ? (await getTripSchedule(session.access_token, upcomingTrip.id)).days || []
+          : [];
 
       const mappedPlan: TripPlan = {
         id: upcomingTrip.id,
         destination: upcomingTrip.destination,
         summary: upcomingTrip.notes || '',
-        totalDays: scheduleResponse.days?.length || 0, 
+        totalDays: scheduleDays.length || 0, 
         estimatedTotalCost: upcomingTrip.totalBudget || 0,
         currency: 'PLN',
         
         // Prawidłowe mapowanie danych z API do lokalnego TripStore
-        days: scheduleResponse.days?.map(day => ({
+        days: scheduleDays.map(day => ({
           day: day.dayNumber,
           date: day.date,
           title: day.title,
@@ -150,7 +220,7 @@ export default function Home() {
       router.push('/(main)/trip-details');
 
     } catch (error) {
-      console.error("Błąd pobierania szczegółów planu:", error);
+        console.error("Błąd pobierania szczegółów planu:", error);
       // Jeśli API rzuci błąd, aplikacja zatrzyma się tutaj i NIE przeniesie Cię do pustego planu.
     } finally {
       setIsLoadingTrip(false);
@@ -165,30 +235,37 @@ export default function Home() {
     let isMounted = true;
 
     const fetchTodaySchedule = async () => {
-      if (!upcomingTrip || !session?.access_token) {
+      if (!upcomingTrip) {
         setTodayActivities([]);
         return;
       }
 
       try {
         setIsLoadingActivities(true);
-        const scheduleResponse = await getTripSchedule(session.access_token, upcomingTrip.id);
+        const scheduleDays = isOffline
+          ? offlineUpcomingCache?.scheduleDays || []
+          : session?.access_token
+            ? (await getTripSchedule(session.access_token, upcomingTrip.id)).days || []
+            : [];
         if (!isMounted) return;
 
         // Szukamy odpowiedniego dnia
         const today = new Date();
         const todayStr = `${String(today.getDate()).padStart(2, '0')}.${String(today.getMonth() + 1).padStart(2, '0')}.${today.getFullYear()}`;
 
-        let displayDay = scheduleResponse.days?.find(d => d.date === todayStr);
+        let displayDay = scheduleDays.find(d => d.date === todayStr);
         let label = "Dzisiaj w planie";
 
         // Jeśli nie ma dzisiejszego dnia (wycieczka jest w przyszłości lub przeszłości)
-        if (!displayDay && scheduleResponse.days && scheduleResponse.days.length > 0) {
-          if (isPast) {
-            displayDay = scheduleResponse.days[scheduleResponse.days.length - 1];
+        if (!displayDay && scheduleDays.length > 0) {
+          if (isOffline) {
+            displayDay = scheduleDays[0];
+            label = "Pierwszy dzień wycieczki";
+          } else if (isPast) {
+            displayDay = scheduleDays[scheduleDays.length - 1];
             label = "Ostatni dzień wycieczki";
           } else {
-            displayDay = scheduleResponse.days[0];
+            displayDay = scheduleDays[0];
             label = "Pierwszy dzień wycieczki";
           }
         }
@@ -206,7 +283,7 @@ export default function Home() {
     fetchTodaySchedule();
 
     return () => { isMounted = false; };
-  }, [upcomingTrip?.id, session?.access_token, isPast]);
+  }, [isOffline, offlineUpcomingCache, upcomingTrip?.id, session?.access_token, isPast]);
   return (
     <View style={[styles.container, { backgroundColor: currentColors.background }]}>
       <ScrollView 
@@ -228,14 +305,22 @@ export default function Home() {
           {!upcomingTrip ? (
             <TouchableOpacity 
               activeOpacity={0.9} 
-              onPress={() => router.push('/(main)/create')}
+              onPress={() => {
+                if (!isOffline) {
+                  router.push('/(main)/create');
+                }
+              }}
               style={[styles.heroCard, { backgroundColor: currentColors.card, borderColor: currentColors.border, borderWidth: 1, justifyContent: 'center', alignItems: 'center' }]}
             >
               <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: 'rgba(99, 102, 241, 0.1)', justifyContent: 'center', alignItems: 'center', marginBottom: 16 }}>
                 <Ionicons name="airplane" size={32} color={Colors.brand.blue} />
               </View>
-              <Text style={{ color: currentColors.text, fontSize: 18, fontWeight: '700', marginBottom: 4 }}>Brak nadchodzących planów</Text>
-              <Text style={{ color: currentColors.subtext, fontSize: 13 }}>Kliknij tutaj, aby utworzyć nową podróż</Text>
+              <Text style={{ color: currentColors.text, fontSize: 18, fontWeight: '700', marginBottom: 4 }}>
+                {isOffline ? 'Brak zapisanej wycieczki offline' : 'Brak nadchodzących planów'}
+              </Text>
+              <Text style={{ color: currentColors.subtext, fontSize: 13, textAlign: 'center' }}>
+                {isOffline ? 'Połącz się z internetem, aby pobrać plan do pamięci.' : 'Kliknij tutaj, aby utworzyć nową podróż'}
+              </Text>
             </TouchableOpacity>
           ) : (
             <TouchableOpacity 
@@ -277,7 +362,7 @@ export default function Home() {
         </View>
 
         {/* --- SEKCJA BUDŻETU --- */}
-        {upcomingTrip && (
+        {upcomingTrip && !isOffline && (
           <View style={styles.section}>
             <View style={[styles.card, { backgroundColor: currentColors.card, borderColor: currentColors.border, borderWidth: 1 }]}>
               <View style={styles.cardHeader}>
@@ -314,7 +399,7 @@ export default function Home() {
               <QuickActionButton icon="airplane-outline" label="Nowy plan" color={Colors.brand.blue} bg={currentColors.card} border={currentColors.border} textColor={currentColors.text} onPress={() => router.push('/(main)/create')} />
               <QuickActionButton icon="bulb-outline" label="Inspiracje" color="#F59E0B" bg={currentColors.card} border={currentColors.border} textColor={currentColors.text} onPress={() => router.push('/(main)/inspiration')} />
               <QuickActionButton icon="map-outline" label="Wszystkie" color="#10B981" bg={currentColors.card} border={currentColors.border} textColor={currentColors.text} onPress={() => router.push('/(main)/trips')} />
-              <QuickActionButton icon="share-social-outline" label="Zaproś" color="#8B5CF6" bg={currentColors.card} border={currentColors.border} textColor={currentColors.text} onPress={() => {}} />
+              <QuickActionButton icon="people-outline" label="Zaproś" color="#8B5CF6" bg={currentColors.card} border={currentColors.border} textColor={currentColors.text} onPress={() => router.push({ pathname: '/(main)/profile', params: { panel: 'friends' } })} />
             </View>
           </View>
         )}
