@@ -30,6 +30,7 @@ import {
   getInspirationOfferDetails,
   getInspirationOffers,
 } from '@/services/inspiration.api';
+import { getMyTrips } from '@/services/trips.api';
 import { getFavoriteOfferIds, saveFavoriteOfferIds } from '@/services/favoriteOffers.storage';
 import type {
   BudgetLevel,
@@ -126,12 +127,27 @@ const getStatusLabel = (status: string, source: OfferSource) => {
 
 const getOfferDescription = (notes?: string | null) => {
   if (!notes) return '';
+  const trimmedNotes = notes.trim();
 
   try {
-    const parsed = JSON.parse(notes);
+    const parsed = JSON.parse(trimmedNotes);
     return parsed.summary || '';
   } catch {
-    return notes;
+    const start = trimmedNotes.indexOf('{');
+    const end = trimmedNotes.lastIndexOf('}');
+
+    if (start >= 0 && end > start) {
+      try {
+        const parsed = JSON.parse(trimmedNotes.slice(start, end + 1));
+        if (typeof parsed?.summary === 'string' && parsed.summary.trim()) {
+          return parsed.summary.trim();
+        }
+      } catch {
+        return trimmedNotes.startsWith('{') || trimmedNotes.startsWith('[') ? '' : trimmedNotes;
+      }
+    }
+
+    return trimmedNotes.startsWith('{') || trimmedNotes.startsWith('[') ? '' : trimmedNotes;
   }
 };
 
@@ -146,6 +162,7 @@ export default function Inspiration() {
   const { userAvatarUrl, userInitials } = useCurrentUserProfile();
 
   const [offers, setOffers] = useState<InspirationOfferDto[]>([]);
+  const [myTripIds, setMyTripIds] = useState<Set<string>>(new Set());
   const [selectedOffer, setSelectedOffer] = useState<InspirationOfferDto | null>(null);
   const [savedOfferIds, setSavedOfferIds] = useState<Set<string>>(new Set());
   const [activeSourceId, setActiveSourceId] = useState<OfferSource | 'all'>('all');
@@ -206,8 +223,10 @@ export default function Inspiration() {
   const hasAnyFilter = activeFilterCount > 0 || searchText.trim().length > 0;
 
   const offersWithSavedFlag = useMemo(
-    () => offers.map((offer) => ({ ...offer, isSaved: savedOfferIds.has(offer.id) || offer.isSaved })),
-    [offers, savedOfferIds]
+    () => offers
+      .filter((offer) => !myTripIds.has(offer.id) && offer.ownerId !== session?.user?.id)
+      .map((offer) => ({ ...offer, isSaved: savedOfferIds.has(offer.id) || offer.isSaved })),
+    [myTripIds, offers, savedOfferIds, session?.user?.id]
   );
 
   const visibleOffers = useMemo(() => {
@@ -243,18 +262,25 @@ export default function Inspiration() {
       }
 
       setErrorMessage(null);
-      const response = await getInspirationOffers({
-        ...activeFilters,
-        searchText,
-      });
-      setOffers(response.offers);
+      const [offersResponse, tripsResponse] = await Promise.all([
+        getInspirationOffers({
+          ...activeFilters,
+          searchText,
+        }, session?.access_token),
+        session?.access_token ? getMyTrips(session.access_token) : Promise.resolve({ trips: [] }),
+      ]);
+      const userTripIds = new Set((tripsResponse.trips || []).map((trip) => trip.id));
+      setMyTripIds(userTripIds);
+      setOffers(
+        offersResponse.offers.filter((offer) => !userTripIds.has(offer.id) && offer.ownerId !== session?.user?.id)
+      );
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Nie udało się pobrać inspiracji');
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [activeFilters, searchText]);
+  }, [activeFilters, searchText, session?.access_token]);
 
   useEffect(() => {
     getFavoriteOfferIds()
@@ -283,7 +309,7 @@ export default function Inspiration() {
     try {
       setSelectedOffer(offer);
       setIsDetailsLoading(true);
-      const response = await getInspirationOfferDetails(offer.id);
+      const response = await getInspirationOfferDetails(offer.id, session?.access_token);
       setSelectedOffer({ ...response.offer, isSaved: savedOfferIds.has(offer.id) || response.offer.isSaved });
     } catch (error) {
       Alert.alert('Błąd', error instanceof Error ? error.message : 'Nie udało się pobrać szczegółów');
@@ -303,7 +329,7 @@ export default function Inspiration() {
     const openOfferFromNotification = async () => {
       try {
         setIsDetailsLoading(true);
-        const response = await getInspirationOfferDetails(offerId);
+        const response = await getInspirationOfferDetails(offerId, session?.access_token);
         setSelectedOffer({
           ...response.offer,
           isSaved: savedOfferIds.has(offerId) || response.offer.isSaved,
@@ -319,7 +345,7 @@ export default function Inspiration() {
     };
 
     void openOfferFromNotification();
-  }, [params.offerId, savedOfferIds]);
+  }, [params.offerId, savedOfferIds, session?.access_token]);
 
   const handleToggleSaved = (offerId: string) => {
     setSavedOfferIds((current) => {
