@@ -22,37 +22,37 @@ import { Colors } from '@/styles/colors';
 import { useTripStore, TripPlan, DayPlan } from '@/stores/tripStore';
 import { useAuth } from '@/providers/auth.provider';
 import { useNetwork } from '@/providers/network.provider';
-import DateRangePicker from '@/components/DateRangePicker'; 
+import DateRangePicker from '@/components/DateRangePicker';
 import { deleteTrip, updateTrip } from '@/services/trip.api';
 
 // ─── HELPERY ─────────────────────────────────────────────────────────────────
-const CATEGORY_ICONS: Record<string, string> = {
-  transport: '🚌',
-  jedzenie: '🍽️',
-  atrakcja: '🏛️',
-  nocleg: '🏨',
-  inne: '📌',
-  food: '🍽️',
-  attraction: '🏛️',
-  accommodation: '🏨',
-  other: '📌',
+const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+  transport: 'bus-outline',
+  jedzenie: 'restaurant-outline',
+  atrakcja: 'business-outline',
+  nocleg: 'bed-outline',
+  inne: 'bookmark-outline',
+  food: 'restaurant-outline',
+  attraction: 'business-outline',
+  accommodation: 'bed-outline',
+  other: 'bookmark-outline',
 };
 
-
-
-
-
-function getCategoryIcon(category: string): string {
-  return CATEGORY_ICONS[category?.toLowerCase()] ?? '📍';
+function getCategoryIcon(category: string): keyof typeof Ionicons.glyphMap {
+  return CATEGORY_ICONS[category?.toLowerCase()] ?? 'location-outline';
 }
 
 function getCategoryColor(category: string): string {
   const map: Record<string, string> = {
     transport: '#f59e0b',
     jedzenie: '#10b981',
+    food: '#10b981',
     atrakcja: Colors.brand.blue,
+    attraction: Colors.brand.blue,
     nocleg: '#3b82f6',
+    accommodation: '#3b82f6',
     inne: '#8b5cf6',
+    other: '#8b5cf6',
   };
   return map[category?.toLowerCase()] ?? Colors.brand.blue;
 }
@@ -66,20 +66,18 @@ function formatDate(dateStr: string): string {
   return `${parseInt(day)} ${months[parseInt(month)] ?? ''}`;
 }
 
-
-
 // ─── KOMPONENT DNIA ───────────────────────────────────────────────────────────
 function DayCardView({
-  day,
-  index,
-  currentColors,
-  isEditingMode,
-  onAddActivity,
-  onEditActivity,
-  onDeleteActivity,
-  onDeleteDay,
-  onShowAlert
-}: {
+                       day,
+                       index,
+                       currentColors,
+                       isEditingMode,
+                       onAddActivity,
+                       onEditActivity,
+                       onDeleteActivity,
+                       onDeleteDay,
+                       onShowAlert
+                     }: {
   day: DayPlan;
   index: number;
   currentColors: any;
@@ -99,172 +97,175 @@ function DayCardView({
   const numberTextColor = expanded ? '#fff' : Colors.brand.blue;
 
   const renderHeaderContent = () => (
-    <>
-      <View style={[styles.dayNumber, { backgroundColor: numberBgColor }]}>
-        <Text style={[styles.dayNumberText, { color: numberTextColor }]}>
-          {day.day}
-        </Text>
-      </View>
+      <>
+        <View style={[styles.dayNumber, { backgroundColor: numberBgColor }]}>
+          <Text style={[styles.dayNumberText, { color: numberTextColor }]}>
+            {day.day}
+          </Text>
+        </View>
 
-      <View style={styles.dayInfo}>
-        <Text style={[styles.dayDate, { 
-          color: textColor,
-          textShadowColor: expanded ? 'rgba(0,0,0,0.15)' : 'transparent',
-          textShadowOffset: { width: 0, height: 1 },
-          textShadowRadius: 2
-        }]}>
-          {formatDate(day.date)}
-        </Text>
-        <Text style={[styles.dayWeekday, { color: subtextColor }]}>
-          {day.activities?.length || 0} punktów w planie
-        </Text>
-      </View>
+        <View style={styles.dayInfo}>
+          <Text style={[styles.dayDate, {
+            color: textColor,
+            textShadowColor: expanded ? 'rgba(0,0,0,0.15)' : 'transparent',
+            textShadowOffset: { width: 0, height: 1 },
+            textShadowRadius: 2
+          }]}>
+            {formatDate(day.date)}
+          </Text>
+          <Text style={[styles.dayWeekday, { color: subtextColor }]}>
+            {day.activities?.length || 0} punktów w planie
+          </Text>
+        </View>
 
-      <View style={{ flexDirection: 'row', alignItems: 'center', zIndex: 3 }}>
-        {isEditingMode && (
-          <TouchableOpacity
-            style={{ padding: 8, marginRight: 4 }}
-            onPress={() => {
-              onShowAlert('Usuwanie', `Czy na pewno chcesz usunąć dzień ${day.day}?`, [
-                { text: 'Anuluj', style: 'cancel' },
-                { text: 'Usuń', style: 'destructive', onPress: () => onDeleteDay(index) }
-              ]);
-            }}
-          >
-            <Ionicons name="trash" size={20} color={expanded ? '#fff' : '#ef4444'} />
-          </TouchableOpacity>
-        )}
-        <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={20} color={iconColor} style={{ marginRight: 4 }} />
-      </View>
-    </>
+        <View style={{ flexDirection: 'row', alignItems: 'center', zIndex: 3 }}>
+          {isEditingMode && (
+              <TouchableOpacity
+                  style={{ padding: 8, marginRight: 4 }}
+                  onPress={() => {
+                    onShowAlert('Usuwanie', `Czy na pewno chcesz usunąć dzień ${day.day}?`, [
+                      { text: 'Anuluj', style: 'cancel' },
+                      { text: 'Usuń', style: 'destructive', onPress: () => onDeleteDay(index) }
+                    ]);
+                  }}
+              >
+                <Ionicons name="trash" size={20} color={expanded ? '#fff' : '#ef4444'} />
+              </TouchableOpacity>
+          )}
+          <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={20} color={iconColor} style={{ marginRight: 4 }} />
+        </View>
+      </>
   );
 
-
-  
   return (
-    <View style={styles.dayWrapper}>
-      <View style={{ position: 'relative' }}>
-        <TouchableOpacity
-          onPress={() => setExpanded(!expanded)}
-          activeOpacity={0.85}
-          style={[styles.dayHeaderWrapper, expanded && styles.gradientShadow]}
-        >
-          {expanded ? (
-            <LinearGradient
-              colors={Colors.brand.logoGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.dayHeaderShared}
-            >
-              {renderHeaderContent()}
-              <LinearGradient colors={['rgba(255,255,255,0.35)', 'rgba(255,255,255,0)']} style={styles.gloss} />
-            </LinearGradient>
-          ) : (
-            <View style={[styles.dayHeaderShared, { backgroundColor: currentColors.card }]}>
-              {renderHeaderContent()}
-            </View>
-          )}
-        </TouchableOpacity>
-      </View>
-
-      {expanded && (
-        <View style={[styles.dayContent, { backgroundColor: currentColors.background }]}>
-          {day.tips && (
-            <View style={{ padding: 10, backgroundColor: 'rgba(59, 130, 246, 0.1)', borderRadius: 8, marginVertical: 8 }}>
-              <Text style={{ fontSize: 13, color: Colors.brand.blue, fontStyle: 'italic' }}>
-                💡 {day.tips}
-              </Text>
-            </View>
-          )}
-
-          {day.activities?.map((activity, actIndex) => {
-            const isLast = actIndex === day.activities.length - 1;
-
-            return (
-              <View key={actIndex} style={styles.timelineRow}>
-                <View style={styles.timelineLeft}>
-                  <View style={[styles.timelineDot, { backgroundColor: getCategoryColor(activity.category) }]} />
-                  {!isLast && <View style={[styles.timelineLine, { backgroundColor: currentColors.border }]} />}
+      <View style={styles.dayWrapper}>
+        <View style={{ position: 'relative' }}>
+          <TouchableOpacity
+              onPress={() => setExpanded(!expanded)}
+              activeOpacity={0.85}
+              style={[styles.dayHeaderWrapper, expanded && styles.gradientShadow]}
+          >
+            {expanded ? (
+                <LinearGradient
+                    colors={Colors.brand.logoGradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.dayHeaderShared}
+                >
+                  {renderHeaderContent()}
+                  <LinearGradient colors={['rgba(255,255,255,0.35)', 'rgba(255,255,255,0)']} style={styles.gloss} />
+                </LinearGradient>
+            ) : (
+                <View style={[styles.dayHeaderShared, { backgroundColor: currentColors.card }]}>
+                  {renderHeaderContent()}
                 </View>
-
-                <View style={[styles.activityCard, { backgroundColor: currentColors.card }]}>
-                  <View style={styles.activityHeader}>
-                    <View style={[styles.activityIconBox, { backgroundColor: currentColors.background }]}>
-                      <Text style={styles.activityIcon}>{getCategoryIcon(activity.category)}</Text>
-                    </View>
-                    <View style={styles.activityInfo}>
-                      <Text style={[styles.activityName, { color: currentColors.text }]} numberOfLines={2}>
-                        {activity.name}
-                      </Text>
-                      <View style={styles.activityMeta}>
-                        <Text style={[styles.activityMetaText, { color: currentColors.subtext }]}>🕐 {activity.time}</Text>
-                        {activity.estimatedCost > 0 && (
-                          <Text style={[styles.activityCost, { color: Colors.brand.blue }]}>{activity.estimatedCost} PLN</Text>
-                        )}
-                      </View>
-                      <Text style={[styles.activityDesc, { color: currentColors.subtext }]} numberOfLines={3}>
-                        {activity.description}
-                      </Text>
-                    </View>
-
-                    {isEditingMode && (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 8 }}>
-                        <TouchableOpacity onPress={() => onEditActivity(index, actIndex, activity)} style={{ padding: 6 }}>
-                          <Ionicons name="pencil" size={20} color={Colors.brand.blue} />
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          onPress={() => onShowAlert(
-                            "Usuwanie",
-                            `Usunąć "${activity.name}"?`,
-                            [
-                              { text: 'Anuluj', style: 'cancel' },
-                              { text: 'Usuń', style: 'destructive', onPress: () => onDeleteActivity(index, actIndex) }
-                            ]
-                          )}
-                          style={{ padding: 6 }}
-                        >
-                          <Ionicons name="trash-outline" size={20} color={'#ef4444'} />
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  </View>
-                </View>
-              </View>
-            );
-          })}
-
-          {isEditingMode && (
-            <TouchableOpacity style={[styles.addActivityBtn, { borderColor: Colors.brand.blue }]} onPress={() => onAddActivity(index)}>
-              <Ionicons name="add" size={18} color={Colors.brand.blue} />
-              <Text style={{ color: Colors.brand.blue, fontWeight: '600' }}>Dodaj atrakcję</Text>
-            </TouchableOpacity>
-          )}
+            )}
+          </TouchableOpacity>
         </View>
-      )}
-    </View>
+
+        {expanded && (
+            <View style={[styles.dayContent, { backgroundColor: currentColors.background }]}>
+              {day.tips && (
+                  <View style={{ padding: 10, backgroundColor: 'rgba(59, 130, 246, 0.1)', borderRadius: 8, marginVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Ionicons name="bulb-outline" size={16} color={Colors.brand.blue} />
+                    <Text style={{ fontSize: 13, color: Colors.brand.blue, fontStyle: 'italic', flex: 1 }}>
+                      {day.tips}
+                    </Text>
+                  </View>
+              )}
+
+              {day.activities?.map((activity, actIndex) => {
+                const isLast = actIndex === day.activities.length - 1;
+                const catColor = getCategoryColor(activity.category);
+
+                return (
+                    <View key={actIndex} style={styles.timelineRow}>
+                      <View style={styles.timelineLeft}>
+                        <View style={[styles.timelineDot, { backgroundColor: catColor }]} />
+                        {!isLast && <View style={[styles.timelineLine, { backgroundColor: currentColors.border }]} />}
+                      </View>
+
+                      <View style={[styles.activityCard, { backgroundColor: currentColors.card }]}>
+                        <View style={styles.activityHeader}>
+                          <View style={[styles.activityIconBox, { backgroundColor: currentColors.background }]}>
+                            <Ionicons
+                                name={getCategoryIcon(activity.category)}
+                                size={22}
+                                color={catColor}
+                            />
+                          </View>
+                          <View style={styles.activityInfo}>
+                            <Text style={[styles.activityName, { color: currentColors.text }]} numberOfLines={2}>
+                              {activity.name}
+                            </Text>
+                            <View style={styles.activityMeta}>
+                              <Text style={[styles.activityMetaText, { color: currentColors.subtext }]}>🕐 {activity.time}</Text>
+                              {activity.estimatedCost > 0 && (
+                                  <Text style={[styles.activityCost, { color: Colors.brand.blue }]}>{activity.estimatedCost} PLN</Text>
+                              )}
+                            </View>
+                            <Text style={[styles.activityDesc, { color: currentColors.subtext }]} numberOfLines={3}>
+                              {activity.description}
+                            </Text>
+                          </View>
+
+                          {isEditingMode && (
+                              <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 8 }}>
+                                <TouchableOpacity onPress={() => onEditActivity(index, actIndex, activity)} style={{ padding: 6 }}>
+                                  <Ionicons name="pencil" size={20} color={Colors.brand.blue} />
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    onPress={() => onShowAlert(
+                                        "Usuwanie",
+                                        `Usunąć "${activity.name}"?`,
+                                        [
+                                          { text: 'Anuluj', style: 'cancel' },
+                                          { text: 'Usuń', style: 'destructive', onPress: () => onDeleteActivity(index, actIndex) }
+                                        ]
+                                    )}
+                                    style={{ padding: 6 }}
+                                >
+                                  <Ionicons name="trash-outline" size={20} color={'#ef4444'} />
+                                </TouchableOpacity>
+                              </View>
+                          )}
+                        </View>
+                      </View>
+                    </View>
+                );
+              })}
+
+              {isEditingMode && (
+                  <TouchableOpacity style={[styles.addActivityBtn, { borderColor: Colors.brand.blue }]} onPress={() => onAddActivity(index)}>
+                    <Ionicons name="add" size={18} color={Colors.brand.blue} />
+                    <Text style={{ color: Colors.brand.blue, fontWeight: '600' }}>Dodaj atrakcję</Text>
+                  </TouchableOpacity>
+              )}
+            </View>
+        )}
+      </View>
   );
 }
 
 // ─── GŁÓWNY EKRAN SZCZEGÓŁÓW ──────────────────────────────────────────────────
 export default function TripDetails() {
-  const { 
-  tripPlan, deleteDay, addDay, addActivity, updateActivity, deleteActivity, 
-  isEditingMode, setIsEditingMode 
-} = useTripStore();
+  const {
+    tripPlan, deleteDay, addDay, addActivity, updateActivity, deleteActivity,
+    isEditingMode, setIsEditingMode
+  } = useTripStore();
   const { session } = useAuth();
   const { isOffline } = useNetwork();
   const [isDeleting, setIsDeleting] = useState(false);
   const [backupPlan, setBackupPlan] = useState<TripPlan | null>(null);
   const router = useRouter();
 
-  // Zablokowanie sprzętowego gestu/przycisku Wstecz w trybie edycji
   React.useEffect(() => {
     const onBackPress = () => {
       if (isEditingMode) {
-        handleBackPress(); // Wywołujemy naszą bezpieczną funkcję z modalem
-        return true; // Blokuje domyślne cofnięcie
+        handleBackPress();
+        return true;
       }
-      return false; // Pozwala na normalne cofnięcie, jeśli nie jesteśmy w edycji
+      return false;
     };
 
     const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
@@ -276,7 +277,6 @@ export default function TripDetails() {
   const currentColors = Colors[colorScheme];
 
   const [activeTab, setActiveTab] = useState<'schedule' | 'budget'>('schedule');
-
   const scrollY = useRef(new Animated.Value(0)).current;
 
   const HEADER_MAX_HEIGHT = 240;
@@ -318,13 +318,12 @@ export default function TripDetails() {
     }
   }, [isOffline]);
 
-  // ─── AUTO-SYNC SYSTEM ───────────────────────────────────────────────────
   const syncPlanWithDb = async (forcedPlan?: any) => {
     if (isOffline) return;
 
     const planToSave = forcedPlan || useTripStore.getState().tripPlan;
     if (!planToSave?.id || !session?.access_token) return;
-    
+
     try {
       await updateTrip(planToSave.id, planToSave, session.access_token);
       console.log("✅ Zapis w tle udany!");
@@ -367,12 +366,12 @@ export default function TripDetails() {
       mode: 'edit',
       dayIndex,
       actIndex,
-      formData: { 
-        name: activity.name, 
-        time: activity.time, 
-        category: activity.category, 
-        description: activity.description || '', 
-        estimatedCost: String(activity.estimatedCost || 0) 
+      formData: {
+        name: activity.name,
+        time: activity.time,
+        category: activity.category,
+        description: activity.description || '',
+        estimatedCost: String(activity.estimatedCost || 0)
       }
     });
   };
@@ -401,8 +400,6 @@ export default function TripDetails() {
     if (isOffline) return;
 
     const nextDayNum = (tripPlan?.days?.length || 0) + 1;
-    
-    // Zabezpieczenie: Inteligentne obliczanie daty kolejnego dnia
     let newDate = '';
     if (tripPlan?.days && tripPlan.days.length > 0) {
       const lastDateStr = tripPlan.days[tripPlan.days.length - 1].date;
@@ -419,13 +416,12 @@ export default function TripDetails() {
 
     addDay({
       day: nextDayNum,
-      date: newDate, // Zamiast tekstu "Dzień...", wstawiamy prawdziwą datę!
+      date: newDate,
       title: 'Nowy dzień',
       activities: [],
       estimatedDayCost: 0,
       tips: ''
     });
-    
   };
 
   const handleLocalDeleteDay = async (dayIndex: number) => {
@@ -438,36 +434,32 @@ export default function TripDetails() {
     deleteActivity(dayIndex, actIndex);
   };
 
-
-  
   const enterEditMode = () => {
-    // Robimy głęboką kopię planu, żeby mieć do czego wrócić
-    setBackupPlan(JSON.parse(JSON.stringify(tripPlan))); 
-    setIsEditingMode(true); 
+    setBackupPlan(JSON.parse(JSON.stringify(tripPlan)));
+    setIsEditingMode(true);
   };
 
   const cancelEditMode = () => {
     showAlert(
-      "Niezapisane zmiany",
-      "Czy na pewno chcesz odrzucić wszystkie wprowadzone zmiany?",
-      [
-        { text: "Wróć do edycji", style: "cancel" },
-        { 
-          text: "Odrzuć", 
-          style: "destructive", 
-          onPress: () => {
-            if (backupPlan) {
-              useTripStore.getState().setTripPlan(backupPlan); // Przywracamy stary stan!
+        "Niezapisane zmiany",
+        "Czy na pewno chcesz odrzucić wszystkie wprowadzone zmiany?",
+        [
+          { text: "Wróć do edycji", style: "cancel" },
+          {
+            text: "Odrzuć",
+            style: "destructive",
+            onPress: () => {
+              if (backupPlan) {
+                useTripStore.getState().setTripPlan(backupPlan);
+              }
+              setIsEditingMode(false);
+              setBackupPlan(null);
             }
-            setIsEditingMode(false);
-            setBackupPlan(null);
           }
-        }
-      ]
+        ]
     );
   };
 
-// Zabezpieczenie przycisku Wstecz
   const handleBackPress = () => {
     if (isEditingMode) {
       showAlert("Tryb edycji", "Masz niezapisane zmiany w planie!", [{ text: "Ok" }]);
@@ -475,13 +467,13 @@ export default function TripDetails() {
       router.back();
     }
   };
- 
+
   const saveEditMode = async () => {
-    await syncPlanWithDb(); // Uderzamy do bazy DOPIERO gdy użytkownik akceptuje zmiany!
+    await syncPlanWithDb();
     setIsEditingMode(false);
     setBackupPlan(null);
   };
-  
+
   const handleSaveDates = async () => {
     if (isOffline) return;
 
@@ -530,20 +522,20 @@ export default function TripDetails() {
 
     if ((tripPlan?.days?.length || 0) > newTotalDays) {
       showAlert(
-        "Uwaga",
-        `Nowy zakres dat jest krótszy. Usunięte zostaną ${tripPlan!.days.length - newTotalDays} dni z końca planu. Kontynuować?`,
-        [
-          { text: "Anuluj", style: "cancel" },
-          {
-            text: "Zastosuj",
-            style: "destructive",
-            onPress: async () => {
-              const updated = { ...tripPlan!, days: newDays, totalDays: newTotalDays };
-              useTripStore.getState().setTripPlan(updated);
-              setDatesModal({ visible: false, startDate: '', endDate: '' });
+          "Uwaga",
+          `Nowy zakres dat jest krótszy. Usunięte zostaną ${tripPlan!.days.length - newTotalDays} dni z końca planu. Kontynuować?`,
+          [
+            { text: "Anuluj", style: "cancel" },
+            {
+              text: "Zastosuj",
+              style: "destructive",
+              onPress: async () => {
+                const updated = { ...tripPlan!, days: newDays, totalDays: newTotalDays };
+                useTripStore.getState().setTripPlan(updated);
+                setDatesModal({ visible: false, startDate: '', endDate: '' });
+              }
             }
-          }
-        ]
+          ]
       );
       return;
     }
@@ -556,45 +548,42 @@ export default function TripDetails() {
   const handleDeleteTrip = () => {
     if (isOffline) return;
 
-    // 1. Zapisujemy ID do stałej lokalnej
     const tripId = tripPlan?.id;
     if (!tripId) return;
 
-    // Używamy Twojego autorskiego modala zamiast systemowego Alert.alert
     showAlert(
-      "Usuwanie wycieczki",
-      "Czy na pewno chcesz usunąć ten plan? Tej akcji nie można cofnąć.",
-      [
-        { text: "Anuluj", style: "cancel" },
-        { 
-          text: "Usuń", 
-          style: "destructive", 
-          onPress: async () => {
-            try {
-              setIsDeleting(true);
-              await deleteTrip(tripId, session!.access_token); 
-              useTripStore.getState().reset();
-              router.replace('/(main)/trips');
-            } catch (error: any) {
-              // Tutaj również możesz użyć showAlert, jeśli chcesz pełnej spójności
-              showAlert("Błąd", error.message || "Nie udało się usunąć wycieczki.", [{ text: "OK" }]);
-            } finally {
-              setIsDeleting(false);
+        "Usuwanie wycieczki",
+        "Czy na pewno chcesz usunąć ten plan? Tej akcji nie można cofnąć.",
+        [
+          { text: "Anuluj", style: "cancel" },
+          {
+            text: "Usuń",
+            style: "destructive",
+            onPress: async () => {
+              try {
+                setIsDeleting(true);
+                await deleteTrip(tripId, session!.access_token);
+                useTripStore.getState().reset();
+                router.replace('/(main)/trips');
+              } catch (error: any) {
+                showAlert("Błąd", error.message || "Nie udało się usunąć wycieczki.", [{ text: "OK" }]);
+              } finally {
+                setIsDeleting(false);
+              }
             }
           }
-        }
-      ]
+        ]
     );
   };
 
   if (!tripPlan) {
     return (
-      <View style={[styles.container, { backgroundColor: currentColors.background, justifyContent: 'center', alignItems: 'center' }]}>
-        <Text style={{ color: currentColors.subtext, fontSize: 16 }}>Nie znaleziono szczegółów wycieczki.</Text>
-        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 20 }}>
-          <Text style={{ color: Colors.brand.blue, fontSize: 16, fontWeight: '600' }}>← Wróć do listy</Text>
-        </TouchableOpacity>
-      </View>
+        <View style={[styles.container, { backgroundColor: currentColors.background, justifyContent: 'center', alignItems: 'center' }]}>
+          <Text style={{ color: currentColors.subtext, fontSize: 16 }}>Nie znaleziono szczegółów wycieczki.</Text>
+          <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 20 }}>
+            <Text style={{ color: Colors.brand.blue, fontSize: 16, fontWeight: '600' }}>← Wróć do listy</Text>
+          </TouchableOpacity>
+        </View>
     );
   }
 
@@ -603,258 +592,254 @@ export default function TripDetails() {
   const calculatedTotalCost = tripPlan.days?.reduce((sum, day) => sum + (day.estimatedDayCost || 0), 0) || 0;
 
   return (
-    <View style={[styles.container, { backgroundColor: currentColors.background }]}>
-      <Animated.ScrollView 
-        contentContainerStyle={[
-          styles.scrollContent, 
-          { 
-            paddingTop: HEADER_MAX_HEIGHT + TAB_BAR_HEIGHT + 16,
-            paddingBottom: insets.bottom + 120 
-          }
-        ]} 
-        showsVerticalScrollIndicator={false}
-        scrollIndicatorInsets={{ top: HEADER_MAX_HEIGHT + TAB_BAR_HEIGHT }}
-        scrollEventThrottle={16}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
-      >
-        {activeTab === 'schedule' && (
-          <View>
-            {tripPlan.days?.map((day, index) => (
-              <DayCardView 
-                key={index} 
-                day={day} 
-                index={index} 
-                currentColors={currentColors} 
-                isEditingMode={isEditingMode}
-                onAddActivity={openAddActivity}
-                onEditActivity={openEditActivity}
-                onDeleteActivity={handleLocalDeleteActivity}
-                onDeleteDay={handleLocalDeleteDay}
-                onShowAlert={showAlert}
-              />
-            ))}
+      <View style={[styles.container, { backgroundColor: currentColors.background }]}>
+        <Animated.ScrollView
+            contentContainerStyle={[
+              styles.scrollContent,
+              {
+                paddingTop: HEADER_MAX_HEIGHT + TAB_BAR_HEIGHT + 16,
+                paddingBottom: insets.bottom + 120
+              }
+            ]}
+            showsVerticalScrollIndicator={false}
+            scrollIndicatorInsets={{ top: HEADER_MAX_HEIGHT + TAB_BAR_HEIGHT }}
+            scrollEventThrottle={16}
+            onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
+        >
+          {activeTab === 'schedule' && (
+              <View>
+                {tripPlan.days?.map((day, index) => (
+                    <DayCardView
+                        key={index}
+                        day={day}
+                        index={index}
+                        currentColors={currentColors}
+                        isEditingMode={isEditingMode}
+                        onAddActivity={openAddActivity}
+                        onEditActivity={openEditActivity}
+                        onDeleteActivity={handleLocalDeleteActivity}
+                        onDeleteDay={handleLocalDeleteDay}
+                        onShowAlert={showAlert}
+                    />
+                ))}
 
-            {isEditingMode && (
-              <TouchableOpacity style={[styles.addDayBtn, { backgroundColor: Colors.brand.blue }]} onPress={handleAddDay}>
-                <Ionicons name="add-circle-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
-                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}>Dodaj kolejny dzień</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
-
-        {activeTab === 'budget' && (
-          <View>
-            <View style={[styles.budgetSummaryCard, { backgroundColor: currentColors.card }]}>
-              <Text style={{ color: currentColors.subtext, fontSize: 14 }}>Całkowity deklarowany budżet</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 4 }}>
-                <Text style={{ color: currentColors.text, fontSize: 28, fontWeight: '800' }}>
-                  {tripPlan.estimatedTotalCost} {tripPlan.currency}
-                </Text>
                 {isEditingMode && (
-                  <TouchableOpacity onPress={openBudgetModal} style={{ padding: 6, backgroundColor: 'rgba(59, 130, 246, 0.1)', borderRadius: 20 }}>
-                    <Ionicons name="pencil" size={18} color={Colors.brand.blue} />
-                  </TouchableOpacity>
+                    <TouchableOpacity style={[styles.addDayBtn, { backgroundColor: Colors.brand.blue }]} onPress={handleAddDay}>
+                      <Ionicons name="add-circle-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
+                      <Text style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}>Dodaj kolejny dzień</Text>
+                    </TouchableOpacity>
                 )}
               </View>
-              <View style={{ height: 1, backgroundColor: currentColors.border, width: '100%', marginVertical: 12 }} />
-              <Text style={{ color: currentColors.subtext, fontSize: 14 }}>
-                 Szacowany koszt planu: <Text style={{ color: Colors.brand.blue, fontWeight: 'bold' }}>{calculatedTotalCost} {tripPlan.currency}</Text>
-              </Text>
-            </View>
-            <Text style={{ color: currentColors.text, fontSize: 18, fontWeight: '700', marginTop: 10, marginBottom: 12 }}>
-              Rozbicie na dni
-            </Text>
-            {tripPlan.days?.map((day, index) => (
-              <View key={index} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: currentColors.border }}>
-                <View>
-                   <Text style={{ color: currentColors.text, fontWeight: '600' }}>Dzień {day.day} - {formatDate(day.date)}</Text>
-                   <Text style={{ color: currentColors.subtext, fontSize: 12 }}>{day.activities.length} aktywności</Text>
-                </View>
-                <Text style={{ color: Colors.brand.blue, fontWeight: '700', fontSize: 16 }}>{day.estimatedDayCost} PLN</Text>
-              </View>
-            ))}
-          </View>
-        )}
-      </Animated.ScrollView>
-
-      <Animated.View style={[styles.headerAbsoluteWrapper, { transform: [{ translateY: headerTranslateY }] }]}>
-        <View style={styles.heroContainer}>
-          <ImageBackground source={{ uri: heroImageUri }} style={StyleSheet.absoluteFillObject} resizeMode="cover">
-            <LinearGradient colors={['rgba(0,0,0,0.2)', 'rgba(26,29,58,0.95)']} style={StyleSheet.absoluteFillObject} />
-            
-            <Animated.View style={[styles.heroNav, { paddingTop: insets.top + 8, transform: [{ translateY: navTranslateY }] }]}>
-              <TouchableOpacity style={styles.heroNavBtn} onPress={handleBackPress}>
-                <Ionicons name="arrow-back" size={18} color="#fff" />
-              </TouchableOpacity>
-              
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-  {!isOffline && (
-    isEditingMode ? (
-      <>
-        {/* KRZYŻYK = ODRZUĆ ZMIANY */}
-        <TouchableOpacity
-          style={[styles.heroNavBtn, { backgroundColor: '#ef4444' }]}
-          onPress={cancelEditMode}
-        >
-          <Ionicons name="close" size={20} color="#fff" />
-        </TouchableOpacity>
-
-        {/* PTASZEK = ZAPISZ ZMIANY */}
-        <TouchableOpacity
-          style={[styles.heroNavBtn, { backgroundColor: '#10b981' }]}
-          onPress={saveEditMode}
-        >
-          <Ionicons name="checkmark" size={20} color="#fff" />
-        </TouchableOpacity>
-      </>
-    ) : (
-      <>
-        {/* OŁÓWEK = EDYTUJ */}
-        <TouchableOpacity
-          style={[styles.heroNavBtn, { backgroundColor: 'rgba(0,0,0,0.4)' }]}
-          onPress={enterEditMode}
-        >
-          <Ionicons name="pencil" size={18} color="#fff" />
-        </TouchableOpacity>
-
-        {/* KOSZ = USUŃ */}
-        <TouchableOpacity
-          style={[styles.heroNavBtn, { backgroundColor: 'rgba(239, 68, 68, 0.8)' }]}
-          onPress={handleDeleteTrip}
-          disabled={isDeleting}
-        >
-          {isDeleting ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Ionicons name="trash-outline" size={18} color="#fff" />
           )}
-        </TouchableOpacity>
-      </>
-    )
-  )}
-</View>
-            </Animated.View>
 
-            <View style={styles.heroInfo}>
-              <Text style={styles.heroCity} numberOfLines={1}>{tripPlan.destination}</Text>
-              <View style={styles.heroBadges}>
-                <TouchableOpacity 
-                  style={[styles.heroBadge, isEditingMode && { backgroundColor: Colors.brand.blue, borderColor: 'rgba(255,255,255,0.4)' }]}
-                  disabled={!isEditingMode}
-                  onPress={() => {
-                    const firstDay = tripPlan.days?.[0]?.date || '';
-                    const lastDay = tripPlan.days?.[tripPlan.days.length - 1]?.date || firstDay;
-                    setDatesModal({ visible: true, startDate: firstDay, endDate: lastDay });
-                  }}
-                >
-                  <Ionicons name="calendar-outline" size={12} color="#fff" style={{ marginRight: 4 }} />
-                  <Text style={styles.heroBadgeText}>
-                    {tripPlan.days?.[0]?.date ? `${formatDate(tripPlan.days[0].date)} • ` : ''}{totalDays} dni
+          {activeTab === 'budget' && (
+              <View>
+                <View style={[styles.budgetSummaryCard, { backgroundColor: currentColors.card }]}>
+                  <Text style={{ color: currentColors.subtext, fontSize: 14 }}>Całkowity deklarowany budżet</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 4 }}>
+                    <Text style={{ color: currentColors.text, fontSize: 28, fontWeight: '800' }}>
+                      {tripPlan.estimatedTotalCost} {tripPlan.currency}
+                    </Text>
+                    {isEditingMode && (
+                        <TouchableOpacity onPress={openBudgetModal} style={{ padding: 6, backgroundColor: 'rgba(59, 130, 246, 0.1)', borderRadius: 20 }}>
+                          <Ionicons name="pencil" size={18} color={Colors.brand.blue} />
+                        </TouchableOpacity>
+                    )}
+                  </View>
+                  <View style={{ height: 1, backgroundColor: currentColors.border, width: '100%', marginVertical: 12 }} />
+                  <Text style={{ color: currentColors.subtext, fontSize: 14 }}>
+                    Szacowany koszt planu: <Text style={{ color: Colors.brand.blue, fontWeight: 'bold' }}>{calculatedTotalCost} {tripPlan.currency}</Text>
                   </Text>
-                  {isEditingMode && <Ionicons name="pencil" size={12} color="#fff" style={{ marginLeft: 6 }} />}
+                </View>
+                <Text style={{ color: currentColors.text, fontSize: 18, fontWeight: '700', marginTop: 10, marginBottom: 12 }}>
+                  Rozbicie na dni
+                </Text>
+                {tripPlan.days?.map((day, index) => (
+                    <View key={index} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: currentColors.border }}>
+                      <View>
+                        <Text style={{ color: currentColors.text, fontWeight: '600' }}>Dzień {day.day} - {formatDate(day.date)}</Text>
+                        <Text style={{ color: currentColors.subtext, fontSize: 12 }}>{day.activities.length} aktywności</Text>
+                      </View>
+                      <Text style={{ color: Colors.brand.blue, fontWeight: '700', fontSize: 16 }}>{day.estimatedDayCost} PLN</Text>
+                    </View>
+                ))}
+              </View>
+          )}
+        </Animated.ScrollView>
+
+        <Animated.View style={[styles.headerAbsoluteWrapper, { transform: [{ translateY: headerTranslateY }] }]}>
+          <View style={styles.heroContainer}>
+            <ImageBackground source={{ uri: heroImageUri }} style={StyleSheet.absoluteFillObject} resizeMode="cover">
+              <LinearGradient colors={['rgba(0,0,0,0.2)', 'rgba(26,29,58,0.95)']} style={StyleSheet.absoluteFillObject} />
+
+              <Animated.View style={[styles.heroNav, { paddingTop: insets.top + 8, transform: [{ translateY: navTranslateY }] }]}>
+                <TouchableOpacity style={styles.heroNavBtn} onPress={handleBackPress}>
+                  <Ionicons name="arrow-back" size={18} color="#fff" />
                 </TouchableOpacity>
 
-                <View style={styles.heroBadge}>
-                  <Ionicons name="wallet-outline" size={12} color="#fff" style={{ marginRight: 4 }} />
-                  <Text style={styles.heroBadgeText}>{tripPlan.estimatedTotalCost || 0} PLN</Text>
-                </View>
-              </View>
-            </View>
-          </ImageBackground>
-        </View>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  {!isOffline && (
+                      isEditingMode ? (
+                          <>
+                            <TouchableOpacity
+                                style={[styles.heroNavBtn, { backgroundColor: '#ef4444' }]}
+                                onPress={cancelEditMode}
+                            >
+                              <Ionicons name="close" size={20} color="#fff" />
+                            </TouchableOpacity>
 
-        <View style={[styles.tabBar, { backgroundColor: currentColors.card, borderBottomColor: currentColors.border }]}>
-          <TouchableOpacity style={styles.tab} onPress={() => setActiveTab('schedule')}>
-            <Text style={[styles.tabText, { color: activeTab === 'schedule' ? Colors.brand.blue : currentColors.subtext }]}>Harmonogram</Text>
-            {activeTab === 'schedule' && <View style={[styles.tabUnderline, { backgroundColor: Colors.brand.blue }]} />}
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.tab} onPress={() => setActiveTab('budget')}>
-            <Text style={[styles.tabText, { color: activeTab === 'budget' ? Colors.brand.blue : currentColors.subtext }]}>Budżet</Text>
-            {activeTab === 'budget' && <View style={[styles.tabUnderline, { backgroundColor: Colors.brand.blue }]} />}
-          </TouchableOpacity>
-        </View>
-      </Animated.View>
-      
-      <Modal visible={actModal.visible} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: currentColors.background }]}>
-            <Text style={[styles.modalTitle, { color: currentColors.text }]}>{actModal.mode === 'add' ? 'Nowa atrakcja' : 'Edytuj atrakcję'}</Text>
-            <ScrollView showsVerticalScrollIndicator={false} style={{ width: '100%' }}>
-              <Text style={[styles.inputLabel, { color: currentColors.subtext }]}>Nazwa</Text>
-              <TextInput style={[styles.input, { color: currentColors.text, borderColor: currentColors.border }]} value={actModal.formData.name} onChangeText={t => setActModal(p => ({ ...p, formData: { ...p.formData, name: t } }))} />
-              <View style={{ flexDirection: 'row', gap: 12 }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.inputLabel, { color: currentColors.subtext }]}>Godzina</Text>
-                  <TextInput style={[styles.input, { color: currentColors.text, borderColor: currentColors.border }]} value={actModal.formData.time} onChangeText={t => setActModal(p => ({ ...p, formData: { ...p.formData, time: t } }))} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.inputLabel, { color: currentColors.subtext }]}>Koszt (PLN)</Text>
-                  <TextInput style={[styles.input, { color: currentColors.text, borderColor: currentColors.border }]} value={actModal.formData.estimatedCost} onChangeText={t => setActModal(p => ({ ...p, formData: { ...p.formData, estimatedCost: t.replace(/[^0-9]/g, '') } }))} keyboardType="numeric" />
-                </View>
-              </View>
-              <Text style={[styles.inputLabel, { color: currentColors.subtext }]}>Opis</Text>
-              <TextInput style={[styles.input, { color: currentColors.text, borderColor: currentColors.border, height: 80, textAlignVertical: 'top' }]} value={actModal.formData.description} onChangeText={t => setActModal(p => ({ ...p, formData: { ...p.formData, description: t } }))} multiline />
-            </ScrollView>
-            <View style={styles.modalActions}>
-              <TouchableOpacity onPress={() => setActModal(p => ({ ...p, visible: false }))} style={styles.modalCancelBtn}><Text style={{ color: currentColors.subtext, fontWeight: '600' }}>Anuluj</Text></TouchableOpacity>
-              <TouchableOpacity onPress={handleSaveActivity} style={[styles.modalSaveBtn, { backgroundColor: Colors.brand.blue }]}><Text style={{ color: '#fff', fontWeight: '700' }}>Zapisz</Text></TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-      
-      <Modal visible={budgetModal.visible} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: currentColors.background, paddingVertical: 32 }]}>
-            <Text style={[styles.modalTitle, { color: currentColors.text, marginBottom: 8 }]}>Edytuj budżet</Text>
-            <TextInput style={[styles.input, { color: currentColors.text, borderColor: currentColors.border, width: '100%', fontSize: 24, textAlign: 'center', fontWeight: '700' }]} value={budgetModal.value} onChangeText={t => setBudgetModal(p => ({ ...p, value: t.replace(/[^0-9]/g, '') }))} keyboardType="numeric" />
-            <View style={styles.modalActions}>
-              <TouchableOpacity onPress={() => setBudgetModal(p => ({ ...p, visible: false }))} style={styles.modalCancelBtn}><Text style={{ color: currentColors.subtext, fontWeight: '600' }}>Anuluj</Text></TouchableOpacity>
-              <TouchableOpacity onPress={handleSaveBudget} style={[styles.modalSaveBtn, { backgroundColor: Colors.brand.blue }]}><Text style={{ color: '#fff', fontWeight: '700' }}>Zapisz</Text></TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+                            <TouchableOpacity
+                                style={[styles.heroNavBtn, { backgroundColor: '#10b981' }]}
+                                onPress={saveEditMode}
+                            >
+                              <Ionicons name="checkmark" size={20} color="#fff" />
+                            </TouchableOpacity>
+                          </>
+                      ) : (
+                          <>
+                            <TouchableOpacity
+                                style={[styles.heroNavBtn, { backgroundColor: 'rgba(0,0,0,0.4)' }]}
+                                onPress={enterEditMode}
+                            >
+                              <Ionicons name="pencil" size={18} color="#fff" />
+                            </TouchableOpacity>
 
-      <Modal visible={customAlert.visible} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: currentColors.background, width: '85%', padding: 24 }]}>
-            <Text style={[{ fontSize: 20, fontWeight: '800', textAlign: 'center', color: currentColors.text, marginBottom: 12 }]}>{customAlert.title}</Text>
-            <Text style={[{ fontSize: 15, textAlign: 'center', color: currentColors.subtext, marginBottom: 24, lineHeight: 22 }]}>{customAlert.message}</Text>
-            <View style={{ width: '100%', gap: 10 }}>
-              {customAlert.actions.map((action, idx) => (
-                  <TouchableOpacity 
-                    key={idx}
-                    onPress={() => {
-                      setCustomAlert(prev => ({ ...prev, visible: false }));
-                      if (action.onPress) setTimeout(() => action.onPress(), 150);
-                    }}
-                    style={[styles.alertBtn, action.style === 'destructive' ? { backgroundColor: '#ef4444' } : action.style === 'cancel' ? { backgroundColor: currentColors.card, borderWidth: 1, borderColor: currentColors.border } : { backgroundColor: Colors.brand.blue }]}
+                            <TouchableOpacity
+                                style={[styles.heroNavBtn, { backgroundColor: 'rgba(239, 68, 68, 0.8)' }]}
+                                onPress={handleDeleteTrip}
+                                disabled={isDeleting}
+                            >
+                              {isDeleting ? (
+                                  <ActivityIndicator size="small" color="#fff" />
+                              ) : (
+                                  <Ionicons name="trash-outline" size={18} color="#fff" />
+                              )}
+                            </TouchableOpacity>
+                          </>
+                      )
+                  )}
+                </View>
+              </Animated.View>
+
+              <View style={styles.heroInfo}>
+                <Text style={styles.heroCity} numberOfLines={1}>{tripPlan.destination}</Text>
+                <View style={styles.heroBadges}>
+                  <TouchableOpacity
+                      style={[styles.heroBadge, isEditingMode && { backgroundColor: Colors.brand.blue, borderColor: 'rgba(255,255,255,0.4)' }]}
+                      disabled={!isEditingMode}
+                      onPress={() => {
+                        const firstDay = tripPlan.days?.[0]?.date || '';
+                        const lastDay = tripPlan.days?.[tripPlan.days.length - 1]?.date || firstDay;
+                        setDatesModal({ visible: true, startDate: firstDay, endDate: lastDay });
+                      }}
                   >
-                    <Text style={[styles.alertBtnText, action.style === 'cancel' ? { color: currentColors.text } : { color: '#fff' }]}>{action.text}</Text>
+                    <Ionicons name="calendar-outline" size={12} color="#fff" style={{ marginRight: 4 }} />
+                    <Text style={styles.heroBadgeText}>
+                      {tripPlan.days?.[0]?.date ? `${formatDate(tripPlan.days[0].date)} • ` : ''}{totalDays} dni
+                    </Text>
+                    {isEditingMode && <Ionicons name="pencil" size={12} color="#fff" style={{ marginLeft: 6 }} />}
                   </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        </View>
-      </Modal>
 
-      <Modal visible={datesModal.visible} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: currentColors.background, paddingVertical: 24, width: '100%' }]}>
-            <Text style={[styles.modalTitle, { color: currentColors.text, marginBottom: 16 }]}>Termin wycieczki</Text>
-            <ScrollView style={{ width: '100%', flexShrink: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 10 }}>
-              <DateRangePicker departureDate={datesModal.startDate} returnDate={datesModal.endDate} onDatesChange={(start, end) => setDatesModal(prev => ({ ...prev, startDate: start, endDate: end }))} />
-            </ScrollView>
-            <View style={styles.modalActions}>
-              <TouchableOpacity onPress={() => setDatesModal(p => ({ ...p, visible: false }))} style={styles.modalCancelBtn}><Text style={{ color: currentColors.subtext, fontWeight: '600' }}>Anuluj</Text></TouchableOpacity>
-              <TouchableOpacity onPress={handleSaveDates} style={[styles.modalSaveBtn, { backgroundColor: Colors.brand.blue }]}><Text style={{ color: '#fff', fontWeight: '700' }}>Zapisz</Text></TouchableOpacity>
+                  <View style={styles.heroBadge}>
+                    <Ionicons name="wallet-outline" size={12} color="#fff" style={{ marginRight: 4 }} />
+                    <Text style={styles.heroBadgeText}>{tripPlan.estimatedTotalCost || 0} PLN</Text>
+                  </View>
+                </View>
+              </View>
+            </ImageBackground>
+          </View>
+
+          <View style={[styles.tabBar, { backgroundColor: currentColors.card, borderBottomColor: currentColors.border }]}>
+            <TouchableOpacity style={styles.tab} onPress={() => setActiveTab('schedule')}>
+              <Text style={[styles.tabText, { color: activeTab === 'schedule' ? Colors.brand.blue : currentColors.subtext }]}>Harmonogram</Text>
+              {activeTab === 'schedule' && <View style={[styles.tabUnderline, { backgroundColor: Colors.brand.blue }]} />}
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.tab} onPress={() => setActiveTab('budget')}>
+              <Text style={[styles.tabText, { color: activeTab === 'budget' ? Colors.brand.blue : currentColors.subtext }]}>Budżet</Text>
+              {activeTab === 'budget' && <View style={[styles.tabUnderline, { backgroundColor: Colors.brand.blue }]} />}
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+
+        <Modal visible={actModal.visible} transparent animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalCard, { backgroundColor: currentColors.background }]}>
+              <Text style={[styles.modalTitle, { color: currentColors.text }]}>{actModal.mode === 'add' ? 'Nowa atrakcja' : 'Edytuj atrakcję'}</Text>
+              <ScrollView showsVerticalScrollIndicator={false} style={{ width: '100%' }}>
+                <Text style={[styles.inputLabel, { color: currentColors.subtext }]}>Nazwa</Text>
+                <TextInput style={[styles.input, { color: currentColors.text, borderColor: currentColors.border }]} value={actModal.formData.name} onChangeText={t => setActModal(p => ({ ...p, formData: { ...p.formData, name: t } }))} />
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.inputLabel, { color: currentColors.subtext }]}>Godzina</Text>
+                    <TextInput style={[styles.input, { color: currentColors.text, borderColor: currentColors.border }]} value={actModal.formData.time} onChangeText={t => setActModal(p => ({ ...p, formData: { ...p.formData, time: t } }))} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.inputLabel, { color: currentColors.subtext }]}>Koszt (PLN)</Text>
+                    <TextInput style={[styles.input, { color: currentColors.text, borderColor: currentColors.border }]} value={actModal.formData.estimatedCost} onChangeText={t => setActModal(p => ({ ...p, formData: { ...p.formData, estimatedCost: t.replace(/[^0-9]/g, '') } }))} keyboardType="numeric" />
+                  </View>
+                </View>
+                <Text style={[styles.inputLabel, { color: currentColors.subtext }]}>Opis</Text>
+                <TextInput style={[styles.input, { color: currentColors.text, borderColor: currentColors.border, height: 80, textAlignVertical: 'top' }]} value={actModal.formData.description} onChangeText={t => setActModal(p => ({ ...p, formData: { ...p.formData, description: t } }))} multiline />
+              </ScrollView>
+              <View style={styles.modalActions}>
+                <TouchableOpacity onPress={() => setActModal(p => ({ ...p, visible: false }))} style={styles.modalCancelBtn}><Text style={{ color: currentColors.subtext, fontWeight: '600' }}>Anuluj</Text></TouchableOpacity>
+                <TouchableOpacity onPress={handleSaveActivity} style={[styles.modalSaveBtn, { backgroundColor: Colors.brand.blue }]}><Text style={{ color: '#fff', fontWeight: '700' }}>Zapisz</Text></TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
-      </Modal>
-    </View>
+        </Modal>
+
+        <Modal visible={budgetModal.visible} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalCard, { backgroundColor: currentColors.background, paddingVertical: 32 }]}>
+              <Text style={[styles.modalTitle, { color: currentColors.text, marginBottom: 8 }]}>Edytuj budżet</Text>
+              <TextInput style={[styles.input, { color: currentColors.text, borderColor: currentColors.border, width: '100%', fontSize: 24, textAlign: 'center', fontWeight: '700' }]} value={budgetModal.value} onChangeText={t => setBudgetModal(p => ({ ...p, value: t.replace(/[^0-9]/g, '') }))} keyboardType="numeric" />
+              <View style={styles.modalActions}>
+                <TouchableOpacity onPress={() => setBudgetModal(p => ({ ...p, visible: false }))} style={styles.modalCancelBtn}><Text style={{ color: currentColors.subtext, fontWeight: '600' }}>Anuluj</Text></TouchableOpacity>
+                <TouchableOpacity onPress={handleSaveBudget} style={[styles.modalSaveBtn, { backgroundColor: Colors.brand.blue }]}><Text style={{ color: '#fff', fontWeight: '700' }}>Zapisz</Text></TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        <Modal visible={customAlert.visible} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalCard, { backgroundColor: currentColors.background, width: '85%', padding: 24 }]}>
+              <Text style={[{ fontSize: 20, fontWeight: '800', textAlign: 'center', color: currentColors.text, marginBottom: 12 }]}>{customAlert.title}</Text>
+              <Text style={[{ fontSize: 15, textAlign: 'center', color: currentColors.subtext, marginBottom: 24, lineHeight: 22 }]}>{customAlert.message}</Text>
+              <View style={{ width: '100%', gap: 10 }}>
+                {customAlert.actions.map((action, idx) => (
+                    <TouchableOpacity
+                        key={idx}
+                        onPress={() => {
+                          setCustomAlert(prev => ({ ...prev, visible: false }));
+                          if (action.onPress) setTimeout(() => action.onPress(), 150);
+                        }}
+                        style={[styles.alertBtn, action.style === 'destructive' ? { backgroundColor: '#ef4444' } : action.style === 'cancel' ? { backgroundColor: currentColors.card, borderWidth: 1, borderColor: currentColors.border } : { backgroundColor: Colors.brand.blue }]}
+                    >
+                      <Text style={[styles.alertBtnText, action.style === 'cancel' ? { color: currentColors.text } : { color: '#fff' }]}>{action.text}</Text>
+                    </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        <Modal visible={datesModal.visible} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalCard, { backgroundColor: currentColors.background, paddingVertical: 24, width: '100%' }]}>
+              <Text style={[styles.modalTitle, { color: currentColors.text, marginBottom: 16 }]}>Termin wycieczki</Text>
+              <ScrollView style={{ width: '100%', flexShrink: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 10 }}>
+                <DateRangePicker departureDate={datesModal.startDate} returnDate={datesModal.endDate} onDatesChange={(start, end) => setDatesModal(prev => ({ ...prev, startDate: start, endDate: end }))} />
+              </ScrollView>
+              <View style={styles.modalActions}>
+                <TouchableOpacity onPress={() => setDatesModal(p => ({ ...p, visible: false }))} style={styles.modalCancelBtn}><Text style={{ color: currentColors.subtext, fontWeight: '600' }}>Anuluj</Text></TouchableOpacity>
+                <TouchableOpacity onPress={handleSaveDates} style={[styles.modalSaveBtn, { backgroundColor: Colors.brand.blue }]}><Text style={{ color: '#fff', fontWeight: '700' }}>Zapisz</Text></TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      </View>
   );
 }
 
@@ -890,7 +875,6 @@ const styles = StyleSheet.create({
   activityCard: { flex: 1, borderRadius: 14, padding: 14, marginBottom: 2 },
   activityHeader: { flexDirection: 'row', alignItems: 'flex-start' },
   activityIconBox: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  activityIcon: { fontSize: 20 },
   activityInfo: { flex: 1 },
   activityName: { fontSize: 16, fontWeight: '700', lineHeight: 22 },
   activityMeta: { flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 8 },
