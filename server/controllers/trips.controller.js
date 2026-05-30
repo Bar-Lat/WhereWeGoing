@@ -60,6 +60,36 @@ const normalizeTrip = (trip, userId, participantsCount = 0, totalCost = null) =>
   accessRole: trip.owner_id === userId ? 'owner' : 'participant',
 });
 
+const getTripStartTime = (trip) => {
+  const parsed = new Date(`${trip.startDate || trip.start_date || ''}T00:00:00`).getTime();
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
+const sortTripsByNearestDate = (trips) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayTime = today.getTime();
+
+  return [...trips].sort((a, b) => {
+    const aStart = getTripStartTime(a);
+    const bStart = getTripStartTime(b);
+
+    if (aStart === null && bStart === null) {
+      return new Date(b.createdAt || b.created_at || 0).getTime() - new Date(a.createdAt || a.created_at || 0).getTime();
+    }
+
+    if (aStart === null) return 1;
+    if (bStart === null) return -1;
+
+    const aUpcoming = aStart >= todayTime;
+    const bUpcoming = bStart >= todayTime;
+
+    if (aUpcoming && bUpcoming) return aStart - bStart;
+    if (!aUpcoming && !bUpcoming) return bStart - aStart;
+    return aUpcoming ? -1 : 1;
+  });
+};
+
 const normalizeParticipant = (profile, row, ownerId) => ({
   id: profile.id,
   profileId: profile.id,
@@ -222,14 +252,13 @@ const getTrips = async (req, res, next) => {
       return res.status(500).json({ message: totalsError.message });
     }
 
-    const normalizedTrips = trips
+    const normalizedTrips = sortTripsByNearestDate(trips
       .map((trip) => {
         const uniqueParticipantIds = participantsByTripId[trip.id] || new Set();
         uniqueParticipantIds.add(trip.owner_id);
         const activityTotal = totalsByTripId[trip.id] ?? null;
         return normalizeTrip(trip, userId, uniqueParticipantIds.size, activityTotal);
-      })
-      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      }));
 
     return res.status(200).json({ trips: normalizedTrips });
   } catch (err) {

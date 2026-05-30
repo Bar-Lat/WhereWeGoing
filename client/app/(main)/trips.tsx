@@ -83,6 +83,22 @@ const getTripDescription = (notes?: string | null) => {
   }
 };
 
+const parseStoredTripPlan = (rawPlan: unknown) => {
+  if (!rawPlan) return {};
+  if (typeof rawPlan !== 'string') return rawPlan;
+
+  const trimmed = rawPlan.trim();
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return {};
+  }
+};
+
 const formatTripDate = (value: string | null | undefined) => {
   if (!value) return '';
   const date = new Date(`${value}T00:00:00`);
@@ -140,7 +156,61 @@ const getTripImage = (trip: TripDto | any, index: number) => {
 
 const getTripStartTime = (trip: TripDto) => {
   const parsed = new Date(`${trip.startDate || (trip as any).start_date}T00:00:00`).getTime();
-  return Number.isNaN(parsed) ? Number.MAX_SAFE_INTEGER : parsed;
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
+const formatPlanDate = (value?: string | null) => {
+  if (!value) return '';
+  const date = new Date(`${value.slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  const day = date.getDate().toString().padStart(2, '0');
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  return `${day}.${month}.${date.getFullYear()}`;
+};
+
+const buildPlanDaysFromSchedule = (days: TripScheduleDayDto[]) => days.map((day, index) => {
+  const activities = (day.activities || []).map((activity) => ({
+    time: activity.time || '09:00',
+    name: activity.name || 'Aktywność',
+    description: activity.description || '',
+    category: activity.category || 'inne',
+    estimatedCost: Number(activity.cost) || 0,
+    location: activity.location || '',
+  }));
+
+  return {
+    day: day.dayNumber || index + 1,
+    date: formatPlanDate(day.date),
+    title: day.title || `Dzień ${day.dayNumber || index + 1}`,
+    activities,
+    estimatedDayCost: activities.reduce((sum, activity) => sum + (Number(activity.estimatedCost) || 0), 0),
+    tips: '',
+  };
+});
+
+const sortTripsByNearestDate = (trips: TripDto[]) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayTime = today.getTime();
+
+  return [...trips].sort((a, b) => {
+    const aStart = getTripStartTime(a);
+    const bStart = getTripStartTime(b);
+
+    if (aStart === null && bStart === null) {
+      return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+    }
+
+    if (aStart === null) return 1;
+    if (bStart === null) return -1;
+
+    const aUpcoming = aStart >= todayTime;
+    const bUpcoming = bStart >= todayTime;
+
+    if (aUpcoming && bUpcoming) return aStart - bStart;
+    if (!aUpcoming && !bUpcoming) return bStart - aStart;
+    return aUpcoming ? -1 : 1;
+  });
 };
 
 const getNearestTripForOffline = (trips: TripDto[]) => {
@@ -148,14 +218,17 @@ const getNearestTripForOffline = (trips: TripDto[]) => {
   today.setHours(0, 0, 0, 0);
 
   const upcoming = trips
-    .filter((trip) => getTripStartTime(trip) >= today.getTime())
-    .sort((a, b) => getTripStartTime(a) - getTripStartTime(b));
+    .filter((trip) => {
+      const startTime = getTripStartTime(trip);
+      return startTime !== null && startTime >= today.getTime();
+    })
+    .sort((a, b) => (getTripStartTime(a) ?? 0) - (getTripStartTime(b) ?? 0));
 
   if (upcoming.length > 0) {
     return upcoming[0];
   }
 
-  return [...trips].sort((a, b) => getTripStartTime(b) - getTripStartTime(a))[0] ?? null;
+  return [...trips].sort((a, b) => (getTripStartTime(b) ?? 0) - (getTripStartTime(a) ?? 0))[0] ?? null;
 };
 
 const getFriendSubtitle = (friend: FriendProfile) => {
@@ -310,7 +383,7 @@ export default function Trips() {
           const cached = await getCachedOfflineTrips(userId);
 
           if (cached.length > 0) {
-            setTrips(cached.map((item) => item.trip));
+            setTrips(sortTripsByNearestDate(cached.map((item) => item.trip)));
             setCachedOfflineTripIds(new Set(cached.map((item) => item.trip.id)));
             setTripsError(null);
           } else {
@@ -331,13 +404,13 @@ export default function Trips() {
         setTripsError(null);
         const response = await getMyTrips(accessToken);
         const loadedTrips = response.trips || response || [];
-        setTrips(loadedTrips);
+        setTrips(sortTripsByNearestDate(loadedTrips));
         void cacheNearestTripForOffline(loadedTrips);
       } catch (error) {
         const cached = await getCachedOfflineTrips(userId);
 
         if (cached.length > 0) {
-          setTrips(cached.map((item) => item.trip));
+          setTrips(sortTripsByNearestDate(cached.map((item) => item.trip)));
           setCachedOfflineTripIds(new Set(cached.map((item) => item.trip.id)));
           setTripsError(null);
         } else {
@@ -544,23 +617,31 @@ export default function Trips() {
     }
   }, [closeTripPanel, isOffline, selectedTrip, selectedTripIsNearestOffline, userId]);
 
-  const handleTripPress = useCallback((trip: any) => {
+  const handleTripPress = useCallback(async (trip: any) => {
     const rawPlan = trip.notes || trip.plan || trip.itinerary || trip.data || {};
-    let parsedData: any = {};
-    try {
-      parsedData = typeof rawPlan === 'string' ? JSON.parse(rawPlan) : rawPlan;
-    } catch (e) {
-      console.error("❌ BŁĄD PARSOWANIA JSON:", e);
+    const parsedData: any = parseStoredTripPlan(rawPlan);
+
+    let planDays = Array.isArray(parsedData?.days) ? parsedData.days : [];
+    let planTotalCost = trip.totalCost ?? trip.totalBudget ?? trip.total_budget ?? 0;
+
+    if (planDays.length === 0 && accessToken) {
+      try {
+        const scheduleResponse = await getTripSchedule(accessToken, trip.id);
+        planDays = buildPlanDaysFromSchedule(scheduleResponse.days);
+        planTotalCost = scheduleResponse.totalCost ?? planTotalCost;
+      } catch (error) {
+        console.error('❌ BŁĄD POBIERANIA HARMONOGRAMU:', error);
+      }
     }
 
     const activePlan: TripPlan = {
       id: trip.id,
       destination: trip.destination || "Nieznane miejsce",
-      summary: parsedData?.summary || "Brak opisu",
-      totalDays: Array.isArray(parsedData?.days) ? parsedData.days.length : 0,
-      estimatedTotalCost: trip.totalBudget ?? trip.total_budget ?? 0,
+      summary: parsedData?.summary || getTripDescription(trip.notes) || "Brak opisu",
+      totalDays: planDays.length,
+      estimatedTotalCost: planTotalCost,
       currency: parsedData?.currency || "PLN",
-      days: Array.isArray(parsedData?.days) ? parsedData.days : [],
+      days: planDays,
       generalTips: Array.isArray(parsedData?.generalTips) ? parsedData.generalTips : [],
       bestTransport: parsedData?.bestTransport || "Brak danych",
       imageUrl: trip.imageUrl || trip.image_url || 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?q=80&w=1000'
@@ -568,7 +649,7 @@ export default function Trips() {
 
     useTripStore.getState().setTripPlan(activePlan);
     router.push('../trip-details');
-  }, [router]);
+  }, [accessToken, router]);
 
   const participantIds = useMemo(
     () => new Set(participants.map((participant) => participant.profileId)),
@@ -591,9 +672,13 @@ export default function Trips() {
   );
 
   const visibleTrips = useMemo(() => {
-    if (tripListFilter === 'owner') return trips.filter((trip) => trip.accessRole === 'owner');
-    if (tripListFilter === 'participant') return trips.filter((trip) => trip.accessRole === 'participant');
-    return trips;
+    const filteredTrips = tripListFilter === 'owner'
+      ? trips.filter((trip) => trip.accessRole === 'owner')
+      : tripListFilter === 'participant'
+        ? trips.filter((trip) => trip.accessRole === 'participant')
+        : trips;
+
+    return sortTripsByNearestDate(filteredTrips);
   }, [tripListFilter, trips]);
 
   const selectedTripIndex = useMemo(() => {

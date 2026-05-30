@@ -95,10 +95,11 @@ const removeEmptyValues = (filters: OfferFilterDto) => {
   return params;
 };
 
-export const getInspirationOffers = async (filters: OfferFilterDto = {}) => {
+export const getInspirationOffers = async (filters: OfferFilterDto = {}, accessToken?: string) => {
   try {
     const { data } = await api.get<OffersResponse>('/inspiration/offers', {
       params: removeEmptyValues(filters),
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
     });
     return data;
   } catch (error) {
@@ -106,9 +107,11 @@ export const getInspirationOffers = async (filters: OfferFilterDto = {}) => {
   }
 };
 
-export const getInspirationOfferDetails = async (offerId: string) => {
+export const getInspirationOfferDetails = async (offerId: string, accessToken?: string) => {
   try {
-    const { data } = await api.get<OfferDetailsResponse>(`/inspiration/offers/${offerId}`);
+    const { data } = await api.get<OfferDetailsResponse>(`/inspiration/offers/${offerId}`, {
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+    });
     return data;
   } catch (error) {
     throw new Error(getApiErrorMessage(error, 'Nie udało się pobrać szczegółów oferty'));
