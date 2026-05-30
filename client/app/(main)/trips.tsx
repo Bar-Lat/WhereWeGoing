@@ -468,6 +468,25 @@ export default function Trips() {
     setOfflineCacheDirty(false);
   }, []);
 
+  const removedTripId = useTripStore((state) => state.removedTripId);
+
+  useEffect(() => {
+    if (!removedTripId) return;
+
+    setTrips((current) => current.filter((trip) => trip.id !== removedTripId));
+    setSelectedTrip((current) => {
+      if (current?.id === removedTripId) {
+        closeTripPanel();
+        return null;
+      }
+      return current;
+    });
+    useTripStore.getState().setTrips(
+      useTripStore.getState().trips.filter((trip) => trip.id !== removedTripId)
+    );
+    useTripStore.getState().clearRemovedTripNotification();
+  }, [removedTripId, closeTripPanel]);
+
   const handleSaveSelectedTripOffline = useCallback(async () => {
     if (!selectedTrip || !userId) {
       return;
@@ -567,6 +586,7 @@ export default function Trips() {
     };
 
     useTripStore.getState().setTripPlan(activePlan);
+    useTripStore.getState().setSavedTripId(trip.id);
     router.push('../trip-details');
   }, [router]);
 
@@ -651,12 +671,29 @@ export default function Trips() {
   const handleUpdateScheduleActivity = useCallback(
     async (
       activityId: string,
-      payload: { name: string; time: string; description: string; category: string; location: string; cost: number; }
+      payload: {
+        name: string;
+        time: string;
+        endTime?: string;
+        durationMinutes: number;
+        description: string;
+        category: string;
+        location: string;
+        cost: number;
+      }
     ) => {
       if (!accessToken || !selectedTrip) return;
       try {
         setScheduleSaving(true);
-        const response = await updateTripScheduleActivity(accessToken, selectedTrip.id, activityId, payload);
+        const response = await updateTripScheduleActivity(accessToken, selectedTrip.id, activityId, {
+          name: payload.name,
+          time: payload.time,
+          durationMinutes: payload.durationMinutes,
+          description: payload.description,
+          category: payload.category,
+          location: payload.location,
+          cost: payload.cost,
+        });
         applyScheduleMutation(response);
         await loadTrips('refresh');
       } catch (error) {

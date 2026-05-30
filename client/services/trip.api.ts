@@ -34,6 +34,27 @@ export const updateTrip = async (tripId: string, tripPlan: any, accessToken: str
   }
 };
 
+export const refineTripPlanSchedule = async (
+  tripPlan: any,
+  accessToken: string,
+  options?: { tripId?: string; preferredTransport?: string[] }
+) => {
+  try {
+    const { data } = await api.post(
+      '/trip/refine-plan',
+      {
+        tripPlan,
+        tripId: options?.tripId,
+        preferredTransport: options?.preferredTransport || [],
+      },
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    return data as { tripPlan: any; refined: boolean };
+  } catch (error: any) {
+    throw new Error(error.response?.data?.message || 'Nie udało się wygenerować transportów');
+  }
+};
+
 // --- NOWE FUNKCJE Z MAIN ---
 export type TripHistoryActivity = {
   id: string;

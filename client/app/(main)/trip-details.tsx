@@ -19,11 +19,28 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Colors } from '@/styles/colors';
+import ScheduleDayTimeline, { type TimelineActivityItem } from '@/components/ScheduleDayTimeline';
 import { useTripStore, TripPlan, DayPlan } from '@/stores/tripStore';
 import { useAuth } from '@/providers/auth.provider';
 import { useNetwork } from '@/providers/network.provider';
 import DateRangePicker from '@/components/DateRangePicker';
-import { deleteTrip, updateTrip } from '@/services/trip.api';
+import TimePickerSheet from '@/components/TimePickerSheet';
+import {
+  computeEndTime,
+  durationFromTimes,
+  activityRangeOverlapsOthers,
+  type ActivityTimeRangeInput,
+} from '@/utils/activityTime';
+import { deleteTrip, updateTrip, refineTripPlanSchedule } from '@/services/trip.api';
+import {
+  getTripSchedule,
+  createTripScheduleActivity,
+  updateTripScheduleActivity,
+} from '@/services/trips.api';
+import type { TripScheduleDayDto } from '@/types/trips';
+import { normalizeTripPlanNumbers } from '@/utils/normalizeTripPlan';
+import { validateTripPlanSchedule } from '@/utils/scheduleValidation';
+import { buildTransitsForActivities, mapDayTransitsToOverrides } from '@/utils/scheduleTransit';
 
 // ─── HELPERY ─────────────────────────────────────────────────────────────────
 const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
@@ -57,6 +74,79 @@ function getCategoryColor(category: string): string {
   return map[category?.toLowerCase()] ?? Colors.brand.blue;
 }
 
+const findScheduleDay = (scheduleDays: TripScheduleDayDto[], dayNumber: number) =>
+  scheduleDays.find((item) => item.dayNumber === dayNumber);
+
+const assignActivityIdsForDay = (
+  day: DayPlan,
+  scheduleDay: TripScheduleDayDto | undefined
+): DayPlan['activities'] => {
+  if (!scheduleDay?.activities?.length) return day.activities;
+  const usedIds = new Set<string>();
+  return day.activities.map((activity) => {
+    const match =
+      scheduleDay.activities.find(
+        (item) => !usedIds.has(item.id) && item.name === activity.name && item.time === activity.time
+      ) ||
+      scheduleDay.activities.find((item) => !usedIds.has(item.id) && item.name === activity.name);
+    if (!match) return activity;
+    usedIds.add(match.id);
+    return { ...activity, id: match.id };
+  });
+};
+
+const mergePlanWithSchedule = (
+  plan: TripPlan,
+  scheduleDays: TripScheduleDayDto[],
+  preserveLocalOrder: boolean
+): TripPlan => ({
+  ...plan,
+  days: plan.days.map((day) => {
+    const scheduleDay = findScheduleDay(scheduleDays, day.day);
+    if (!scheduleDay) return day;
+    if (preserveLocalOrder) {
+      return { ...day, activities: assignActivityIdsForDay(day, scheduleDay) };
+    }
+    const usedPlanIndices = new Set<number>();
+    const activities: DayPlan['activities'] = scheduleDay.activities.map((scheduleActivity) => {
+      const planIndex = day.activities.findIndex(
+        (activity, index) =>
+          !usedPlanIndices.has(index) &&
+          activity.name === scheduleActivity.name &&
+          activity.time === scheduleActivity.time
+      );
+      const fallbackIndex =
+        planIndex >= 0
+          ? planIndex
+          : day.activities.findIndex(
+              (activity, index) => !usedPlanIndices.has(index) && activity.name === scheduleActivity.name
+            );
+      const planActivity = fallbackIndex >= 0 ? day.activities[fallbackIndex] : null;
+      if (fallbackIndex >= 0) usedPlanIndices.add(fallbackIndex);
+      return {
+        ...(planActivity || {
+          name: scheduleActivity.name,
+          time: scheduleActivity.time,
+          description: scheduleActivity.description,
+          category: scheduleActivity.category,
+          estimatedCost: scheduleActivity.cost,
+          location: scheduleActivity.location,
+          durationMinutes: scheduleActivity.durationMinutes ?? undefined,
+        }),
+        id: scheduleActivity.id,
+        durationMinutes:
+          scheduleActivity.durationMinutes ??
+          planActivity?.durationMinutes ??
+          undefined,
+      };
+    });
+    day.activities.forEach((activity, index) => {
+      if (!usedPlanIndices.has(index)) activities.push(activity);
+    });
+    return { ...day, activities, transits: day.transits || scheduleDay.transits };
+  }),
+});
+
 function formatDate(dateStr: string): string {
   if (!dateStr) return '';
   const parts = dateStr.split('.');
@@ -72,21 +162,29 @@ function DayCardView({
                        index,
                        currentColors,
                        isEditingMode,
+                       preferredTransport,
                        onAddActivity,
                        onEditActivity,
                        onDeleteActivity,
                        onDeleteDay,
-                       onShowAlert
+                       onReorderActivities,
+                       onShowAlert,
+                       parentScrollRef,
+                       scrollOffsetRef,
                      }: {
   day: DayPlan;
   index: number;
   currentColors: any;
   isEditingMode: boolean;
+  preferredTransport?: string[];
   onAddActivity: (dayIndex: number) => void;
   onEditActivity: (dayIndex: number, actIndex: number, act: any) => void;
   onDeleteActivity: (dayIndex: number, actIndex: number) => void;
   onDeleteDay: (dayIndex: number) => void;
+  onReorderActivities: (dayIndex: number, orderedItems: TimelineActivityItem[]) => void | Promise<void>;
   onShowAlert: (title: string, msg: string, actions: any[]) => void;
+  parentScrollRef?: React.RefObject<ScrollView | null>;
+  scrollOffsetRef?: React.RefObject<number>;
 }) {
   const [expanded, setExpanded] = useState(index === 0);
 
@@ -174,66 +272,44 @@ function DayCardView({
                   </View>
               )}
 
-              {day.activities?.map((activity, actIndex) => {
-                const isLast = actIndex === day.activities.length - 1;
-                const catColor = getCategoryColor(activity.category);
-
-                return (
-                    <View key={actIndex} style={styles.timelineRow}>
-                      <View style={styles.timelineLeft}>
-                        <View style={[styles.timelineDot, { backgroundColor: catColor }]} />
-                        {!isLast && <View style={[styles.timelineLine, { backgroundColor: currentColors.border }]} />}
-                      </View>
-
-                      <View style={[styles.activityCard, { backgroundColor: currentColors.card }]}>
-                        <View style={styles.activityHeader}>
-                          <View style={[styles.activityIconBox, { backgroundColor: currentColors.background }]}>
-                            <Ionicons
-                                name={getCategoryIcon(activity.category)}
-                                size={22}
-                                color={catColor}
-                            />
-                          </View>
-                          <View style={styles.activityInfo}>
-                            <Text style={[styles.activityName, { color: currentColors.text }]} numberOfLines={2}>
-                              {activity.name}
-                            </Text>
-                            <View style={styles.activityMeta}>
-                              <Text style={[styles.activityMetaText, { color: currentColors.subtext }]}>🕐 {activity.time}</Text>
-                              {activity.estimatedCost > 0 && (
-                                  <Text style={[styles.activityCost, { color: Colors.brand.blue }]}>{activity.estimatedCost} PLN</Text>
-                              )}
-                            </View>
-                            <Text style={[styles.activityDesc, { color: currentColors.subtext }]} numberOfLines={3}>
-                              {activity.description}
-                            </Text>
-                          </View>
-
-                          {isEditingMode && (
-                              <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 8 }}>
-                                <TouchableOpacity onPress={() => onEditActivity(index, actIndex, activity)} style={{ padding: 6 }}>
-                                  <Ionicons name="pencil" size={20} color={Colors.brand.blue} />
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    onPress={() => onShowAlert(
-                                        "Usuwanie",
-                                        `Usunąć "${activity.name}"?`,
-                                        [
-                                          { text: 'Anuluj', style: 'cancel' },
-                                          { text: 'Usuń', style: 'destructive', onPress: () => onDeleteActivity(index, actIndex) }
-                                        ]
-                                    )}
-                                    style={{ padding: 6 }}
-                                >
-                                  <Ionicons name="trash-outline" size={20} color={'#ef4444'} />
-                                </TouchableOpacity>
-                              </View>
-                          )}
-                        </View>
-                      </View>
-                    </View>
-                );
-              })}
+              {day.activities?.length ? (
+                <ScheduleDayTimeline
+                  activities={day.activities.map((activity, actIndex): TimelineActivityItem => ({
+                    key: activity.id ?? `${index}-${actIndex}`,
+                    name: activity.name,
+                    time: activity.time,
+                    description: activity.description,
+                    category: activity.category,
+                    location: activity.location,
+                    cost: activity.estimatedCost,
+                    durationMinutes: activity.durationMinutes ?? null,
+                  }))}
+                  editable={isEditingMode}
+                  showTransits={!isEditingMode}
+                  transitOverrides={mapDayTransitsToOverrides(day.transits)}
+                  preferredTransport={preferredTransport}
+                  currentColors={currentColors}
+                  parentScrollRef={parentScrollRef}
+                  scrollOffsetRef={scrollOffsetRef}
+                  onEdit={(actIndex) => onEditActivity(index, actIndex, day.activities[actIndex])}
+                  onDelete={(activityKey) => {
+                    const actIndexById = day.activities.findIndex((activity) => activity.id === activityKey);
+                    if (actIndexById >= 0) {
+                      onDeleteActivity(index, actIndexById);
+                      return;
+                    }
+                    const actIndex = Number(activityKey.split('-').pop());
+                    if (!Number.isNaN(actIndex)) onDeleteActivity(index, actIndex);
+                  }}
+                  onOrderConfirm={(orderedItems) => {
+                    void onReorderActivities(index, orderedItems);
+                  }}
+                />
+              ) : (
+                <Text style={{ color: currentColors.subtext, fontSize: 14, paddingVertical: 8 }}>
+                  Brak punktów w tym dniu.
+                </Text>
+              )}
 
               {isEditingMode && (
                   <TouchableOpacity style={[styles.addActivityBtn, { borderColor: Colors.brand.blue }]} onPress={() => onAddActivity(index)}>
@@ -250,14 +326,28 @@ function DayCardView({
 // ─── GŁÓWNY EKRAN SZCZEGÓŁÓW ──────────────────────────────────────────────────
 export default function TripDetails() {
   const {
-    tripPlan, deleteDay, addDay, addActivity, updateActivity, deleteActivity,
-    isEditingMode, setIsEditingMode
+    tripPlan,
+    formData,
+    deleteDay,
+    addDay,
+    addActivity,
+    updateActivity,
+    deleteActivity,
+    setActivitiesOrder,
+    setTripPlan,
+    isEditingMode,
+    setIsEditingMode,
   } = useTripStore();
   const { session } = useAuth();
   const { isOffline } = useNetwork();
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isSavingActivity, setIsSavingActivity] = useState(false);
+  const [isApplyingEdit, setIsApplyingEdit] = useState(false);
+  const [scheduleDays, setScheduleDays] = useState<TripScheduleDayDto[]>([]);
   const [backupPlan, setBackupPlan] = useState<TripPlan | null>(null);
   const router = useRouter();
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollOffsetRef = useRef(0);
 
   React.useEffect(() => {
     const onBackPress = () => {
@@ -303,7 +393,15 @@ export default function TripDetails() {
     mode: 'add' as 'add' | 'edit',
     dayIndex: -1,
     actIndex: -1,
-    formData: { name: '', time: '09:00', category: 'inne', description: '', estimatedCost: '0' }
+    formData: {
+      name: '',
+      time: '09:00',
+      endTime: '10:00',
+      category: 'inne',
+      description: '',
+      estimatedCost: '0',
+      location: '',
+    }
   });
   const [customAlert, setCustomAlert] = useState({
     visible: false,
@@ -316,25 +414,164 @@ export default function TripDetails() {
     if (isOffline) {
       setIsEditingMode(false);
     }
-  }, [isOffline]);
+  }, [isOffline, setIsEditingMode]);
 
-  const syncPlanWithDb = async (forcedPlan?: any) => {
-    if (isOffline) return;
+  const resolveScheduleDay = React.useCallback(
+    async (dayNumber: number): Promise<TripScheduleDayDto | undefined> => {
+      const cached = findScheduleDay(scheduleDays, dayNumber);
+      if (cached) return cached;
 
-    const planToSave = forcedPlan || useTripStore.getState().tripPlan;
-    if (!planToSave?.id || !session?.access_token) return;
+      const tripId = tripPlan?.id || useTripStore.getState().savedTripId;
+      if (!tripId || !session?.access_token || isOffline) return undefined;
 
-    try {
-      await updateTrip(planToSave.id, planToSave, session.access_token);
-      console.log("✅ Zapis w tle udany!");
-    } catch (error: any) {
-      console.error("❌ Błąd zapisu w tle:", error);
-      Alert.alert("Błąd połączenia z bazą", "Zmiany mogły nie zostać zapisane!");
+      const response = await getTripSchedule(session.access_token, tripId);
+      const days = response.days || [];
+      setScheduleDays(days);
+      return findScheduleDay(days, dayNumber);
+    },
+    [isOffline, scheduleDays, session?.access_token, tripPlan?.id]
+  );
+
+  useEffect(() => {
+    const tripId = tripPlan?.id || useTripStore.getState().savedTripId;
+    if (!tripId || !session?.access_token || isOffline) {
+      setScheduleDays([]);
+      return;
     }
+
+    let cancelled = false;
+    const loadSchedule = async () => {
+      try {
+        const response = await getTripSchedule(session.access_token, tripId);
+        if (cancelled) return;
+        const days = response.days || [];
+        setScheduleDays(days);
+        const currentPlan = useTripStore.getState().tripPlan;
+        if (currentPlan?.days?.length) {
+          const merged = mergePlanWithSchedule(currentPlan, days, useTripStore.getState().isEditingMode);
+          setTripPlan(merged);
+        }
+      } catch (error) {
+        console.warn('Nie udało się pobrać harmonogramu:', error);
+      }
+    };
+
+    void loadSchedule();
+    return () => {
+      cancelled = true;
+    };
+  }, [tripPlan?.id, session?.access_token, isOffline, setTripPlan]);
+
+  const syncPlanWithDb = async (forcedPlan?: TripPlan) => {
+    if (isOffline) {
+      throw new Error('Zapis planu wymaga połączenia z internetem.');
+    }
+
+    const rawPlan = forcedPlan || useTripStore.getState().tripPlan;
+    const tripId = rawPlan?.id || useTripStore.getState().savedTripId;
+    if (!tripId) throw new Error('Brak identyfikatora wycieczki.');
+    if (!session?.access_token) throw new Error('Brak sesji logowania.');
+
+    const planToSave = normalizeTripPlanNumbers({ ...(rawPlan || {}), id: tripId } as TripPlan);
+    await updateTrip(tripId, planToSave, session.access_token);
+    setTripPlan(planToSave);
+    useTripStore.getState().setSavedTripId(tripId);
   };
 
   const showAlert = (title: string, message: string, actions: any[]) => {
     setCustomAlert({ visible: true, title, message, actions });
+  };
+
+  const getOtherActivityRanges = (
+    dayIndex: number,
+    actIndex: number,
+    mode: 'add' | 'edit'
+  ): ActivityTimeRangeInput[] => {
+    const day = tripPlan?.days[dayIndex];
+    if (!day) return [];
+
+    return day.activities
+      .filter((_, index) => mode === 'add' || index !== actIndex)
+      .map((activity) => ({
+        startTime: activity.time,
+        durationMinutes: activity.durationMinutes,
+      }));
+  };
+
+  const validateActivityStartTime = (
+    startTime: string,
+    endTime: string,
+    dayIndex: number,
+    actIndex: number,
+    mode: 'add' | 'edit'
+  ) => {
+    const resolvedEnd =
+      durationFromTimes(startTime, endTime) === null ? computeEndTime(startTime, 60) : endTime;
+    if (durationFromTimes(startTime, resolvedEnd) === null) return false;
+
+    return !activityRangeOverlapsOthers(
+      { startTime, endTime: resolvedEnd },
+      getOtherActivityRanges(dayIndex, actIndex, mode)
+    );
+  };
+
+  const validateActivityEndTime = (
+    startTime: string,
+    endTime: string,
+    dayIndex: number,
+    actIndex: number,
+    mode: 'add' | 'edit'
+  ) => {
+    if (durationFromTimes(startTime, endTime) === null) return false;
+
+    return !activityRangeOverlapsOthers(
+      { startTime, endTime },
+      getOtherActivityRanges(dayIndex, actIndex, mode)
+    );
+  };
+
+  const persistActivityTimeRange = async (time: string, endTime: string) => {
+    const durationMinutes = durationFromTimes(time, endTime);
+    if (durationMinutes === null) return;
+
+    const { dayIndex, actIndex, mode, formData } = actModal;
+    const existing = tripPlan?.days[dayIndex]?.activities[actIndex];
+
+    setActModal((prev) => ({
+      ...prev,
+      formData: { ...prev.formData, time, endTime },
+    }));
+
+    if (mode === 'edit' && existing) {
+      updateActivity(dayIndex, actIndex, { ...existing, time, durationMinutes });
+    }
+
+    const tripId = tripPlan?.id || useTripStore.getState().savedTripId;
+    if (mode !== 'edit' || !existing?.id || !tripId || !session?.access_token || isOffline) {
+      return;
+    }
+
+    try {
+      setIsSavingActivity(true);
+      const response = await updateTripScheduleActivity(session.access_token, tripId, existing.id, {
+        name: formData.name.trim() || existing.name,
+        time,
+        durationMinutes,
+        description: formData.description || existing.description || '',
+        category: formData.category || existing.category,
+        location: formData.location.trim() || existing.location || '',
+        cost: Number(formData.estimatedCost) || existing.estimatedCost || 0,
+      });
+      setScheduleDays(response.days || []);
+      const currentPlan = useTripStore.getState().tripPlan;
+      if (currentPlan) {
+        setTripPlan(mergePlanWithSchedule(currentPlan, response.days || [], false));
+      }
+    } catch (error: any) {
+      Alert.alert('Nie udało się zapisać godziny', error?.message || 'Spróbuj ponownie.');
+    } finally {
+      setIsSavingActivity(false);
+    }
   };
 
   const openBudgetModal = () => {
@@ -355,7 +592,15 @@ export default function TripDetails() {
       mode: 'add',
       dayIndex,
       actIndex: -1,
-      formData: { name: '', time: '09:00', category: 'inne', description: '', estimatedCost: '0' }
+      formData: {
+      name: '',
+      time: '09:00',
+      endTime: '10:00',
+      category: 'inne',
+      description: '',
+      estimatedCost: '0',
+      location: '',
+    }
     });
   };
 
@@ -369,9 +614,11 @@ export default function TripDetails() {
       formData: {
         name: activity.name,
         time: activity.time,
+        endTime: computeEndTime(activity.time, activity.durationMinutes),
         category: activity.category,
         description: activity.description || '',
-        estimatedCost: String(activity.estimatedCost || 0)
+        estimatedCost: String(activity.estimatedCost || 0),
+        location: activity.location || '',
       }
     });
   };
@@ -381,19 +628,107 @@ export default function TripDetails() {
       Alert.alert('Błąd', 'Nazwa atrakcji jest wymagana');
       return;
     }
+
+    const durationMinutes = durationFromTimes(actModal.formData.time, actModal.formData.endTime);
+    if (durationMinutes === null) {
+      Alert.alert('Błąd', 'Godzina zakończenia musi być późniejsza niż rozpoczęcia.');
+      return;
+    }
+
+    if (
+      !validateActivityStartTime(
+        actModal.formData.time,
+        actModal.formData.endTime,
+        actModal.dayIndex,
+        actModal.actIndex,
+        actModal.mode
+      )
+    ) {
+      Alert.alert('Błąd', 'Wybrany przedział godzin koliduje z inną atrakcją w tym dniu.');
+      return;
+    }
+
     const payload = {
-      ...actModal.formData,
+      name: actModal.formData.name.trim(),
+      time: actModal.formData.time,
+      durationMinutes,
+      category: actModal.formData.category,
+      description: actModal.formData.description,
       estimatedCost: Number(actModal.formData.estimatedCost) || 0,
-      location: ''
+      location: actModal.formData.location.trim(),
     };
 
     if (actModal.mode === 'add') {
-      addActivity(actModal.dayIndex, payload);
+      const day = tripPlan?.days[actModal.dayIndex];
+      const tripId = tripPlan?.id || useTripStore.getState().savedTripId;
+
+      if (day && tripId && session?.access_token && !isOffline) {
+        try {
+          setIsSavingActivity(true);
+          const scheduleDay = await resolveScheduleDay(day.day);
+          if (!scheduleDay) {
+            Alert.alert('Błąd', 'Nie znaleziono dnia w harmonogramie — odśwież plan i spróbuj ponownie.');
+            return;
+          }
+
+          const response = await createTripScheduleActivity(session.access_token, tripId, scheduleDay.id, {
+            name: payload.name,
+            time: payload.time,
+            durationMinutes: payload.durationMinutes,
+            description: payload.description,
+            category: payload.category,
+            location: payload.location,
+            cost: payload.estimatedCost,
+          });
+
+          setScheduleDays(response.days || []);
+          const currentPlan = useTripStore.getState().tripPlan;
+          if (currentPlan) {
+            setTripPlan(mergePlanWithSchedule(currentPlan, response.days || [], false));
+          }
+        } catch (error: any) {
+          Alert.alert('Nie udało się dodać atrakcji', error?.message || 'Spróbuj ponownie.');
+          return;
+        } finally {
+          setIsSavingActivity(false);
+        }
+      } else {
+        addActivity(actModal.dayIndex, payload);
+      }
     } else {
-      updateActivity(actModal.dayIndex, actModal.actIndex, payload);
+      const existing = tripPlan?.days[actModal.dayIndex]?.activities[actModal.actIndex];
+      const merged = { ...existing, ...payload };
+      const tripId = tripPlan?.id || useTripStore.getState().savedTripId;
+
+      if (existing?.id && tripId && session?.access_token && !isOffline) {
+        try {
+          setIsSavingActivity(true);
+          const response = await updateTripScheduleActivity(session.access_token, tripId, existing.id, {
+            name: payload.name,
+            time: payload.time,
+            durationMinutes: payload.durationMinutes,
+            description: payload.description,
+            category: payload.category,
+            location: payload.location,
+            cost: payload.estimatedCost,
+          });
+          setScheduleDays(response.days || []);
+          const currentPlan = useTripStore.getState().tripPlan;
+          if (currentPlan) {
+            setTripPlan(mergePlanWithSchedule(currentPlan, response.days || [], false));
+          }
+        } catch (error: any) {
+          Alert.alert('Nie udało się zapisać atrakcji', error?.message || 'Spróbuj ponownie.');
+          return;
+        } finally {
+          setIsSavingActivity(false);
+        }
+      } else {
+        updateActivity(actModal.dayIndex, actModal.actIndex, merged);
+      }
     }
 
-    setActModal(prev => ({ ...prev, visible: false }));
+    setActModal((prev) => ({ ...prev, visible: false }));
   };
 
   const handleAddDay = async () => {
@@ -434,8 +769,50 @@ export default function TripDetails() {
     deleteActivity(dayIndex, actIndex);
   };
 
-  const enterEditMode = () => {
-    setBackupPlan(JSON.parse(JSON.stringify(tripPlan)));
+  const handleReorderActivities = async (dayIndex: number, orderedItems: TimelineActivityItem[]) => {
+    const day = tripPlan?.days[dayIndex];
+    if (!day) return;
+
+    const activityByKey = new Map<string, DayPlan['activities'][number]>();
+    day.activities.forEach((activity, actIndex) => {
+      activityByKey.set(activity.id ?? `${dayIndex}-${actIndex}`, activity);
+    });
+
+    const reorderedActivities = orderedItems
+      .map((item) => {
+        const base = activityByKey.get(item.key);
+        if (!base) return null;
+        return { ...base, time: item.time };
+      })
+      .filter((activity): activity is DayPlan['activities'][number] => Boolean(activity));
+
+    if (reorderedActivities.length !== day.activities.length) {
+      Alert.alert('Błąd', 'Nie udało się ustalić nowej kolejności.');
+      return;
+    }
+
+    setActivitiesOrder(dayIndex, reorderedActivities);
+  };
+
+  const enterEditMode = async () => {
+    const tripId = tripPlan?.id || useTripStore.getState().savedTripId;
+    let planForEdit = tripPlan;
+
+    if (tripId && session?.access_token && !isOffline) {
+      try {
+        const response = await getTripSchedule(session.access_token, tripId);
+        const days = response.days || [];
+        setScheduleDays(days);
+        if (planForEdit) {
+          planForEdit = mergePlanWithSchedule(planForEdit, days, true);
+          setTripPlan(planForEdit);
+        }
+      } catch (error) {
+        console.warn('Nie udało się odświeżyć harmonogramu:', error);
+      }
+    }
+
+    setBackupPlan(JSON.parse(JSON.stringify(planForEdit)));
     setIsEditingMode(true);
   };
 
@@ -468,10 +845,63 @@ export default function TripDetails() {
     }
   };
 
+  const applyLocalTransitsToPlan = (plan: TripPlan, preferredTransport: string[]): TripPlan => ({
+    ...plan,
+    days: plan.days.map((day) => ({
+      ...day,
+      transits: buildTransitsForActivities(
+        day.activities.map((activity) => ({
+          name: activity.name,
+          location: activity.location,
+          category: activity.category,
+          time: activity.time,
+          durationMinutes: activity.durationMinutes,
+        })),
+        preferredTransport
+      ),
+    })),
+  });
+
   const saveEditMode = async () => {
-    await syncPlanWithDb();
-    setIsEditingMode(false);
-    setBackupPlan(null);
+    const plan = useTripStore.getState().tripPlan;
+    if (!plan) return;
+
+    const validation = validateTripPlanSchedule(plan);
+    if (!validation.valid) {
+      Alert.alert('Nieprawidłowy harmonogram', validation.message);
+      return;
+    }
+
+    try {
+      setIsApplyingEdit(true);
+      const preferredTransport = formData?.transport || [];
+      const tripId = plan.id || useTripStore.getState().savedTripId;
+      let planWithTransits: TripPlan = applyLocalTransitsToPlan(plan, preferredTransport);
+
+      if (session?.access_token && !isOffline) {
+        try {
+          const refined = await refineTripPlanSchedule(
+            normalizeTripPlanNumbers(plan),
+            session.access_token,
+            { tripId: tripId || undefined, preferredTransport }
+          );
+          if (refined?.tripPlan?.days) {
+            planWithTransits = refined.tripPlan as TripPlan;
+          }
+        } catch (groqError) {
+          console.warn('Groq refine failed, using local transits:', groqError);
+        }
+      }
+
+      const planToSave = normalizeTripPlanNumbers(planWithTransits);
+      await syncPlanWithDb(planToSave);
+      setIsEditingMode(false);
+      setBackupPlan(null);
+    } catch (error: any) {
+      Alert.alert('Nie udało się zapisać planu', error?.message || 'Spróbuj ponownie.');
+    } finally {
+      setIsApplyingEdit(false);
+    }
   };
 
   const handleSaveDates = async () => {
@@ -563,10 +993,12 @@ export default function TripDetails() {
               try {
                 setIsDeleting(true);
                 await deleteTrip(tripId, session!.access_token);
+                useTripStore.getState().notifyTripDeleted(tripId);
+                useTripStore.getState().removeTripFromList(tripId);
                 useTripStore.getState().reset();
                 router.replace('/(main)/trips');
               } catch (error: any) {
-                showAlert("Błąd", error.message || "Nie udało się usunąć wycieczki.", [{ text: "OK" }]);
+                showAlert('Błąd', error.message || 'Nie udało się usunąć wycieczki.', [{ text: 'OK' }]);
               } finally {
                 setIsDeleting(false);
               }
@@ -594,6 +1026,7 @@ export default function TripDetails() {
   return (
       <View style={[styles.container, { backgroundColor: currentColors.background }]}>
         <Animated.ScrollView
+            ref={scrollRef as any}
             contentContainerStyle={[
               styles.scrollContent,
               {
@@ -604,7 +1037,12 @@ export default function TripDetails() {
             showsVerticalScrollIndicator={false}
             scrollIndicatorInsets={{ top: HEADER_MAX_HEIGHT + TAB_BAR_HEIGHT }}
             scrollEventThrottle={16}
-            onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
+            onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
+              useNativeDriver: true,
+              listener: (event: any) => {
+                scrollOffsetRef.current = event.nativeEvent.contentOffset.y;
+              },
+            })}
         >
           {activeTab === 'schedule' && (
               <View>
@@ -615,11 +1053,15 @@ export default function TripDetails() {
                         index={index}
                         currentColors={currentColors}
                         isEditingMode={isEditingMode}
+                        preferredTransport={formData?.transport}
                         onAddActivity={openAddActivity}
                         onEditActivity={openEditActivity}
                         onDeleteActivity={handleLocalDeleteActivity}
                         onDeleteDay={handleLocalDeleteDay}
+                        onReorderActivities={handleReorderActivities}
                         onShowAlert={showAlert}
+                        parentScrollRef={scrollRef}
+                        scrollOffsetRef={scrollOffsetRef}
                     />
                 ))}
 
@@ -691,8 +1133,13 @@ export default function TripDetails() {
                             <TouchableOpacity
                                 style={[styles.heroNavBtn, { backgroundColor: '#10b981' }]}
                                 onPress={saveEditMode}
+                                disabled={isApplyingEdit}
                             >
-                              <Ionicons name="checkmark" size={20} color="#fff" />
+                              {isApplyingEdit ? (
+                                <ActivityIndicator size="small" color="#fff" />
+                              ) : (
+                                <Ionicons name="checkmark" size={20} color="#fff" />
+                              )}
                             </TouchableOpacity>
                           </>
                       ) : (
@@ -768,22 +1215,105 @@ export default function TripDetails() {
               <ScrollView showsVerticalScrollIndicator={false} style={{ width: '100%' }}>
                 <Text style={[styles.inputLabel, { color: currentColors.subtext }]}>Nazwa</Text>
                 <TextInput style={[styles.input, { color: currentColors.text, borderColor: currentColors.border }]} value={actModal.formData.name} onChangeText={t => setActModal(p => ({ ...p, formData: { ...p.formData, name: t } }))} />
-                <View style={{ flexDirection: 'row', gap: 12 }}>
+                <Text style={[styles.inputLabel, { color: currentColors.subtext }]}>Godziny</Text>
+                <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.inputLabel, { color: currentColors.subtext }]}>Godzina</Text>
-                    <TextInput style={[styles.input, { color: currentColors.text, borderColor: currentColors.border }]} value={actModal.formData.time} onChangeText={t => setActModal(p => ({ ...p, formData: { ...p.formData, time: t } }))} />
+                    <Text style={[styles.inputLabel, { color: currentColors.subtext, marginBottom: 6 }]}>Początek</Text>
+                    <TimePickerSheet
+                      value={actModal.formData.time}
+                      onChange={(time) => {
+                        const endTime =
+                          durationFromTimes(time, actModal.formData.endTime) === null
+                            ? computeEndTime(time, 60)
+                            : actModal.formData.endTime;
+                        setActModal((p) => ({
+                          ...p,
+                          formData: { ...p.formData, time, endTime },
+                        }));
+                      }}
+                      onConfirm={async (time) => {
+                        const endTime =
+                          durationFromTimes(time, actModal.formData.endTime) === null
+                            ? computeEndTime(time, 60)
+                            : actModal.formData.endTime;
+                        await persistActivityTimeRange(time, endTime);
+                      }}
+                      validateDraft={(draft) =>
+                        validateActivityStartTime(
+                          draft,
+                          actModal.formData.endTime,
+                          actModal.dayIndex,
+                          actModal.actIndex,
+                          actModal.mode
+                        )
+                      }
+                      label="Godzina rozpoczęcia"
+                      textColor={currentColors.text}
+                      subtextColor={currentColors.subtext}
+                      borderColor={currentColors.border}
+                      cardColor={currentColors.background}
+                    />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.inputLabel, { color: currentColors.subtext }]}>Koszt (PLN)</Text>
-                    <TextInput style={[styles.input, { color: currentColors.text, borderColor: currentColors.border }]} value={actModal.formData.estimatedCost} onChangeText={t => setActModal(p => ({ ...p, formData: { ...p.formData, estimatedCost: t.replace(/[^0-9]/g, '') } }))} keyboardType="numeric" />
+                    <Text style={[styles.inputLabel, { color: currentColors.subtext, marginBottom: 6 }]}>Koniec</Text>
+                    <TimePickerSheet
+                      value={actModal.formData.endTime}
+                      onChange={(endTime) =>
+                        setActModal((p) => ({ ...p, formData: { ...p.formData, endTime } }))
+                      }
+                      onConfirm={async (endTime) => {
+                        await persistActivityTimeRange(actModal.formData.time, endTime);
+                      }}
+                      validateDraft={(draft) =>
+                        validateActivityEndTime(
+                          actModal.formData.time,
+                          draft,
+                          actModal.dayIndex,
+                          actModal.actIndex,
+                          actModal.mode
+                        )
+                      }
+                      label="Godzina zakończenia"
+                      textColor={currentColors.text}
+                      subtextColor={currentColors.subtext}
+                      borderColor={currentColors.border}
+                      cardColor={currentColors.background}
+                    />
                   </View>
                 </View>
+                <Text style={[styles.inputLabel, { color: currentColors.subtext }]}>Koszt (PLN)</Text>
+                <TextInput
+                  style={[styles.input, { color: currentColors.text, borderColor: currentColors.border, marginBottom: 12 }]}
+                  value={actModal.formData.estimatedCost}
+                  onChangeText={(t) =>
+                    setActModal((p) => ({ ...p, formData: { ...p.formData, estimatedCost: t.replace(/[^0-9]/g, '') } }))
+                  }
+                  keyboardType="numeric"
+                />
+                <Text style={[styles.inputLabel, { color: currentColors.subtext }]}>Lokalizacja (opcjonalnie)</Text>
+                <TextInput
+                  style={[styles.input, { color: currentColors.text, borderColor: currentColors.border }]}
+                  value={actModal.formData.location}
+                  onChangeText={(t) => setActModal((p) => ({ ...p, formData: { ...p.formData, location: t } }))}
+                  placeholder="np. Stare Miasto"
+                  placeholderTextColor={currentColors.subtext}
+                />
                 <Text style={[styles.inputLabel, { color: currentColors.subtext }]}>Opis</Text>
                 <TextInput style={[styles.input, { color: currentColors.text, borderColor: currentColors.border, height: 80, textAlignVertical: 'top' }]} value={actModal.formData.description} onChangeText={t => setActModal(p => ({ ...p, formData: { ...p.formData, description: t } }))} multiline />
               </ScrollView>
               <View style={styles.modalActions}>
                 <TouchableOpacity onPress={() => setActModal(p => ({ ...p, visible: false }))} style={styles.modalCancelBtn}><Text style={{ color: currentColors.subtext, fontWeight: '600' }}>Anuluj</Text></TouchableOpacity>
-                <TouchableOpacity onPress={handleSaveActivity} style={[styles.modalSaveBtn, { backgroundColor: Colors.brand.blue }]}><Text style={{ color: '#fff', fontWeight: '700' }}>Zapisz</Text></TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleSaveActivity}
+                  disabled={isSavingActivity}
+                  style={[styles.modalSaveBtn, { backgroundColor: Colors.brand.blue, opacity: isSavingActivity ? 0.7 : 1 }]}
+                >
+                  {isSavingActivity ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={{ color: '#fff', fontWeight: '700' }}>Zapisz</Text>
+                  )}
+                </TouchableOpacity>
               </View>
             </View>
           </View>
@@ -839,6 +1369,15 @@ export default function TripDetails() {
             </View>
           </View>
         </Modal>
+
+        <Modal visible={isApplyingEdit} transparent animationType="fade">
+          <View style={styles.editOverlay}>
+            <View style={[styles.editOverlayCard, { backgroundColor: currentColors.card }]}>
+              <ActivityIndicator size="large" color={Colors.brand.blue} />
+              <Text style={[styles.editOverlayText, { color: currentColors.text }]}>Zapisywanie ...</Text>
+            </View>
+          </View>
+        </Modal>
       </View>
   );
 }
@@ -888,6 +1427,9 @@ const styles = StyleSheet.create({
   addActivityBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, marginTop: 12, borderWidth: 1, borderStyle: 'dashed', borderRadius: 12, gap: 6 },
   addDayBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, borderRadius: 16, marginTop: 10, marginBottom: 40, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 5, elevation: 4 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  editOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', alignItems: 'center' },
+  editOverlayCard: { borderRadius: 20, paddingHorizontal: 32, paddingVertical: 28, alignItems: 'center', gap: 16, minWidth: 200 },
+  editOverlayText: { fontSize: 16, fontWeight: '700' },
   modalCard: { width: '100%', maxHeight: '80%', borderRadius: 24, padding: 24, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.25, shadowRadius: 20, elevation: 10 },
   modalTitle: { fontSize: 22, fontWeight: '800', marginBottom: 20 },
   inputLabel: { fontSize: 13, fontWeight: '600', marginBottom: 6, marginTop: 12 },

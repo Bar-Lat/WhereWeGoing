@@ -11,6 +11,14 @@ import {
 } from 'react-native';
 
 import type { TripScheduleActivityDto, TripScheduleDayDto } from '@/types/trips';
+import TimePickerSheet from '@/components/TimePickerSheet';
+import {
+  computeEndTime,
+  durationFromTimes,
+  formatActivityTimeRange,
+  activityRangeOverlapsOthers,
+  type ActivityTimeRangeInput,
+} from '@/utils/activityTime';
 
 type ScheduleColors = {
   background: string;
@@ -23,10 +31,12 @@ type ScheduleColors = {
 type ActivityInput = {
   name: string;
   time: string;
+  endTime: string;
   description: string;
   category: string;
   location: string;
   cost: number;
+  durationMinutes: number;
 };
 
 type TripScheduleSectionProps = {
@@ -91,14 +101,17 @@ const getDayOfWeek = (dateStr: string) => {
 const toActivityInput = (activity: TripScheduleActivityDto): ActivityInput => ({
   name: activity.name,
   time: activity.time,
+  endTime: computeEndTime(activity.time, activity.durationMinutes),
   description: activity.description,
   category: activity.category,
   location: activity.location,
   cost: activity.cost,
+  durationMinutes: activity.durationMinutes ?? 60,
 });
 
 function ScheduleActivityCard({
   activity,
+  otherActivities,
   isLast,
   editable,
   saving,
@@ -107,6 +120,7 @@ function ScheduleActivityCard({
   onDelete,
 }: {
   activity: TripScheduleActivityDto;
+  otherActivities: TripScheduleActivityDto[];
   isLast: boolean;
   editable: boolean;
   saving: boolean;
@@ -118,8 +132,45 @@ function ScheduleActivityCard({
   const [editVisible, setEditVisible] = useState(false);
   const [editData, setEditData] = useState<ActivityInput>(toActivityInput(activity));
 
+  const otherRanges: ActivityTimeRangeInput[] = otherActivities.map((item) => ({
+    startTime: item.time,
+    durationMinutes: item.durationMinutes,
+  }));
+
+  const validateStartTime = (startTime: string, endTime: string) => {
+    const resolvedEnd =
+      durationFromTimes(startTime, endTime) === null ? computeEndTime(startTime, 60) : endTime;
+    if (durationFromTimes(startTime, resolvedEnd) === null) return false;
+    return !activityRangeOverlapsOthers({ startTime, endTime: resolvedEnd }, otherRanges);
+  };
+
+  const validateEndTime = (startTime: string, endTime: string) => {
+    if (durationFromTimes(startTime, endTime) === null) return false;
+    return !activityRangeOverlapsOthers({ startTime, endTime }, otherRanges);
+  };
+
+  const persistTimeRange = async (time: string, endTime: string) => {
+    const durationMinutes = durationFromTimes(time, endTime);
+    if (durationMinutes === null) return;
+
+    const payload = { ...editData, time, endTime, durationMinutes };
+    setEditData(payload);
+    await onUpdate(payload);
+  };
+
   const handleSaveEdit = async () => {
-    await onUpdate(editData);
+    const durationMinutes = durationFromTimes(editData.time, editData.endTime);
+    if (durationMinutes === null) {
+      Alert.alert('Błąd', 'Godzina zakończenia musi być późniejsza niż rozpoczęcia.');
+      return;
+    }
+
+    if (!validateStartTime(editData.time, editData.endTime)) {
+      Alert.alert('Błąd', 'Wybrany przedział godzin koliduje z inną atrakcją w tym dniu.');
+      return;
+    }
+
+    await onUpdate({ ...editData, durationMinutes });
     setEditVisible(false);
   };
 
@@ -142,7 +193,9 @@ function ScheduleActivityCard({
                 {activity.name}
               </Text>
               <View style={styles.activityMeta}>
-                <Text style={[styles.activityMetaText, { color: currentColors.subtext }]}>🕐 {activity.time}</Text>
+                <Text style={[styles.activityMetaText, { color: currentColors.subtext }]}>
+                  🕐 {formatActivityTimeRange(activity.time, activity.durationMinutes)}
+                </Text>
                 {activity.cost > 0 && <Text style={styles.activityCost}>{activity.cost} PLN</Text>}
               </View>
               {activity.description ? (
@@ -223,12 +276,51 @@ function ScheduleActivityCard({
               onChangeText={(value) => setEditData({ ...editData, name: value })}
             />
 
-            <Text style={[styles.editLabel, { color: currentColors.subtext }]}>Godzina</Text>
-            <TextInput
-              style={[styles.editInput, { color: currentColors.text, borderColor: currentColors.border }]}
-              value={editData.time}
-              onChangeText={(value) => setEditData({ ...editData, time: value })}
-            />
+            <Text style={[styles.editLabel, { color: currentColors.subtext }]}>Godziny</Text>
+            <View style={styles.timeRow}>
+              <View style={styles.timeColumn}>
+                <Text style={[styles.editSubLabel, { color: currentColors.subtext }]}>Początek</Text>
+                <TimePickerSheet
+                  value={editData.time}
+                  onChange={(time) => {
+                    const endTime =
+                      durationFromTimes(time, editData.endTime) === null
+                        ? computeEndTime(time, editData.durationMinutes)
+                        : editData.endTime;
+                    setEditData((prev) => ({ ...prev, time, endTime }));
+                  }}
+                  onConfirm={async (time) => {
+                    const endTime =
+                      durationFromTimes(time, editData.endTime) === null
+                        ? computeEndTime(time, editData.durationMinutes)
+                        : editData.endTime;
+                    await persistTimeRange(time, endTime);
+                  }}
+                  validateDraft={(draft) => validateStartTime(draft, editData.endTime)}
+                  label="Godzina rozpoczęcia"
+                  textColor={currentColors.text}
+                  subtextColor={currentColors.subtext}
+                  borderColor={currentColors.border}
+                  cardColor={currentColors.card}
+                />
+              </View>
+              <View style={styles.timeColumn}>
+                <Text style={[styles.editSubLabel, { color: currentColors.subtext }]}>Koniec</Text>
+                <TimePickerSheet
+                  value={editData.endTime}
+                  onChange={(endTime) => setEditData((prev) => ({ ...prev, endTime }))}
+                  onConfirm={async (endTime) => {
+                    await persistTimeRange(editData.time, endTime);
+                  }}
+                  validateDraft={(draft) => validateEndTime(editData.time, draft)}
+                  label="Godzina zakończenia"
+                  textColor={currentColors.text}
+                  subtextColor={currentColors.subtext}
+                  borderColor={currentColors.border}
+                  cardColor={currentColors.card}
+                />
+              </View>
+            </View>
 
             <Text style={[styles.editLabel, { color: currentColors.subtext }]}>Koszt (PLN)</Text>
             <TextInput
@@ -326,6 +418,7 @@ function ScheduleDayCard({
               <ScheduleActivityCard
                 key={activity.id}
                 activity={activity}
+                otherActivities={day.activities.filter((item) => item.id !== activity.id)}
                 isLast={actIndex === day.activities.length - 1}
                 editable={editable}
                 saving={saving}
@@ -518,10 +611,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   activityMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
     marginTop: 3,
-    gap: 8,
   },
   activityMetaText: {
     fontSize: 12,
@@ -530,6 +620,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#6366f1',
+    marginTop: 2,
   },
   activityDesc: {
     fontSize: 12,
@@ -623,6 +714,18 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 4,
     marginTop: 12,
+  },
+  editSubLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  timeRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  timeColumn: {
+    flex: 1,
   },
   editInput: {
     borderWidth: 1,

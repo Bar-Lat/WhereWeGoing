@@ -64,6 +64,15 @@ export type TripScheduleActivityDto = {
   location: string;
   cost: number;
   orderIndex: number;
+  durationMinutes?: number | null;
+};
+
+export type TripScheduleTransitDto = {
+  afterActivityIndex: number;
+  modeLabel: string;
+  estimatedCost: number;
+  startTime: string;
+  endTime: string;
 };
 
 export type TripScheduleDayDto = {
@@ -72,6 +81,7 @@ export type TripScheduleDayDto = {
   date: string;
   title: string;
   activities: TripScheduleActivityDto[];
+  transits?: TripScheduleTransitDto[];
 };
 
 export type TripScheduleResponse = {
@@ -92,6 +102,7 @@ export type TripScheduleMutationResponse = {
 export type TripScheduleActivityInput = {
   name?: string;
   time?: string;
+  durationMinutes?: number;
   description?: string;
   category?: string;
   location?: string;

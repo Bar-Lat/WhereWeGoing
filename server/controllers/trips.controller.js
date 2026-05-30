@@ -20,6 +20,7 @@ const {
   createActivity,
   updateActivityById,
   deleteActivityById,
+  updateActivitiesOrder,
 } = require('../repositories/activities.repository');
 const { getTripDaysByTripId, getTripDayById } = require('../repositories/tripDays.repository');
 const {
@@ -501,9 +502,49 @@ const normalizeScheduleActivity = (row) => ({
   location: row.location || '',
   cost: row.cost !== null && row.cost !== undefined ? Number(row.cost) : 0,
   orderIndex: typeof row.order_index === 'number' ? row.order_index : 0,
+  durationMinutes:
+    row.duration_minutes !== null && row.duration_minutes !== undefined
+      ? Number(row.duration_minutes)
+      : null,
 });
 
+const normalizeScheduleTransit = (transit, index) => ({
+  afterActivityIndex: typeof transit?.afterActivityIndex === 'number' ? transit.afterActivityIndex : index,
+  modeLabel: typeof transit?.modeLabel === 'string' ? transit.modeLabel : 'Transport',
+  estimatedCost: Number(transit?.estimatedCost) || 0,
+  startTime: typeof transit?.startTime === 'string' ? transit.startTime.slice(0, 5) : '09:00',
+  endTime: typeof transit?.endTime === 'string' ? transit.endTime.slice(0, 5) : '09:30',
+});
+
+const parseTripPlanFromNotes = (notes) => {
+  if (!notes) return {};
+  try {
+    return typeof notes === 'string' ? JSON.parse(notes) : notes;
+  } catch {
+    return {};
+  }
+};
+
+const getTransitsByDayNumber = (tripPlan) => {
+  const days = Array.isArray(tripPlan?.days) ? tripPlan.days : [];
+  return days.reduce((acc, day) => {
+    const dayNumber = Number(day?.day);
+    if (!Number.isFinite(dayNumber) || !Array.isArray(day?.transits) || day.transits.length === 0) {
+      return acc;
+    }
+    acc[dayNumber] = day.transits.map(normalizeScheduleTransit);
+    return acc;
+  }, {});
+};
+
 const buildSchedulePayload = async (tripId) => {
+  const { data: trip, error: tripError } = await getTripById(tripId);
+  if (tripError) {
+    return { error: tripError };
+  }
+
+  const transitsByDayNumber = getTransitsByDayNumber(parseTripPlanFromNotes(trip?.notes));
+
   const { data: dayRows, error: daysError } = await getTripDaysByTripId(tripId);
   if (daysError) {
     return { error: daysError };
@@ -528,6 +569,7 @@ const buildSchedulePayload = async (tripId) => {
     date: day.date,
     title: day.title || '',
     activities: (activitiesByDayId[day.id] || []).sort((a, b) => a.orderIndex - b.orderIndex),
+    transits: transitsByDayNumber[day.day_number] || undefined,
   }));
 
   const totalCost = days.reduce(
@@ -609,6 +651,7 @@ const createTripActivityHandler = async (req, res, next) => {
     const category = typeof req.body?.category === 'string' ? req.body.category : 'inne';
     const location = typeof req.body?.location === 'string' ? req.body.location : '';
     const cost = Number(req.body?.cost) || 0;
+    const durationMinutes = Number(req.body?.durationMinutes);
 
     const { orderIndex, error: orderError } = await getNextOrderIndexForDay(dayId);
     if (orderError) {
@@ -624,7 +667,8 @@ const createTripActivityHandler = async (req, res, next) => {
       location,
       coordinates: null,
       cost,
-      duration_minutes: null,
+      duration_minutes:
+        Number.isFinite(durationMinutes) && durationMinutes > 0 ? durationMinutes : null,
       order_index: orderIndex,
     });
 
@@ -702,6 +746,11 @@ const updateTripActivityHandler = async (req, res, next) => {
     }
     if (typeof req.body?.time === 'string') {
       updates.time = buildActivityTimestamp(day.date, req.body.time);
+    }
+    if (req.body?.durationMinutes !== undefined && req.body?.durationMinutes !== null) {
+      const durationMinutes = Number(req.body.durationMinutes);
+      updates.duration_minutes =
+        Number.isFinite(durationMinutes) && durationMinutes > 0 ? durationMinutes : null;
     }
 
     if (Object.keys(updates).length === 0) {
@@ -790,6 +839,71 @@ const deleteTripActivityHandler = async (req, res, next) => {
   }
 };
 
+const reorderTripDayActivitiesHandler = async (req, res, next) => {
+  try {
+    const userId = await getUserIdFromRequest(req);
+    if (!userId) {
+      return res.status(401).json({ message: 'Brak autoryzacji' });
+    }
+
+    const { id, dayId } = req.params;
+    const activityIds = Array.isArray(req.body?.activityIds)
+      ? req.body.activityIds.filter((value) => typeof value === 'string')
+      : [];
+
+    if (activityIds.length === 0) {
+      return res.status(400).json({ message: 'Brak kolejnosci aktywnosci' });
+    }
+
+    const { data: trip, error: tripError } = await getTripById(id);
+    if (tripError) {
+      return res.status(500).json({ message: tripError.message });
+    }
+    if (!trip) {
+      return res.status(404).json({ message: 'Wycieczka nie znaleziona' });
+    }
+    if (trip.owner_id !== userId) {
+      return res.status(403).json({ message: 'Tylko wlasciciel moze edytowac harmonogram' });
+    }
+
+    const { data: day, error: dayError } = await getTripDayById(dayId);
+    if (dayError) {
+      return res.status(500).json({ message: dayError.message });
+    }
+    if (!day || day.trip_id !== id) {
+      return res.status(404).json({ message: 'Nie znaleziono dnia wycieczki' });
+    }
+
+    const { getActivitiesByDayId } = require('../repositories/activities.repository');
+    const { data: dayActivities, error: activitiesError } = await getActivitiesByDayId(dayId);
+    if (activitiesError) {
+      return res.status(500).json({ message: activitiesError.message });
+    }
+
+    const existingIds = new Set((dayActivities || []).map((row) => row.id));
+    if (activityIds.length !== existingIds.size || activityIds.some((activityId) => !existingIds.has(activityId))) {
+      return res.status(400).json({ message: 'Nieprawidlowa kolejnosc aktywnosci' });
+    }
+
+    const { error: orderError } = await updateActivitiesOrder(activityIds);
+    if (orderError) {
+      return res.status(500).json({ message: orderError.message || 'Nie udalo sie zmienic kolejnosci' });
+    }
+
+    const schedule = await buildSchedulePayload(id);
+    const { participants } = await buildParticipantsList(trip);
+
+    return res.status(200).json({
+      message: 'Kolejnosc aktywnosci zostala zaktualizowana.',
+      days: schedule.days,
+      totalCost: schedule.totalCost,
+      participants,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
 module.exports = {
   getTrips,
   getTripByIdHandler,
@@ -801,4 +915,5 @@ module.exports = {
   createTripActivityHandler,
   updateTripActivityHandler,
   deleteTripActivityHandler,
+  reorderTripDayActivitiesHandler,
 };

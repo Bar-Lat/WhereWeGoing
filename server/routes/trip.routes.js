@@ -3,7 +3,8 @@ const {
   generateTripPlan, 
   acceptTripPlan,
   updateTripHandler, 
-  getTripHistory 
+  getTripHistory,
+  refineTripPlanHandler,
 } = require('../controllers/trip.controller');
 
 const {
@@ -17,12 +18,14 @@ const {
   createTripActivityHandler,
   updateTripActivityHandler,
   deleteTripActivityHandler,
+  reorderTripDayActivitiesHandler,
 } = require('../controllers/trips.controller');
 
 const router = express.Router();
 
 router.post('/generate', generateTripPlan);
 router.post('/accept', acceptTripPlan);
+router.post('/refine-plan', refineTripPlanHandler);
 router.get('/history', getTripHistory);
 router.get('/', getTrips);
 
@@ -34,6 +37,8 @@ router.delete('/:id/participants/:profileId', removeTripParticipantHandler);
 router.post('/:id/days/:dayId/activities', createTripActivityHandler);
 router.put('/:id/activities/:activityId', updateTripActivityHandler);
 router.delete('/:id/activities/:activityId', deleteTripActivityHandler);
+
+router.put('/:id/days/:dayId/activities/reorder', reorderTripDayActivitiesHandler);
 
 router.get('/:id', getTripByIdHandler);
 router.put('/:id', updateTripHandler); // Aktualizacja planu

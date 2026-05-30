@@ -133,3 +133,21 @@ export const deleteTripScheduleActivity = async (accessToken: string, tripId: st
     throw new Error(getApiErrorMessage(error, 'Nie udalo sie usunac aktywnosci'));
   }
 };
+
+export const reorderTripDayActivities = async (
+  accessToken: string,
+  tripId: string,
+  dayId: string,
+  activityIds: string[]
+) => {
+  try {
+    const { data } = await api.put<TripScheduleMutationResponse>(
+      `/trip/${tripId}/days/${dayId}/activities/reorder`,
+      { activityIds },
+      authHeaders(accessToken)
+    );
+    return data;
+  } catch (error) {
+    throw new Error(getApiErrorMessage(error, 'Nie udalo sie zmienic kolejnosci'));
+  }
+};

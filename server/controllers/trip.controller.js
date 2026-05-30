@@ -375,6 +375,10 @@ const updateTripHandler = async (req, res, next) => {
               description: act.description ?? null,
               location: act.location ?? null,
               cost: act.estimatedCost ?? null,
+              duration_minutes:
+                typeof act.durationMinutes === 'number' && act.durationMinutes > 0
+                  ? act.durationMinutes
+                  : null,
               order_index: actIndex,
             });
           });
@@ -521,4 +525,238 @@ const getTripHistory = async (req, res, next) => {
   }
 };
 
-module.exports = { generateTripPlan, acceptTripPlan, updateTripHandler, getTripHistory };
+const roundMoney = (value) => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 0;
+  return Math.round(num * 100) / 100;
+};
+
+const parseScheduleTimeToMinutes = (time) => {
+  if (!time || typeof time !== 'string') return null;
+  const match = time.trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes) || hours > 23 || minutes > 59) return null;
+  return hours * 60 + minutes;
+};
+
+const validateTripPlanScheduleTimes = (tripPlan) => {
+  const days = Array.isArray(tripPlan?.days) ? tripPlan.days : [];
+
+  for (const day of days) {
+    const activities = Array.isArray(day?.activities) ? day.activities : [];
+    if (activities.length <= 1) continue;
+
+    const seenMinutes = new Set();
+    let previousMinutes = null;
+
+    for (const activity of activities) {
+      const minutes = parseScheduleTimeToMinutes(activity?.time);
+      if (minutes === null) {
+        return {
+          valid: false,
+          message: `Dzien ${day.day}: nieprawidlowa godzina "${activity?.time || ''}" przy "${activity?.name || 'atrakcji'}".`,
+        };
+      }
+      if (seenMinutes.has(minutes)) {
+        return {
+          valid: false,
+          message: `Dzien ${day.day}: dwie aktywnosci maja ta sama godzine (${activity.time}).`,
+        };
+      }
+      if (previousMinutes !== null && minutes < previousMinutes) {
+        return {
+          valid: false,
+          message: `Dzien ${day.day}: "${activity.name}" (${activity.time}) jest wczesniej niz poprzednia aktywnosc w kolejnosci.`,
+        };
+      }
+      seenMinutes.add(minutes);
+      previousMinutes = minutes;
+    }
+  }
+
+  return { valid: true, message: '' };
+};
+
+const resolveActivityLocation = (primary, fallback) => {
+  const primaryLocation = typeof primary?.location === 'string' ? primary.location.trim() : '';
+  if (primaryLocation) return primaryLocation;
+  const fallbackLocation = typeof fallback?.location === 'string' ? fallback.location.trim() : '';
+  if (fallbackLocation) return fallbackLocation;
+  return '';
+};
+
+const canGenerateTransitBetween = (from, to) => {
+  const fromLocation = resolveActivityLocation(from, to);
+  const toLocation = resolveActivityLocation(to, from);
+  if (!fromLocation || !toLocation) return false;
+  return fromLocation.toLowerCase() !== toLocation.toLowerCase();
+};
+
+const buildRefinePrompt = (tripPlan, preferredTransport) => {
+  const transport = (preferredTransport || []).map((t) => TRANSPORT_LABELS[t] ?? t).join(', ') || 'dowolny';
+  return `Jesteś ekspertem od planowania podróży. Otrzymujesz plan wycieczki w JSON.
+Dla KAŻDEGO dnia dodaj tablicę "transits" opisującą przejazdy MIĘDZY kolejnymi aktywnościami (nie licz transportu jako osobnej aktywności).
+
+Każdy element transits:
+{
+  "afterActivityIndex": number (0 = między aktywnością 0 a 1),
+  "modeLabel": string (np. "Metro/autobus", "Pieszo", "Samochód"),
+  "estimatedCost": number (PLN dla całej grupy, zaokrąglone),
+  "startTime": "HH:MM",
+  "endTime": "HH:MM"
+}
+
+Preferowany transport na miejscu: ${transport}.
+Generuj transit tylko miedzy sasiednimi aktywnosciami, gdy da sie ustalic trase: uzyj location aktywnosci, a gdy brak - location sasiedniej aktywnosci. Gdy nadal brak sensownej trasy - pomin ten transit.
+Godziny transitow musza byc chronologiczne wzgledem godzin aktywnosci.
+NIE zmieniaj kolejnosci, nazw ani godzin aktywnosci.
+
+Zwróć WYŁĄCZNIE pełny obiekt JSON planu (ten sam schemat co wejście + transits w każdym dniu).
+
+PLAN:
+${JSON.stringify(tripPlan)}`;
+};
+
+const mergeRefinedTripPlan = (originalPlan, refinedPlan) => {
+  const originalDays = Array.isArray(originalPlan?.days) ? originalPlan.days : [];
+  const refinedDays = Array.isArray(refinedPlan?.days) ? refinedPlan.days : [];
+
+  return {
+    ...originalPlan,
+    ...refinedPlan,
+    days: originalDays.map((day, index) => {
+      const refinedDay = refinedDays.find((item) => item.day === day.day) || refinedDays[index];
+      if (!refinedDay) return day;
+
+      const activities = Array.isArray(day.activities) ? day.activities : [];
+      const refinedActivities = Array.isArray(refinedDay.activities) ? refinedDay.activities : activities;
+
+      return {
+        ...day,
+        activities: activities.map((activity, actIndex) => ({
+          ...activity,
+          ...(refinedActivities[actIndex] || {}),
+          id: activity.id,
+        })),
+        transits: Array.isArray(refinedDay.transits)
+          ? refinedDay.transits
+              .map((transit, transitIndex) => ({
+                afterActivityIndex:
+                  typeof transit.afterActivityIndex === 'number' ? transit.afterActivityIndex : transitIndex,
+                modeLabel: transit.modeLabel || 'Transport',
+                estimatedCost: roundMoney(transit.estimatedCost),
+                startTime: String(transit.startTime || '09:00').slice(0, 5),
+                endTime: String(transit.endTime || '09:30').slice(0, 5),
+              }))
+              .filter((transit) => {
+                const mergedActivities = activities.map((activity, actIndex) => ({
+                  ...activity,
+                  ...(refinedActivities[actIndex] || {}),
+                }));
+                const from = mergedActivities[transit.afterActivityIndex];
+                const to = mergedActivities[transit.afterActivityIndex + 1];
+                return from && to && canGenerateTransitBetween(from, to);
+              })
+          : day.transits,
+      };
+    }),
+  };
+};
+
+const refineTripPlanWithAi = async (tripPlan, preferredTransport) => {
+  const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${GROQ_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        {
+          role: 'system',
+          content: 'Jesteś asystentem planowania podróży. Zawsze odpowiadasz wyłącznie w formacie JSON, bez dodatkowego tekstu.',
+        },
+        { role: 'user', content: buildRefinePrompt(tripPlan, preferredTransport) },
+      ],
+      temperature: 0.4,
+      response_format: { type: 'json_object' },
+    }),
+  });
+
+  if (!groqResponse.ok) {
+    const err = await groqResponse.json();
+    throw new Error(err.error?.message ?? `Groq error: ${groqResponse.status}`);
+  }
+
+  const groqData = await groqResponse.json();
+  const content = groqData.choices?.[0]?.message?.content;
+  if (!content) {
+    throw new Error('Pusta odpowiedz AI');
+  }
+
+  return JSON.parse(content);
+};
+
+const refineTripPlanHandler = async (req, res, next) => {
+  try {
+    if (!GROQ_API_KEY) {
+      return res.status(500).json({ message: 'Brak klucza GROQ_API_KEY na serwerze' });
+    }
+
+    const ownerId = await getUserIdFromRequest(req);
+    if (!ownerId) {
+      return res.status(401).json({ message: 'Brak autoryzacji' });
+    }
+
+    const { tripPlan, preferredTransport, tripId } = req.body;
+    if (!tripPlan || !Array.isArray(tripPlan.days)) {
+      return res.status(400).json({ message: 'Brak planu do dopracowania' });
+    }
+
+    if (tripId) {
+      const { data: trip, error: fetchError } = await getTripById(tripId);
+      if (fetchError || !trip) {
+        return res.status(404).json({ message: 'Wycieczka nie znaleziona' });
+      }
+      if (trip.owner_id !== ownerId) {
+        return res.status(403).json({ message: 'Brak dostepu do tej wycieczki' });
+      }
+    }
+
+    const scheduleValidation = validateTripPlanScheduleTimes(tripPlan);
+    if (!scheduleValidation.valid) {
+      return res.status(400).json({ message: scheduleValidation.message });
+    }
+
+    let refinedRaw;
+    try {
+      refinedRaw = await refineTripPlanWithAi(tripPlan, preferredTransport);
+    } catch (error) {
+      return res.status(502).json({ message: error.message || 'Nie udalo sie wygenerowac transportow' });
+    }
+
+    const mergedPlan = mergeRefinedTripPlan(tripPlan, refinedRaw);
+
+    if (tripId) {
+      const { error: updateError } = await updateTripById(tripId, {
+        notes: JSON.stringify(mergedPlan),
+        updated_at: new Date().toISOString(),
+      });
+      if (updateError) {
+        return res.status(500).json({ message: updateError.message || 'Nie udalo sie zapisac transportow' });
+      }
+    }
+
+    return res.status(200).json({
+      tripPlan: mergedPlan,
+      refined: true,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+module.exports = { generateTripPlan, acceptTripPlan, updateTripHandler, getTripHistory, refineTripPlanHandler };
