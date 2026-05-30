@@ -159,6 +159,51 @@ const getTripStartTime = (trip: TripDto) => {
   return Number.isNaN(parsed) ? null : parsed;
 };
 
+const getTripEndTime = (trip: TripDto) => {
+  const parsed = new Date(`${trip.endDate || (trip as any).end_date}T00:00:00`).getTime();
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
+const getTodayTime = () => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today.getTime();
+};
+
+const getTripDateState = (trip: TripDto) => {
+  const startTime = getTripStartTime(trip);
+  const endTime = getTripEndTime(trip);
+  const todayTime = getTodayTime();
+
+  if (startTime !== null && endTime !== null && startTime <= todayTime && endTime >= todayTime) {
+    return 'ongoing';
+  }
+
+  if (startTime !== null && startTime > todayTime) {
+    return 'upcoming';
+  }
+
+  if (endTime !== null && endTime < todayTime) {
+    return 'past';
+  }
+
+  return 'unknown';
+};
+
+const getTripStatusMeta = (trip: TripDto) => {
+  const dateState = getTripDateState(trip);
+
+  if (dateState === 'ongoing') {
+    return { label: 'W trakcie', color: Colors.brand.green };
+  }
+
+  if (dateState === 'past') {
+    return statusLabels.finished;
+  }
+
+  return getStatusMeta(trip.status);
+};
+
 const formatPlanDate = (value?: string | null) => {
   if (!value) return '';
   const date = new Date(`${value.slice(0, 10)}T00:00:00`);
@@ -189,13 +234,22 @@ const buildPlanDaysFromSchedule = (days: TripScheduleDayDto[]) => days.map((day,
 });
 
 const sortTripsByNearestDate = (trips: TripDto[]) => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const todayTime = today.getTime();
+  const todayTime = getTodayTime();
+  const rank = (trip: TripDto) => {
+    const state = getTripDateState(trip);
+    if (state === 'ongoing') return 0;
+    if (state === 'upcoming') return 1;
+    if (state === 'past') return 2;
+    return 3;
+  };
 
   return [...trips].sort((a, b) => {
     const aStart = getTripStartTime(a);
     const bStart = getTripStartTime(b);
+    const aRank = rank(a);
+    const bRank = rank(b);
+
+    if (aRank !== bRank) return aRank - bRank;
 
     if (aStart === null && bStart === null) {
       return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
@@ -214,21 +268,20 @@ const sortTripsByNearestDate = (trips: TripDto[]) => {
 };
 
 const getNearestTripForOffline = (trips: TripDto[]) => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const todayTime = getTodayTime();
 
-  const upcoming = trips
+  const activeOrUpcoming = trips
     .filter((trip) => {
+      const endTime = getTripEndTime(trip);
       const startTime = getTripStartTime(trip);
-      return startTime !== null && startTime >= today.getTime();
-    })
-    .sort((a, b) => (getTripStartTime(a) ?? 0) - (getTripStartTime(b) ?? 0));
+      return (endTime !== null && endTime >= todayTime) || (startTime !== null && startTime >= todayTime);
+    });
 
-  if (upcoming.length > 0) {
-    return upcoming[0];
+  if (activeOrUpcoming.length > 0) {
+    return sortTripsByNearestDate(activeOrUpcoming)[0];
   }
 
-  return [...trips].sort((a, b) => (getTripStartTime(b) ?? 0) - (getTripStartTime(a) ?? 0))[0] ?? null;
+  return sortTripsByNearestDate(trips)[0] ?? null;
 };
 
 const getFriendSubtitle = (friend: FriendProfile) => {
@@ -688,7 +741,7 @@ export default function Trips() {
   }, [selectedTrip, trips]);
 
   const selectedTripDays = selectedTrip ? getTripDays(selectedTrip) : null;
-  const selectedStatusMeta = selectedTrip ? getStatusMeta(selectedTrip.status) : null;
+  const selectedStatusMeta = selectedTrip ? getTripStatusMeta(selectedTrip) : null;
   
   const scheduleActivityCount = useMemo(
     () => scheduleDays.reduce((sum, day) => sum + day.activities.length, 0),
@@ -836,7 +889,7 @@ export default function Trips() {
   );
 
   const renderTripCard = (trip: TripDto, index: number) => {
-    const statusMeta = getStatusMeta(trip.status);
+    const statusMeta = getTripStatusMeta(trip);
     const days = getTripDays(trip);
     const isOwner = trip.accessRole === 'owner';
     return (
