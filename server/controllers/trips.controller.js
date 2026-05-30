@@ -65,6 +65,21 @@ const getTripStartTime = (trip) => {
   return Number.isNaN(parsed) ? null : parsed;
 };
 
+const getTripEndTime = (trip) => {
+  const parsed = new Date(`${trip.endDate || trip.end_date || ''}T00:00:00`).getTime();
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
+const getTripDateRank = (trip, todayTime) => {
+  const startTime = getTripStartTime(trip);
+  const endTime = getTripEndTime(trip);
+
+  if (startTime !== null && endTime !== null && startTime <= todayTime && endTime >= todayTime) return 0;
+  if (startTime !== null && startTime > todayTime) return 1;
+  if (endTime !== null && endTime < todayTime) return 2;
+  return 3;
+};
+
 const sortTripsByNearestDate = (trips) => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -73,6 +88,10 @@ const sortTripsByNearestDate = (trips) => {
   return [...trips].sort((a, b) => {
     const aStart = getTripStartTime(a);
     const bStart = getTripStartTime(b);
+    const aRank = getTripDateRank(a, todayTime);
+    const bRank = getTripDateRank(b, todayTime);
+
+    if (aRank !== bRank) return aRank - bRank;
 
     if (aStart === null && bStart === null) {
       return new Date(b.createdAt || b.created_at || 0).getTime() - new Date(a.createdAt || a.created_at || 0).getTime();
@@ -81,12 +100,8 @@ const sortTripsByNearestDate = (trips) => {
     if (aStart === null) return 1;
     if (bStart === null) return -1;
 
-    const aUpcoming = aStart >= todayTime;
-    const bUpcoming = bStart >= todayTime;
-
-    if (aUpcoming && bUpcoming) return aStart - bStart;
-    if (!aUpcoming && !bUpcoming) return bStart - aStart;
-    return aUpcoming ? -1 : 1;
+    if (aRank === 2) return bStart - aStart;
+    return aStart - bStart;
   });
 };
 

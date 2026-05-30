@@ -17,11 +17,9 @@ import { useNetwork } from '@/providers/network.provider';
 import { useAuth } from '@/providers/auth.provider';
 import { getMyTrips } from '@/services/trips.api';
 import { useTripStore } from '@/stores/tripStore';
+import { getCachedOfflineTrips, syncCachedOfflineTrips } from '@/services/offlineTrip.storage';
 
-const TripsTabIcon = ({ color, focused, currentColors }: any) => {
-  const trips = useTripStore((state) => state.trips) || [];
-  const count = trips.length;
-
+const TripsTabIcon = ({ color, focused, currentColors, count }: any) => {
   return (
     <View>
       <Ionicons
@@ -59,10 +57,13 @@ export default function MainLayout() {
   const { isOffline } = useNetwork();
 
   const [offlineMessageVisible, setOfflineMessageVisible] = useState(false);
+  const [offlineTripsCount, setOfflineTripsCount] = useState(0);
 
   const { session } = useAuth();
 
   const setTrips = useTripStore((state) => state.setTrips);
+  const tripsCount = useTripStore((state) => state.trips?.length ?? 0);
+  const tabTripsCount = isOffline ? offlineTripsCount : tripsCount;
 
   const bottomPadding = insets.bottom > 0 ? insets.bottom : 10;
   const barHeight = 65 + bottomPadding;
@@ -80,9 +81,18 @@ export default function MainLayout() {
         return;
       }
 
+      if (isOffline) {
+        return;
+      }
+
       try {
         const data = await getMyTrips(session.access_token);
-        setTrips(data.trips);
+        const loadedTrips = data.trips || [];
+        setTrips(loadedTrips);
+
+        if (session.user?.id) {
+          await syncCachedOfflineTrips(session.user.id, loadedTrips);
+        }
       } catch (error) {
         console.error(
           'Błąd ładowania wycieczek w Layout:',
@@ -94,7 +104,29 @@ export default function MainLayout() {
     };
 
     void loadTrips();
-  }, [session?.access_token, setTrips]);
+  }, [isOffline, session?.access_token, session?.user?.id, setTrips]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadOfflineTripsCount = async () => {
+      if (!isOffline || !session?.user?.id) {
+        setOfflineTripsCount(0);
+        return;
+      }
+
+      const cachedTrips = await getCachedOfflineTrips(session.user.id);
+      if (isMounted) {
+        setOfflineTripsCount(cachedTrips.length);
+      }
+    };
+
+    void loadOfflineTripsCount();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isOffline, session?.user?.id]);
 
   const showOfflinePopup = () => {
     setOfflineMessageVisible(true);
@@ -230,6 +262,7 @@ export default function MainLayout() {
                 color={props.color}
                 focused={props.focused}
                 currentColors={currentColors}
+                count={tabTripsCount}
               />
             ),
           }}
