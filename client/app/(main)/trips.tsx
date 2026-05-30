@@ -204,34 +204,7 @@ const getTripStatusMeta = (trip: TripDto) => {
   return getStatusMeta(trip.status);
 };
 
-const formatPlanDate = (value?: string | null) => {
-  if (!value) return '';
-  const date = new Date(`${value.slice(0, 10)}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return value;
-  const day = date.getDate().toString().padStart(2, '0');
-  const month = (date.getMonth() + 1).toString().padStart(2, '0');
-  return `${day}.${month}.${date.getFullYear()}`;
-};
-
-const buildPlanDaysFromSchedule = (days: TripScheduleDayDto[]) => days.map((day, index) => {
-  const activities = (day.activities || []).map((activity) => ({
-    time: activity.time || '09:00',
-    name: activity.name || 'Aktywność',
-    description: activity.description || '',
-    category: activity.category || 'inne',
-    estimatedCost: Number(activity.cost) || 0,
-    location: activity.location || '',
-  }));
-
-  return {
-    day: day.dayNumber || index + 1,
-    date: formatPlanDate(day.date),
-    title: day.title || `Dzień ${day.dayNumber || index + 1}`,
-    activities,
-    estimatedDayCost: activities.reduce((sum, activity) => sum + (Number(activity.estimatedCost) || 0), 0),
-    tips: '',
-  };
-});
+import { mapScheduleDaysToPlanDays } from '@/utils/mapScheduleToPlan';
 
 const sortTripsByNearestDate = (trips: TripDto[]) => {
   const todayTime = getTodayTime();
@@ -696,11 +669,13 @@ export default function Trips() {
     let planDays = Array.isArray(parsedData?.days) ? parsedData.days : [];
     let planTotalCost = trip.totalCost ?? trip.totalBudget ?? trip.total_budget ?? 0;
 
-    if (planDays.length === 0 && accessToken) {
+    if (accessToken) {
       try {
         const scheduleResponse = await getTripSchedule(accessToken, trip.id);
-        planDays = buildPlanDaysFromSchedule(scheduleResponse.days);
-        planTotalCost = scheduleResponse.totalCost ?? planTotalCost;
+        if (scheduleResponse.days?.length) {
+          planDays = mapScheduleDaysToPlanDays(scheduleResponse.days);
+          planTotalCost = scheduleResponse.totalCost ?? planTotalCost;
+        }
       } catch (error) {
         console.error('❌ BŁĄD POBIERANIA HARMONOGRAMU:', error);
       }

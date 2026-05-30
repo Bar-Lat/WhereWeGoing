@@ -15,6 +15,7 @@ import { useNetwork } from '@/providers/network.provider';
 import { useNotifications } from '@/providers/notifications.provider';
 import { useTripStore, TripPlan } from '@/stores/tripStore';
 import { getTripSchedule } from '@/services/trips.api';
+import { mapScheduleDaysToPlanDays } from '@/utils/mapScheduleToPlan';
 import { useAuth } from '@/providers/auth.provider';
 import { getCachedOfflineTrips, type CachedOfflineTrip } from '@/services/offlineTrip.storage';
 
@@ -195,21 +196,7 @@ export default function Home() {
         currency: 'PLN',
         
         // Prawidłowe mapowanie danych z API do lokalnego TripStore
-        days: scheduleDays.map(day => ({
-          day: day.dayNumber,
-          date: day.date,
-          title: day.title,
-          estimatedDayCost: day.activities.reduce((sum, act) => sum + (act.cost || 0), 0),
-          tips: '',
-          activities: day.activities.map(act => ({
-            name: act.name,
-            time: act.time,
-            description: act.description,
-            category: act.category,
-            estimatedCost: act.cost, // <-- tu było ważne mapowanie!
-            location: act.location
-          }))
-        })) || [],
+        days: mapScheduleDaysToPlanDays(scheduleDays),
         
         generalTips: [],
         bestTransport: '',

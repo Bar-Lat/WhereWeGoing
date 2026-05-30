@@ -4,6 +4,14 @@ const { createTripDays } = require('../repositories/tripDays.repository');
 const { createActivities } = require('../repositories/activities.repository');
 const { addParticipant } = require('../repositories/tripParticipants.repository');
 const { getFriendRowsBetweenProfiles } = require('../repositories/friends.repository');
+const {
+  parseActivityCoordinates,
+  parseActivityDurationMinutes,
+  serializeCoordinatesForDb,
+  enrichTripPlanActivities,
+  normalizeDurationMinutes,
+  validateTripPlanCoordinates,
+} = require('../utils/activityGeo');
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
@@ -71,7 +79,12 @@ Zwróć WYŁĄCZNIE obiekt JSON (bez markdown, bez komentarzy) w tym schemacie:
           "description": "string (1-2 zdania)",
           "category": "string (jedzenie|atrakcja|transport|nocleg|inne)",
           "estimatedCost": number,
-          "location": "string (adres lub dzielnica)"
+          "location": "string (pełny adres: nazwa miejsca + ulica/dzielnica + miasto)",
+          "durationMinutes": number (realistyczny czas wizyty w minutach),
+          "coordinates": {
+            "latitude": number (WGS84 — dokładne współrzędne miejsca),
+            "longitude": number (WGS84)
+          }
         }
       ],
       "estimatedDayCost": number,
@@ -85,7 +98,13 @@ Zwróć WYŁĄCZNIE obiekt JSON (bez markdown, bez komentarzy) w tym schemacie:
 Każdy dzień powinien mieć dokładnie ${attractionsPerDay} atrakcji (nie licząc transportu i posiłków).
 Wszystkie koszty (estimatedCost, estimatedDayCost, estimatedTotalCost) dotyczą CAŁEJ grupy ${data.travelers} osób, nie jednej osoby.
 estimatedDayCost każdego dnia musi być równy sumie estimatedCost aktywności tego dnia.
-Suma estimatedDayCost ze wszystkich dni powinna być zbliżona do budżetu ${data.budget} PLN.`;
+Suma estimatedDayCost ze wszystkich dni powinna być zbliżona do budżetu ${data.budget} PLN.
+Dla KAŻDEJ aktywności OBOWIĄZKOWO podaj location, durationMinutes oraz coordinates (latitude/longitude).
+Pole location musi być na tyle precyzyjne, żeby dało się znaleźć miejsce na mapie — podaj nazwę obiektu, ulicę i miasto (np. "Wawel, Wawel 5, Kraków", nie samo "zamek").
+Współrzędne muszą odpowiadać temu samemu miejscu co location i leżeć w ${data.destination}.
+durationMinutes to realistyczny czas wizyty (np. muzeum 90–120, posiłek 60–90, krótka atrakcja 45–60).
+Nie skracaj listy pól — każda aktywność musi mieć komplet danych.
+Godziny aktywności muszą rosnąć chronologicznie w ciągu dnia.`;
 };
 
 const toISO = (ddmmyyyy) => {
@@ -96,33 +115,18 @@ const toISO = (ddmmyyyy) => {
   return `${year}-${month}-${day}`;
 };
 
-const parseActivityCoordinates = (value) => {
-  if (!value) return null;
-
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (!trimmed) return null;
-    try {
-      return parseActivityCoordinates(JSON.parse(trimmed));
-    } catch {
-      const parts = trimmed.split(',').map((part) => Number(part.trim()));
-      if (parts.length >= 2 && Number.isFinite(parts[0]) && Number.isFinite(parts[1])) {
-        return { latitude: parts[0], longitude: parts[1] };
-      }
-    }
-    return null;
-  }
-
-  if (typeof value === 'object') {
-    const latitude = Number(value.latitude ?? value.lat);
-    const longitude = Number(value.longitude ?? value.lng ?? value.lon);
-    if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
-      return { latitude, longitude };
-    }
-  }
-
-  return null;
-};
+const buildActivityRow = (act, day, actIndex) => ({
+  day_id: null,
+  time: `${toISO(day.date)}T${act.time ?? '09:00'}:00`,
+  name: act.name ?? null,
+  type: act.category ?? 'inne',
+  description: act.description ?? null,
+  location: act.location ?? null,
+  cost: act.estimatedCost ?? null,
+  coordinates: serializeCoordinatesForDb(act.coordinates),
+  duration_minutes: parseActivityDurationMinutes(act),
+  order_index: actIndex,
+});
 
 const getUnsplashImage = async (searchQuery) => {
   const accessKey = process.env.UNSPLASH_ACCESS_KEY;
@@ -181,6 +185,11 @@ const getTripPlanSummary = (tripPlan, destination) => {
 };
 
 const persistTripPlan = async ({ ownerId, formData, tripPlan }) => {
+  const coordinateValidation = validateTripPlanCoordinates(tripPlan);
+  if (!coordinateValidation.valid) {
+    return { error: new Error(coordinateValidation.message) };
+  }
+
   const { destination, departureDate, returnDate, budget } = formData;
   const totalCost = calculateTripTotalCost(tripPlan, budget);
 
@@ -197,7 +206,7 @@ const persistTripPlan = async ({ ownerId, formData, tripPlan }) => {
     total_budget: budget,
     status: 'planned',
     image_url: generatedImageUrl,
-    notes: getTripPlanSummary(tripPlan, destination),
+    notes: JSON.stringify(tripPlan),
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
@@ -222,17 +231,8 @@ const persistTripPlan = async ({ ownerId, formData, tripPlan }) => {
 
     (day.activities || []).forEach((act, actIndex) => {
       activities.push({
+        ...buildActivityRow(act, day, actIndex),
         day_id: savedDay.id,
-        time: `${toISO(day.date)}T${act.time ?? '09:00'}:00`,
-        name: act.name ?? null,
-        type: act.category ?? 'inne',
-        description: act.description ?? null,
-        location: act.location ?? null,
-        coordinates: null,
-        cost: act.estimatedCost ?? null,
-        coordinates: parseActivityCoordinates(act.coordinates),
-        duration_minutes: null,
-        order_index: actIndex,
       });
     });
   });
@@ -292,10 +292,14 @@ const generateTripPlan = async (req, res, next) => {
       body: JSON.stringify({
         model: 'llama-3.3-70b-versatile',
         messages: [
-          { role: 'system', content: 'Jesteś asystentem planowania podróży. Zawsze odpowiadasz wyłącznie w formacie JSON, bez żadnego dodatkowego tekstu.' },
+          {
+            role: 'system',
+            content:
+              'Jesteś ekspertem planowania podróży. Odpowiadasz wyłącznie JSON. Dla każdej aktywności podaj dokładny location, poprawne coordinates (WGS84) oraz durationMinutes. Nie zgaduj — używaj realnych miejsc.',
+          },
           { role: 'user', content: buildPrompt(promptBody) },
         ],
-        temperature: 0.7,
+        temperature: 0.4,
         response_format: { type: 'json_object' },
       }),
     });
@@ -313,6 +317,13 @@ const generateTripPlan = async (req, res, next) => {
       tripPlan = JSON.parse(content);
     } catch {
       return res.status(502).json({ message: 'Nie udało się sparsować odpowiedzi AI' });
+    }
+
+    tripPlan = await enrichTripPlanActivities(tripPlan, destination);
+
+    const coordinateValidation = validateTripPlanCoordinates(tripPlan);
+    if (!coordinateValidation.valid) {
+      return res.status(422).json({ message: coordinateValidation.message });
     }
 
     return res.status(200).json({ tripPlan });
@@ -334,7 +345,18 @@ const acceptTripPlan = async (req, res, next) => {
       return res.status(400).json({ message: 'Brakujące dane formularza' });
     }
 
-    const { trip, totalCost, error: persistError } = await persistTripPlan({ ownerId: user.id, formData, tripPlan });
+    const enrichedPlan = await enrichTripPlanActivities(tripPlan, destination);
+
+    const coordinateValidation = validateTripPlanCoordinates(enrichedPlan);
+    if (!coordinateValidation.valid) {
+      return res.status(422).json({ message: coordinateValidation.message });
+    }
+
+    const { trip, totalCost, error: persistError } = await persistTripPlan({
+      ownerId: user.id,
+      formData,
+      tripPlan: enrichedPlan,
+    });
     if (persistError || !trip) return res.status(500).json({ message: persistError?.message || 'Nie udało się zapisać wycieczki' });
 
     const { participantCount, amountPerPerson, error: participantsError } = await addTripParticipantsWithSplit({
@@ -349,6 +371,7 @@ const acceptTripPlan = async (req, res, next) => {
     return res.status(201).json({
       message: 'Wycieczka została zaakceptowana i zapisana.',
       tripId: trip.id,
+      tripPlan: enrichedPlan,
       totalCost,
       participantCount,
       amountPerPerson,
@@ -371,10 +394,17 @@ const updateTripHandler = async (req, res, next) => {
     if (fetchError || !trip) return res.status(404).json({ message: 'Wycieczka nie znaleziona' });
     if (trip.owner_id !== ownerId) return res.status(403).json({ message: 'Brak dostępu do tej wycieczki' });
 
+    const enrichedPlan = await enrichTripPlanActivities(tripPlan, trip.destination || tripPlan.destination || '');
+
+    const coordinateValidation = validateTripPlanCoordinates(enrichedPlan);
+    if (!coordinateValidation.valid) {
+      return res.status(422).json({ message: coordinateValidation.message });
+    }
+
     const updateData = {
-      notes: getTripPlanSummary(tripPlan, trip.destination),
-      total_budget: tripPlan.estimatedTotalCost || trip.total_budget,
-      image_url: tripPlan.imageUrl || trip.image_url,
+      notes: JSON.stringify(enrichedPlan),
+      total_budget: enrichedPlan.estimatedTotalCost || trip.total_budget,
+      image_url: enrichedPlan.imageUrl || trip.image_url,
       updated_at: new Date().toISOString()
     };
 
@@ -389,8 +419,8 @@ const updateTripHandler = async (req, res, next) => {
       await supabaseDbClient.from('trip_days').delete().eq('trip_id', id);
     }
 
-    if (tripPlan.days && tripPlan.days.length > 0) {
-      const newTripDays = tripPlan.days.map((day) => ({
+    if (enrichedPlan.days && enrichedPlan.days.length > 0) {
+      const newTripDays = enrichedPlan.days.map((day) => ({
         trip_id: id,
         day_number: day.day,
         date: toISO(day.date),
@@ -400,7 +430,7 @@ const updateTripHandler = async (req, res, next) => {
       const { data: savedDays, error: daysError } = await createTripDays(newTripDays);
       if (!daysError && savedDays) {
         const activities = [];
-        tripPlan.days.forEach((day, dayIndex) => {
+        enrichedPlan.days.forEach((day, dayIndex) => {
           const savedDay = savedDays[dayIndex];
           if (!savedDay) return;
           day.activities.forEach((act, actIndex) => {
@@ -413,11 +443,8 @@ const updateTripHandler = async (req, res, next) => {
               description: act.description ?? null,
               location: act.location ?? null,
               cost: act.estimatedCost ?? null,
-              coordinates: parseActivityCoordinates(act.coordinates),
-              duration_minutes:
-                typeof act.durationMinutes === 'number' && act.durationMinutes > 0
-                  ? act.durationMinutes
-                  : null,
+              coordinates: serializeCoordinatesForDb(act.coordinates),
+              duration_minutes: parseActivityDurationMinutes(act),
               order_index: actIndex,
             });
           });
@@ -425,7 +452,10 @@ const updateTripHandler = async (req, res, next) => {
         if (activities.length > 0) await createActivities(activities);
       }
     }
-    return res.status(200).json({ message: 'Pełna synchronizacja wycieczki zakończona sukcesem' });
+    return res.status(200).json({
+      message: 'Pełna synchronizacja wycieczki zakończona sukcesem',
+      tripPlan: enrichedPlan,
+    });
   } catch (err) {
     console.error("Błąd aktualizacji:", err);
     return next(err);
@@ -458,6 +488,19 @@ const toNumber = (value) => {
   if (value === null || value === undefined || value === '') return null;
   const parsed = Number(value);
   return Number.isNaN(parsed) ? null : parsed;
+};
+
+const formatActivityTime = (value) => {
+  if (!value || typeof value !== 'string') {
+    return '09:00';
+  }
+
+  if (value.includes('T')) {
+    const timePart = value.split('T')[1] || '';
+    return timePart.slice(0, 5) || '09:00';
+  }
+
+  return value.slice(0, 5);
 };
 
 const getTripHistory = async (req, res, next) => {
@@ -504,7 +547,7 @@ const getTripHistory = async (req, res, next) => {
     if (dayIds.length > 0) {
       const { data: rawActivities, error: activityError } = await supabaseDbClient
         .from('activities')
-        .select('id, day_id, name, time, cost, duration_minutes, order_index')
+        .select('id, day_id, name, time, type, description, location, coordinates, cost, duration_minutes, order_index')
         .in('day_id', dayIds)
         .order('order_index', { ascending: true });
       if (activityError) return res.status(500).json({ message: 'Nie udało się pobrać aktywności.' });
@@ -518,6 +561,7 @@ const getTripHistory = async (req, res, next) => {
         tripId: row.trip_id,
         dayNumber: typeof row.day_number === 'number' ? row.day_number : null,
         date: typeof row.date === 'string' ? row.date : null,
+        title: typeof row.title === 'string' ? row.title : null,
         activities: [],
       });
     });
@@ -532,7 +576,11 @@ const getTripHistory = async (req, res, next) => {
         id: activity.id,
         dayId: activity.day_id,
         name: activity.name || 'Aktywność',
-        time: typeof activity.time === 'string' ? activity.time : null,
+        time: formatActivityTime(activity.time),
+        category: activity.type || 'inne',
+        description: activity.description || '',
+        location: activity.location || '',
+        coordinates: parseActivityCoordinates(activity.coordinates),
         cost,
         duration_minutes: toNumber(activity.duration_minutes),
         order_index: typeof activity.order_index === 'number' ? activity.order_index : null,
@@ -552,6 +600,7 @@ const getTripHistory = async (req, res, next) => {
           dayId: day.dayId,
           dayNumber: day.dayNumber,
           date: day.date,
+          title: day.title,
           activities: day.activities.sort((a, b) => (a.order_index !== null && b.order_index !== null) ? a.order_index - b.order_index : 0),
         }));
       const spentTotal = spentByTripId.get(trip.id);
@@ -635,6 +684,7 @@ const canGenerateTransitBetween = (from, to) => {
 
 const buildRefinePrompt = (tripPlan, preferredTransport) => {
   const transport = (preferredTransport || []).map((t) => TRANSPORT_LABELS[t] ?? t).join(', ') || 'dowolny';
+  const destination = tripPlan?.destination || 'cel podróży';
   return `Jesteś ekspertem od planowania podróży. Otrzymujesz plan wycieczki w JSON.
 Dla KAŻDEGO dnia dodaj tablicę "transits" opisującą przejazdy MIĘDZY kolejnymi aktywnościami (nie licz transportu jako osobnej aktywności).
 
@@ -647,12 +697,18 @@ Każdy element transits:
   "endTime": "HH:MM"
 }
 
+Dla KAŻDEJ aktywności uzupełnij brakujące pola:
+- location — pełny adres w ${destination}, jeśli brakuje lub jest zbyt ogólny
+- durationMinutes — realistyczny czas wizyty (min.), spójny z godziną następnej aktywności
+- coordinates — WGS84 dla tego samego miejsca co location (gdy brak pewności — uzupełnij location tak precyzyjnie, że da się je znaleźć na mapie)
+
+Priorytet: POPRAWNOŚĆ, nie szybkość. Nie zmieniaj kolejności, nazw ani godzin aktywnosci (time).
+
 Preferowany transport na miejscu: ${transport}.
 Generuj transit tylko miedzy sasiednimi aktywnosciami, gdy da sie ustalic trase: uzyj location aktywnosci, a gdy brak - location sasiedniej aktywnosci. Gdy nadal brak sensownej trasy - pomin ten transit.
 Godziny transitow musza byc chronologiczne wzgledem godzin aktywnosci.
-NIE zmieniaj kolejnosci, nazw ani godzin aktywnosci.
 
-Zwróć WYŁĄCZNIE pełny obiekt JSON planu (ten sam schemat co wejście + transits w każdym dniu).
+Zwróć WYŁĄCZNIE pełny obiekt JSON planu (ten sam schemat co wejście + transits w każdym dniu + uzupełnione location/durationMinutes).
 
 PLAN:
 ${JSON.stringify(tripPlan)}`;
@@ -674,11 +730,24 @@ const mergeRefinedTripPlan = (originalPlan, refinedPlan) => {
 
       return {
         ...day,
-        activities: activities.map((activity, actIndex) => ({
-          ...activity,
-          ...(refinedActivities[actIndex] || {}),
-          id: activity.id,
-        })),
+        activities: activities.map((activity, actIndex) => {
+          const refined = refinedActivities[actIndex] || {};
+          const merged = {
+            ...activity,
+            ...refined,
+            id: activity.id,
+            location: refined.location || activity.location,
+          };
+
+          return {
+            ...merged,
+            durationMinutes: normalizeDurationMinutes(merged, activities, actIndex),
+            coordinates:
+              serializeCoordinatesForDb(refined.coordinates) ??
+              serializeCoordinatesForDb(activity.coordinates) ??
+              undefined,
+          };
+        }),
         transits: Array.isArray(refinedDay.transits)
           ? refinedDay.transits
               .map((transit, transitIndex) => ({
@@ -720,7 +789,7 @@ const refineTripPlanWithAi = async (tripPlan, preferredTransport) => {
         },
         { role: 'user', content: buildRefinePrompt(tripPlan, preferredTransport) },
       ],
-      temperature: 0.4,
+      temperature: 0.3,
       response_format: { type: 'json_object' },
     }),
   });
@@ -778,10 +847,19 @@ const refineTripPlanHandler = async (req, res, next) => {
     }
 
     const mergedPlan = mergeRefinedTripPlan(tripPlan, refinedRaw);
+    const enrichedPlan = await enrichTripPlanActivities(
+      mergedPlan,
+      mergedPlan?.destination || tripPlan?.destination || ''
+    );
+
+    const coordinateValidation = validateTripPlanCoordinates(enrichedPlan);
+    if (!coordinateValidation.valid) {
+      return res.status(422).json({ message: coordinateValidation.message });
+    }
 
     if (tripId) {
       const { error: updateError } = await updateTripById(tripId, {
-        notes: JSON.stringify(mergedPlan),
+        notes: JSON.stringify(enrichedPlan),
         updated_at: new Date().toISOString(),
       });
       if (updateError) {
@@ -790,7 +868,7 @@ const refineTripPlanHandler = async (req, res, next) => {
     }
 
     return res.status(200).json({
-      tripPlan: mergedPlan,
+      tripPlan: enrichedPlan,
       refined: true,
     });
   } catch (err) {

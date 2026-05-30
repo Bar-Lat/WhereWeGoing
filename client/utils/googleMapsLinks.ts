@@ -44,6 +44,14 @@ export const buildGoogleMapsFromCurrentLocationUrl = (
   return `https://www.google.com/maps/dir/?api=1&destination=${target.latitude},${target.longitude}`;
 };
 
+export const buildGoogleMapsPlaceUrl = (target: ActivityCoordinates | string): string => {
+  if (typeof target === 'string') {
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(target)}`;
+  }
+
+  return `https://www.google.com/maps/search/?api=1&query=${target.latitude},${target.longitude}`;
+};
+
 export const buildGoogleMapsBetweenUrl = (
   origin: ActivityCoordinates | string,
   destination: ActivityCoordinates | string
@@ -71,6 +79,19 @@ export const openGoogleMapsFromCurrentLocation = async (
   const fallback = [input.location, input.name, tripDestination].filter(Boolean).join(', ');
   if (fallback) {
     await Linking.openURL(buildGoogleMapsFromCurrentLocationUrl(fallback));
+  }
+};
+
+export const openGoogleMapsPlace = async (input: MapLocationInput, tripDestination: string) => {
+  const coordinates = await resolveMapLocation(input, tripDestination);
+  if (coordinates) {
+    await Linking.openURL(buildGoogleMapsPlaceUrl(coordinates));
+    return;
+  }
+
+  const fallback = [input.location, input.name, tripDestination].filter(Boolean).join(', ');
+  if (fallback) {
+    await Linking.openURL(buildGoogleMapsPlaceUrl(fallback));
   }
 };
 

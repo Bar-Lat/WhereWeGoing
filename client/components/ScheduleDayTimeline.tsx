@@ -19,8 +19,10 @@ import { getCategoryColor, getCategoryIcon } from '@/utils/activityCategory';
 import {
   openGoogleMapsBetweenActivities,
   openGoogleMapsFromCurrentLocation,
+  openGoogleMapsPlace,
   type MapLocationInput,
 } from '@/utils/googleMapsLinks';
+import ActivityCostBadge from '@/components/ActivityCostBadge';
 
 export type TimelineActivityItem = {
   key: string;
@@ -66,6 +68,8 @@ type ScheduleDayTimelineProps = {
   showTransits?: boolean;
   parentScrollRef?: React.RefObject<ScrollView | null>;
   scrollOffsetRef?: React.RefObject<number>;
+  showMapActions?: boolean;
+  mapLinkMode?: 'directions' | 'place';
 };
 
 const toMapLocation = (item: TimelineActivityItem): MapLocationInput => ({
@@ -137,6 +141,7 @@ function TimelineRow({
   rowRef,
   destination,
   showMapActions,
+  mapLinkMode = 'directions',
 }: {
   item: TimelineActivityItem;
   index: number;
@@ -154,11 +159,13 @@ function TimelineRow({
   rowRef: (ref: View | null) => void;
   destination: string;
   showMapActions: boolean;
+  mapLinkMode?: 'directions' | 'place';
 }) {
   const catColor = getCategoryColor(item.category);
   const isReorderMode = reorderIndex === index;
   const canMoveUp = reorderIndex !== null && reorderIndex > 0;
   const canMoveDown = reorderIndex !== null && reorderIndex < itemsLength - 1;
+  const canOpenMap = Boolean(item.location?.trim() || item.name?.trim());
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handlePressIn = () => {
@@ -233,9 +240,7 @@ function TimelineRow({
               <Text style={[styles.activityMetaText, { color: currentColors.subtext }]}>
                 🕐 {formatActivityTimeRange(item.time, item.durationMinutes)}
               </Text>
-              {item.cost > 0 && (
-                <Text style={[styles.activityCost, { color: Colors.brand.blue }]}>{item.cost} PLN</Text>
-              )}
+              {item.cost > 0 && <ActivityCostBadge cost={item.cost} />}
             </View>
             {!!item.description && (
               <Text style={[styles.activityDesc, { color: currentColors.subtext }]} numberOfLines={3}>
@@ -259,11 +264,16 @@ function TimelineRow({
             </View>
           )}
 
-          {showMapActions && (
+          {showMapActions && canOpenMap && (
             <TouchableOpacity
               style={styles.openMapsBtn}
               onPress={() => {
-                void openGoogleMapsFromCurrentLocation(toMapLocation(item), destination);
+                const target = toMapLocation(item);
+                if (mapLinkMode === 'place') {
+                  void openGoogleMapsPlace(target, destination);
+                  return;
+                }
+                void openGoogleMapsFromCurrentLocation(target, destination);
               }}
             >
               <Ionicons name="open-outline" size={20} color={Colors.brand.blue} />
@@ -287,6 +297,8 @@ export default function ScheduleDayTimeline({
   onOrderConfirm,
   transitOverrides,
   showTransits = false,
+  showMapActions,
+  mapLinkMode = 'directions',
   parentScrollRef,
   scrollOffsetRef,
 }: ScheduleDayTimelineProps) {
@@ -380,6 +392,8 @@ export default function ScheduleDayTimeline({
     setReorderIndex(index);
   };
 
+  const mapActionsVisible = showMapActions ?? !editable;
+
   if (items.length === 0) {
     return (
       <Text style={[styles.emptyDayText, { color: currentColors.subtext }]}>
@@ -412,7 +426,8 @@ export default function ScheduleDayTimeline({
               rowRefs.current[index] = ref;
             }}
             destination={destination}
-            showMapActions={!editable}
+            showMapActions={mapActionsVisible}
+            mapLinkMode={mapLinkMode}
           />
           {index < items.length - 1 && transitLegs[index] && (
             <TransitLegRow
@@ -457,7 +472,6 @@ const styles = StyleSheet.create({
   activityName: { fontSize: 16, fontWeight: '700', marginBottom: 4 },
   activityMeta: { marginBottom: 4 },
   activityMetaText: { fontSize: 13 },
-  activityCost: { fontSize: 13, fontWeight: '700', marginTop: 2 },
   activityDesc: { fontSize: 13, lineHeight: 18 },
   actionRow: { flexDirection: 'row', marginLeft: 4 },
   actionBtn: { padding: 6 },

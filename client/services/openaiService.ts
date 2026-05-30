@@ -36,6 +36,7 @@ export async function generateTripPlan(
 export type AcceptTripResponse = {
   message: string;
   tripId: string;
+  tripPlan?: TripPlan;
   totalCost: number;
   participantCount: number;
   amountPerPerson: number;

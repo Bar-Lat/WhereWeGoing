@@ -12,6 +12,7 @@ import {
 
 import type { TripScheduleActivityDto, TripScheduleDayDto } from '@/types/trips';
 import TimePickerSheet from '@/components/TimePickerSheet';
+import ActivityCostBadge from '@/components/ActivityCostBadge';
 import {
   computeEndTime,
   durationFromTimes,
@@ -196,7 +197,7 @@ function ScheduleActivityCard({
                 <Text style={[styles.activityMetaText, { color: currentColors.subtext }]}>
                   🕐 {formatActivityTimeRange(activity.time, activity.durationMinutes)}
                 </Text>
-                {activity.cost > 0 && <Text style={styles.activityCost}>{activity.cost} PLN</Text>}
+                {activity.cost > 0 && <ActivityCostBadge cost={activity.cost} />}
               </View>
               {activity.description ? (
                 <Text style={[styles.activityDesc, { color: currentColors.subtext }]} numberOfLines={2}>
@@ -615,12 +616,6 @@ const styles = StyleSheet.create({
   },
   activityMetaText: {
     fontSize: 12,
-  },
-  activityCost: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#6366f1',
-    marginTop: 2,
   },
   activityDesc: {
     fontSize: 12,

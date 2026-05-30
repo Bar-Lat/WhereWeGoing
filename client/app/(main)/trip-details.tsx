@@ -93,7 +93,16 @@ const assignActivityIdsForDay = (
       scheduleDay.activities.find((item) => !usedIds.has(item.id) && item.name === activity.name);
     if (!match) return activity;
     usedIds.add(match.id);
-    return { ...activity, id: match.id };
+    return {
+      ...activity,
+      id: match.id,
+      location: match.location || activity.location,
+      durationMinutes: match.durationMinutes ?? activity.durationMinutes,
+      coordinates:
+        parseActivityCoordinates(match.coordinates) ??
+        activity.coordinates ??
+        undefined,
+    };
   });
 };
 
@@ -136,13 +145,14 @@ const mergePlanWithSchedule = (
           durationMinutes: scheduleActivity.durationMinutes ?? undefined,
         }),
         id: scheduleActivity.id,
+        location: scheduleActivity.location || planActivity?.location || '',
         durationMinutes:
           scheduleActivity.durationMinutes ??
           planActivity?.durationMinutes ??
           undefined,
         coordinates:
+          parseActivityCoordinates(scheduleActivity.coordinates) ??
           planActivity?.coordinates ??
-          parseActivityCoordinates((scheduleActivity as { coordinates?: unknown }).coordinates) ??
           undefined,
         imageUrl: planActivity?.imageUrl ?? undefined,
       };
@@ -486,7 +496,11 @@ export default function TripDetails() {
 
     const planToSave = normalizeTripPlanNumbers({ ...(rawPlan || {}), id: tripId } as TripPlan);
     await updateTrip(tripId, planToSave, session.access_token);
-    setTripPlan(planToSave);
+
+    const scheduleResponse = await getTripSchedule(session.access_token, tripId);
+    setScheduleDays(scheduleResponse.days || []);
+    const mergedPlan = mergePlanWithSchedule(planToSave, scheduleResponse.days || [], false);
+    setTripPlan(mergedPlan);
     useTripStore.getState().setSavedTripId(tripId);
   };
 

@@ -11,7 +11,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '@/styles/colors';
 import type { DayPlan } from '@/stores/tripStore';
 import LeafletTripMap from '@/components/LeafletTripMap';
-import { resolveMapActivityPoints, type MapActivityPoint } from '@/utils/activityMap';
+import {
+  buildMapActivityPointsFromStored,
+  resolveMapActivityPoints,
+  type MapActivityPoint,
+} from '@/utils/activityMap';
 
 type TripMapTabProps = {
   days: DayPlan[];
@@ -59,20 +63,29 @@ function DayMapPanel({
     if (!expanded) return;
 
     let cancelled = false;
-    const loadPoints = async () => {
-      setLoading(true);
+    const activityInputs = day.activities.map((activity, actIndex) => ({
+      key: activity.id ?? `${dayIndex}-${actIndex}`,
+      name: activity.name,
+      category: activity.category,
+      location: activity.location,
+      imageUrl: activity.imageUrl,
+      coordinates: activity.coordinates,
+    }));
+
+    const storedPoints = buildMapActivityPointsFromStored(activityInputs);
+    if (storedPoints.length === activityInputs.length) {
+      setPoints(storedPoints);
       setSelectedIndex(0);
-      const resolved = await resolveMapActivityPoints(
-        day.activities.map((activity, actIndex) => ({
-          key: activity.id ?? `${dayIndex}-${actIndex}`,
-          name: activity.name,
-          category: activity.category,
-          location: activity.location,
-          imageUrl: activity.imageUrl,
-          coordinates: activity.coordinates,
-        })),
-        destination
-      );
+      setLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setLoading(true);
+    setSelectedIndex(0);
+    const loadPoints = async () => {
+      const resolved = await resolveMapActivityPoints(activityInputs, destination);
 
       if (!cancelled) {
         setPoints(resolved);
@@ -118,7 +131,10 @@ function DayMapPanel({
                 {day.title || `Dzień ${day.day}`}
               </Text>
               <Text style={[styles.dayMeta, { color: subtextColor }]}>
-                {formatDayDate(day.date)} · {day.activities.length} punktów
+                {formatDayDate(day.date)} ·{' '}
+                {!loading && points.length > 0 && points.length < day.activities.length
+                  ? `${points.length}/${day.activities.length} na mapie`
+                  : `${day.activities.length} punktów`}
               </Text>
             </View>
             <Ionicons name="chevron-up" size={18} color="#fff" />
@@ -133,7 +149,10 @@ function DayMapPanel({
                 {day.title || `Dzień ${day.day}`}
               </Text>
               <Text style={[styles.dayMeta, { color: subtextColor }]}>
-                {formatDayDate(day.date)} · {day.activities.length} punktów
+                {formatDayDate(day.date)} ·{' '}
+                {!loading && points.length > 0 && points.length < day.activities.length
+                  ? `${points.length}/${day.activities.length} na mapie`
+                  : `${day.activities.length} punktów`}
               </Text>
             </View>
             <Ionicons name="chevron-down" size={18} color={currentColors.subtext} />

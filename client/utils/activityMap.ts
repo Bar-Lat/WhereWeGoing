@@ -50,6 +50,35 @@ export const parseActivityCoordinates = (value: unknown): ActivityCoordinates | 
   return null;
 };
 
+export const buildMapActivityPointsFromStored = (
+  activities: Array<{
+    key: string;
+    name: string;
+    category: string;
+    imageUrl?: string | null;
+    coordinates?: unknown;
+  }>
+): MapActivityPoint[] => {
+  const points: MapActivityPoint[] = [];
+
+  for (let index = 0; index < activities.length; index += 1) {
+    const activity = activities[index];
+    const coordinates = parseActivityCoordinates(activity.coordinates);
+    if (!coordinates) continue;
+
+    points.push({
+      key: activity.key,
+      orderNumber: index + 1,
+      name: activity.name,
+      category: activity.category,
+      imageUrl: activity.imageUrl,
+      coordinates,
+    });
+  }
+
+  return points;
+};
+
 export const buildGoogleMapsDirectionsUrl = (points: ActivityCoordinates[]): string | null => {
   if (points.length === 0) return null;
 
@@ -103,7 +132,6 @@ export const getMapRegionForPoints = (
 };
 
 const geocodeCache = new Map<string, ActivityCoordinates | null>();
-
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export const geocodeActivityLocation = async (
@@ -169,19 +197,24 @@ export const resolveMapActivityPoints = async (
   }>,
   destination: string
 ): Promise<MapActivityPoint[]> => {
-  const points: MapActivityPoint[] = [];
+  const storedPoints = buildMapActivityPointsFromStored(activities);
+  if (storedPoints.length === activities.length) {
+    return storedPoints;
+  }
+
+  const coordinatesByKey = new Map<string, ActivityCoordinates>(
+    storedPoints.map((point) => [point.key, point.coordinates])
+  );
 
   for (let index = 0; index < activities.length; index += 1) {
     const activity = activities[index];
-    let coordinates = parseActivityCoordinates(activity.coordinates);
+    if (coordinatesByKey.has(activity.key)) continue;
 
+    let coordinates = parseActivityCoordinates(activity.coordinates);
     if (!coordinates) {
       const queries = [
         [activity.name, activity.location, destination].filter(Boolean).join(', '),
         [activity.location, destination].filter(Boolean).join(', '),
-        [activity.name, destination].filter(Boolean).join(', '),
-        activity.location?.trim() || '',
-        activity.name?.trim() || '',
       ].filter((query, queryIndex, list) => query && list.indexOf(query) === queryIndex);
 
       for (const query of queries) {
@@ -191,19 +224,24 @@ export const resolveMapActivityPoints = async (
       }
     }
 
-    if (!coordinates) continue;
-
-    points.push({
-      key: activity.key,
-      orderNumber: index + 1,
-      name: activity.name,
-      category: activity.category,
-      imageUrl: activity.imageUrl,
-      coordinates,
-    });
-
-    await sleep(250);
+    if (coordinates) {
+      coordinatesByKey.set(activity.key, coordinates);
+    }
   }
 
-  return points;
+  return activities.flatMap((activity, index) => {
+    const coordinates = coordinatesByKey.get(activity.key);
+    if (!coordinates) return [];
+
+    return [
+      {
+        key: activity.key,
+        orderNumber: index + 1,
+        name: activity.name,
+        category: activity.category,
+        imageUrl: activity.imageUrl,
+        coordinates,
+      },
+    ];
+  });
 };
