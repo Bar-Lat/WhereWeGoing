@@ -201,3 +201,95 @@ npx jest --verbose
 ```bash
 npx jest --coverage --collectCoverageFrom="controllers/auth.controller.js"
 ```
+
+Testy backendu: inspiracje, znajomi, statystyki profilu i uczestnicy podróży
+
+### Struktura dodatkowych testów
+
+```
+__tests__/
+├── inspiration/
+│   └── endpoints.test.js        ← testy integracyjne tras /api/inspiration
+├── friends/
+│   └── endpoints.test.js        ← testy integracyjne tras /api/friends
+├── profileInsights/
+│   └── endpoints.test.js        ← testy integracyjne statystyk i osiągnięć profilu
+└── tripParticipants/
+    └── endpoints.test.js        ← testy integracyjne uczestników podróży
+```
+
+### Uruchamianie testów modułów społecznościowo-podróżniczych
+
+```bash
+# Testy backendu dla inspiracji, znajomych, statystyk profilu i uczestników podróży
+npm run test:social
+```
+
+Skrypt `test:social` uruchamia następujące katalogi testów:
+
+```bash
+jest __tests__/inspiration __tests__/friends __tests__/profileInsights __tests__/tripParticipants --runInBand
+```
+
+### Inspiration – endpointy
+
+| Endpoint                                      | Scenariusz                                                        | Status |
+|-----------------------------------------------|-------------------------------------------------------------------|--------|
+| `GET /api/inspiration/offers`                 | Zwraca listę znormalizowanych propozycji ofert                    | 200    |
+| `GET /api/inspiration/offers`                 | Dla zalogowanego użytkownika wyklucza jego własne i już dodane plany | 200 |
+| `GET /api/inspiration/offers`                 | Błąd pobierania propozycji z repozytorium                         | 500    |
+| `GET /api/inspiration/offers/:offerId`        | Zwraca szczegóły wybranej oferty                                  | 200    |
+| `GET /api/inspiration/offers/:offerId`        | Oferta nie istnieje                                               | 404    |
+| `POST /api/inspiration/offers/:offerId/create-trip` | Tworzy podróż na podstawie cudzej inspiracji                 | 201    |
+| `POST /api/inspiration/offers/:offerId/create-trip` | Brak tokenu przy tworzeniu podróży z inspiracji              | 401    |
+| `POST /api/inspiration/offers/:offerId/create-trip` | Niepoprawny token                                            | 401    |
+| `POST /api/inspiration/offers/:offerId/create-trip` | Użytkownik próbuje utworzyć plan ze swojej własnej oferty    | 400    |
+
+### Friends – endpointy
+
+| Endpoint                         | Scenariusz                                                       | Status |
+|----------------------------------|------------------------------------------------------------------|--------|
+| `GET /api/friends`               | Zwraca listę znajomych zalogowanego użytkownika                  | 200    |
+| `GET /api/friends`               | Brak tokenu                                                      | 401    |
+| `GET /api/friends`               | Niepoprawny token                                                | 401    |
+| `GET /api/friends`               | Błąd pobierania relacji znajomych                                | 500    |
+| `GET /api/friends/search`        | Dla zbyt krótkiej frazy zwraca pustą listę                       | 200    |
+| `GET /api/friends/search`        | Wyszukuje użytkowników i wyklucza obecnych znajomych             | 200    |
+| `POST /api/friends`              | Dodaje znajomego i relację zwrotną                               | 201    |
+| `POST /api/friends`              | Nie pozwala dodać samego siebie                                  | 400    |
+| `POST /api/friends`              | Profil znajomego nie istnieje                                    | 404    |
+| `DELETE /api/friends/:friendProfileId` | Usuwa znajomego w obu kierunkach                           | 200    |
+| `DELETE /api/friends/:friendProfileId` | Błąd usuwania relacji znajomości                           | 500    |
+
+### Profile Insights – endpointy
+
+| Endpoint                         | Scenariusz                                                       | Status |
+|----------------------------------|------------------------------------------------------------------|--------|
+| `GET /api/profile/stats`         | Zwraca statystyki profilu wyliczone z podróży, dni, aktywności i znajomych | 200 |
+| `GET /api/profile/stats`         | Brak tokenu                                                      | 401    |
+| `GET /api/profile/stats`         | Błąd pobierania podróży do statystyk                             | 500    |
+| `GET /api/profile/achievements`  | Zwraca osiągnięcia odblokowane i nieodblokowane                  | 200    |
+
+### Trip Participants – endpointy
+
+| Endpoint                                      | Scenariusz                                                     | Status |
+|-----------------------------------------------|----------------------------------------------------------------|--------|
+| `GET /api/trip/:id/participants`              | Właściciel widzi listę uczestników i rolę owner                 | 200    |
+| `GET /api/trip/:id/participants`              | Zwykły uczestnik może podejrzeć listę uczestników               | 200    |
+| `GET /api/trip/:id/participants`              | Użytkownik spoza wycieczki nie ma dostępu                       | 403    |
+| `POST /api/trip/:id/participants`             | Właściciel dodaje znajomego jako uczestnika podróży             | 201    |
+| `POST /api/trip/:id/participants`             | Uczestnik nie może dodawać innych osób                          | 403    |
+| `POST /api/trip/:id/participants`             | Do wycieczki można dodać tylko znajomego                        | 400    |
+| `POST /api/trip/:id/participants`             | Nie pozwala dodać tej samej osoby drugi raz                     | 409    |
+| `DELETE /api/trip/:id/participants/:profileId` | Właściciel usuwa uczestnika i przelicza koszty                 | 200    |
+| `DELETE /api/trip/:id/participants/:profileId` | Nie można usunąć właściciela wycieczki                         | 400    |
+
+### Wynik uruchomienia testów
+
+Po uruchomieniu `npm run test:social` wszystkie testy modułów społecznościowo-podróżniczych zakończyły się powodzeniem:
+
+```text
+Test Suites: 4 passed, 4 total
+Tests:       33 passed, 33 total
+Snapshots:   0 total
+```

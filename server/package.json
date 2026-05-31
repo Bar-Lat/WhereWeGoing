@@ -10,7 +10,8 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test:unit": "jest __tests__/dtos.test.js",
-    "test:integration": "jest __tests__/endpoints.test.js"
+    "test:integration": "jest __tests__/endpoints.test.js",
+    "test:social": "jest __tests__/inspiration __tests__/friends __tests__/profileInsights __tests__/tripParticipants --runInBand"
   },
   "keywords": [],
   "author": "",
