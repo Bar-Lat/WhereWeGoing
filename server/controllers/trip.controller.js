@@ -207,7 +207,7 @@ const persistTripPlan = async ({ ownerId, formData, tripPlan }) => {
     total_budget: budget,
     status: 'planned',
     image_url: generatedImageUrl,
-    notes: JSON.stringify(tripPlan),
+    notes: getTripPlanSummary(tripPlan, destination),
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
@@ -403,7 +403,7 @@ const updateTripHandler = async (req, res, next) => {
     }
 
     const updateData = {
-      notes: JSON.stringify(enrichedPlan),
+      notes: getTripPlanSummary(enrichedPlan, trip.destination || tripPlan.destination),
       total_budget: enrichedPlan.estimatedTotalCost || trip.total_budget,
       image_url: enrichedPlan.imageUrl || trip.image_url,
       updated_at: new Date().toISOString()
@@ -881,7 +881,7 @@ const refineTripPlanHandler = async (req, res, next) => {
 
     if (tripId) {
       const { error: updateError } = await updateTripById(tripId, {
-        notes: JSON.stringify(enrichedPlan),
+        notes: getTripPlanSummary(enrichedPlan, enrichedPlan?.destination || tripPlan?.destination),
         updated_at: new Date().toISOString(),
       });
       if (updateError) {
