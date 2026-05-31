@@ -13,8 +13,8 @@ const {
   validateTripPlanCoordinates,
 } = require('../utils/activityGeo');
 const { alignTransitAfterActivity } = require('../utils/scheduleTransit');
-
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const { buildPrompt, TRANSPORT_LABELS } = require('../utils/buildTripPrompt');
+const { toISO } = require('../utils/tripDates');
 
 const getUserIdFromRequest = async (req) => {
   const accessToken = req.headers.authorization?.slice(7);
@@ -22,98 +22,6 @@ const getUserIdFromRequest = async (req) => {
   const { data, error } = await supabaseAuthClient.auth.getUser(accessToken);
   if (error || !data?.user?.id) return null;
   return data.user.id;
-};
-
-const INTEREST_LABELS = {
-  sightseeing: 'zwiedzanie zabytków',
-  food: 'lokalna kuchnia i restauracje',
-  nature: 'natura i parki',
-  parties: 'życie nocne i imprezy',
-  shopping: 'zakupy',
-  art: 'muzea i sztuka',
-  sport: 'aktywność sportowa',
-  beach: 'plaża i relaks',
-};
-
-const TRANSPORT_LABELS = {
-  walking: 'pieszo',
-  metro: 'metro i autobus',
-  car: 'samochodem',
-  bike: 'rowerem',
-};
-
-const buildPrompt = (data) => {
-  const interests = (data.interests || []).map((i) => INTEREST_LABELS[i] ?? i).join(', ');
-  const transport = (data.transport || []).map((t) => TRANSPORT_LABELS[t] ?? t).join(', ');
-  const attractionsPerDay = data.attractionsPerDay ?? 3;
-
-  return `Jesteś ekspertem od podróży. Wygeneruj szczegółowy plan wycieczki na podstawie poniższych danych.
-
-DANE WYCIECZKI:
-- Cel podróży: ${data.destination}
-- Data wylotu: ${data.departureDate}
-- Data powrotu: ${data.returnDate}
-- Liczba podróżujących: ${data.travelers} osób
-- Budżet całkowity: ${data.budget} PLN (${Math.round(data.budget / data.travelers)} PLN/osobę)
-- Zainteresowania: ${interests || 'ogólne zwiedzanie'}
-- Preferowany transport na miejscu: ${transport || 'dowolny'}
-- Liczba atrakcji dziennie: ${attractionsPerDay}
-
-Zwróć WYŁĄCZNIE obiekt JSON (bez markdown, bez komentarzy) w tym schemacie:
-{
-  "destination": "string",
-  "englishDestination": "string (angielska nazwa miasta dla Unsplash)", 
-  "summary": "string",
-  "imageUrl": "string (zostaw puste, wygenerujemy to sami)",
-  "totalDays": number,
-  "estimatedTotalCost": number,
-  "currency": "PLN",
-  "days": [
-    {
-      "day": number,
-      "date": "string (dd.mm.rrrr)",
-      "title": "string (krótki tytuł dnia)",
-      "activities": [
-        {
-          "time": "string (np. 09:00)",
-          "name": "string",
-          "description": "string (1-2 zdania)",
-          "category": "string (jedzenie|atrakcja|transport|nocleg|inne)",
-          "estimatedCost": number,
-          "location": "string (pełny adres: nazwa miejsca + ulica/dzielnica + miasto)",
-          "durationMinutes": number (realistyczny czas wizyty w minutach),
-          "coordinates": {
-            "latitude": number (WGS84 — dokładne współrzędne miejsca),
-            "longitude": number (WGS84)
-          }
-        }
-      ],
-      "estimatedDayCost": number,
-      "tips": "string (jedna praktyczna wskazówka na ten dzień)"
-    }
-  ],
-  "generalTips": ["string", "string", "string"],
-  "bestTransport": "string (rekomendacja transportu)"
-}
-
-Każdy dzień powinien mieć dokładnie ${attractionsPerDay} atrakcji (nie licząc transportu i posiłków).
-Wszystkie koszty (estimatedCost, estimatedDayCost, estimatedTotalCost) dotyczą CAŁEJ grupy ${data.travelers} osób, nie jednej osoby.
-estimatedDayCost każdego dnia musi być równy sumie estimatedCost aktywności tego dnia.
-Suma estimatedDayCost ze wszystkich dni powinna być zbliżona do budżetu ${data.budget} PLN.
-Dla KAŻDEJ aktywności OBOWIĄZKOWO podaj location, durationMinutes oraz coordinates (latitude/longitude).
-Pole location musi być na tyle precyzyjne, żeby dało się znaleźć miejsce na mapie — podaj nazwę obiektu, ulicę i miasto (np. "Wawel, Wawel 5, Kraków", nie samo "zamek").
-Współrzędne muszą odpowiadać temu samemu miejscu co location i leżeć w ${data.destination}.
-durationMinutes to realistyczny czas wizyty (np. muzeum 90–120, posiłek 60–90, krótka atrakcja 45–60).
-Nie skracaj listy pól — każda aktywność musi mieć komplet danych.
-Godziny aktywności muszą rosnąć chronologicznie w ciągu dnia.`;
-};
-
-const toISO = (ddmmyyyy) => {
-  if (!ddmmyyyy || typeof ddmmyyyy !== 'string') return null;
-  const parts = ddmmyyyy.split('.');
-  if (parts.length !== 3) return null;
-  const [day, month, year] = parts;
-  return `${year}-${month}-${day}`;
 };
 
 const buildActivityRow = (act, day, actIndex) => ({
@@ -272,23 +180,36 @@ const addTripParticipantsWithSplit = async ({ tripId, ownerId, selectedFriendIds
 
 const generateTripPlan = async (req, res, next) => {
   try {
-    if (!GROQ_API_KEY) return res.status(500).json({ message: 'Brak klucza GROQ_API_KEY na serwerze' });
-
-    const { destination, departureDate, returnDate, travelers, budget, selectedFriendIds } = req.body;
-    const friendCount = Array.isArray(selectedFriendIds) ? selectedFriendIds.length : 0;
-    const travelersCount = typeof travelers === 'number' && travelers > 0 ? travelers : friendCount + 1;
-
-    if (!destination || !departureDate || !returnDate || !budget) {
-      return res.status(400).json({ message: 'Brakujące dane formularza' });
+    const groqApiKey = process.env.GROQ_API_KEY;
+    if (!groqApiKey) {
+      return res.status(500).json({ message: 'Brak klucza GROQ_API_KEY na serwerze' });
     }
 
-    const promptBody = { ...req.body, travelers: travelersCount };
+    const { destination, departureDate, returnDate, travelers, budget } = req.body;
+
+    if (!destination) {
+      return res.status(400).json({ message: 'Brak wymaganego pola destination' });
+    }
+    if (!departureDate) {
+      return res.status(400).json({ message: 'Brak wymaganego pola departureDate' });
+    }
+    if (!returnDate) {
+      return res.status(400).json({ message: 'Brak wymaganego pola returnDate' });
+    }
+    if (travelers === undefined || travelers === null || travelers === '') {
+      return res.status(400).json({ message: 'Brak wymaganego pola travelers' });
+    }
+    if (budget === undefined || budget === null || budget === '') {
+      return res.status(400).json({ message: 'Brak wymaganego pola budget' });
+    }
+
+    const promptBody = { ...req.body, travelers };
 
     const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${GROQ_API_KEY}`,
+        Authorization: `Bearer ${groqApiKey}`,
       },
       body: JSON.stringify({
         model: 'llama-3.3-70b-versatile',
@@ -327,7 +248,22 @@ const generateTripPlan = async (req, res, next) => {
       return res.status(422).json({ message: coordinateValidation.message });
     }
 
-    return res.status(200).json({ tripPlan });
+    const ownerId = await getUserIdFromRequest(req);
+    let tripId = null;
+
+    if (ownerId) {
+      const { trip, error: persistError } = await persistTripPlan({
+        ownerId,
+        formData: req.body,
+        tripPlan,
+      });
+      if (persistError || !trip) {
+        return res.status(500).json({ message: persistError?.message || 'Nie udało się zapisać wycieczki' });
+      }
+      tripId = trip.id;
+    }
+
+    return res.status(200).json({ tripPlan, tripId });
   } catch (err) {
     return next(err);
   }
@@ -796,11 +732,16 @@ const mergeRefinedTripPlan = (originalPlan, refinedPlan) => {
 };
 
 const refineTripPlanWithAi = async (tripPlan, preferredTransport) => {
+  const groqApiKey = process.env.GROQ_API_KEY;
+  if (!groqApiKey) {
+    throw new Error('Brak klucza GROQ_API_KEY na serwerze');
+  }
+
   const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${GROQ_API_KEY}`,
+      Authorization: `Bearer ${groqApiKey}`,
     },
     body: JSON.stringify({
       model: 'llama-3.3-70b-versatile',
@@ -827,12 +768,16 @@ const refineTripPlanWithAi = async (tripPlan, preferredTransport) => {
     throw new Error('Pusta odpowiedz AI');
   }
 
-  return JSON.parse(content);
+  try {
+    return JSON.parse(content);
+  } catch {
+    throw new Error('Nie udalo sie sparsowac odpowiedzi AI jako JSON');
+  }
 };
 
 const refineTripPlanHandler = async (req, res, next) => {
   try {
-    if (!GROQ_API_KEY) {
+    if (!process.env.GROQ_API_KEY) {
       return res.status(500).json({ message: 'Brak klucza GROQ_API_KEY na serwerze' });
     }
 
