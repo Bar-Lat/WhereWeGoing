@@ -4,18 +4,19 @@
     "slug": "WhereWeGoing",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/HereWeGoLogo.png",
+    "icon": "./assets/images/icon/WWG_transparent.png",
     "scheme": "wherewegoing",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "icon": "./assets/images/icon/WWG_transparent.png"
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/HereWeGoAdaptiveLogo.png",
-        "monochromeImage": "./assets/images/HereWeGoAdaptiveLogo.png"
+        "backgroundColor": "#ffffff",
+        "foregroundImage": "./assets/images/icon/WWG_transparent.png",
+        "monochromeImage": "./assets/images/icon/WWG_transparent.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
@@ -26,18 +27,19 @@
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/HereWeGoLogo.png"
+      "favicon": "./assets/images/icon/WWG_transparent.png"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/HereWeGoLogo.png",
-          "imageWidth": 200,
+          "image": "./assets/images/icon/WWG_white.png",
+          "imageWidth": 400,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff",
           "dark": {
+            "image": "./assets/images/icon/WWG_dark.png",
             "backgroundColor": "#000000"
           }
         }
