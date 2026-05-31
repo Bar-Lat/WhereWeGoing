@@ -277,11 +277,11 @@ export default function Home() {
         <View style={[styles.heroSection]}>
           {!upcomingTrip ? (
             <TouchableOpacity 
-              activeOpacity={0.9} 
+              activeOpacity={isOffline ? 1 : 0.9}
+              disabled={isOffline}
+              accessibilityState={{ disabled: isOffline }}
               onPress={() => {
-                if (!isOffline) {
-                  router.push('/(main)/create');
-                }
+                router.push('/(main)/create');
               }}
               style={[styles.heroCard, { backgroundColor: currentColors.card, borderColor: currentColors.border, borderWidth: 1, justifyContent: 'center', alignItems: 'center' }]}
             >

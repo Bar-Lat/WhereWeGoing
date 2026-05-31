@@ -20,6 +20,7 @@ import {
 type TripMapTabProps = {
   days: DayPlan[];
   destination: string;
+  isOffline?: boolean;
   currentColors: {
     background: string;
     card: string;
@@ -226,8 +227,24 @@ function DayMapPanel({
   );
 }
 
-export default function TripMapTab({ days, destination, currentColors }: TripMapTabProps) {
+export default function TripMapTab({ days, destination, isOffline = false, currentColors }: TripMapTabProps) {
   const [expandedDay, setExpandedDay] = useState<number | null>(days[0]?.day ?? null);
+
+  if (isOffline) {
+    return (
+      <View style={[styles.offlineCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}>
+        <View style={[styles.offlineIcon, { backgroundColor: currentColors.background }]}>
+          <Ionicons name="cloud-offline-outline" size={30} color={currentColors.subtext} />
+        </View>
+        <Text style={[styles.offlineTitle, { color: currentColors.text }]}>
+          Mapa niedostępna offline
+        </Text>
+        <Text style={[styles.offlineDescription, { color: currentColors.subtext }]}>
+          Mapy wymagają połączenia z internetem. W trybie offline możesz nadal przeglądać harmonogram i budżet planu.
+        </Text>
+      </View>
+    );
+  }
 
   if (!days.length) {
     return (
@@ -351,5 +368,31 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 14,
     paddingVertical: 12,
+  },
+  offlineCard: {
+    borderWidth: 1,
+    borderRadius: 18,
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 28,
+    gap: 10,
+  },
+  offlineIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
+  offlineTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  offlineDescription: {
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
   },
 });

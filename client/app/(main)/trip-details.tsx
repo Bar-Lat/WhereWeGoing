@@ -1147,6 +1147,7 @@ export default function TripDetails() {
               <TripMapTab
                 days={tripPlan.days || []}
                 destination={tripPlan.destination}
+                isOffline={isOffline}
                 currentColors={currentColors}
               />
           )}
