@@ -1,50 +1,60 @@
-cd # Welcome to your Expo app 👋
+# Where We Going - React Native App
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+> Aplikacja mobilna do wspólnego planowania podróży
 
-## Get started
+## Quick Start
 
-1. Install dependencies
-
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
+### Instalacja
 ```bash
-npm run reset-project
+npm install
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+### Uruchamianie
+```bash
+npm start
+```
 
-## Learn more
+Dostępne opcje:
+- `i` - iOS simulator
+- `a` - Android emulator  
+- `w` - Web
+- `q` - Quit
 
-To learn more about developing your project with Expo, look at the following resources:
+### Development
+```bash
+npm run dev
+```
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+### Testowanie
+```bash
+npm test
+npm run test:watch
+npm run test:offline
+```
 
-## Join the community
+## Dostępne Komendy
 
-Join our community of developers creating universal apps.
+| Komenda | Opis |
+|---------|------|
+| `npm start` | Uruchamia dev server |
+| `npm run android` | Build na Android |
+| `npm run ios` | Build na iOS |
+| `npm run web` | Uruchamia na web |
+| `npm test` | Uruchamia testy |
+| `npm run lint` | ESLint |
+| `npm run reset-project` | Reset do czystego stanu |
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## Struktura
+
+- `app/` - Routing (Expo Router)
+- `components/` - Komponenty UI
+- `services/` - API i storage
+- `providers/` - Context providers
+- `hooks/` - Custom hooks
+- `types/` - TypeScript types
+- `utils/` - Utility functions
+- `styles/` - Stylowanie
+- `assets/` - Grafiki i zasoby
+
+
+
