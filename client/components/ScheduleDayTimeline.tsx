@@ -22,7 +22,7 @@ import {
   openGoogleMapsPlace,
   type MapLocationInput,
 } from '@/utils/googleMapsLinks';
-import ActivityCostBadge from '@/components/ActivityCostBadge';
+import ActivityCostBadge, { formatPlnAmount } from '@/components/ActivityCostBadge';
 
 export type TimelineActivityItem = {
   key: string;
@@ -106,7 +106,7 @@ function TransitLegRow({
         <View style={styles.transitTextBox}>
           <Text style={styles.transitTitle}>
             {leg.modeLabel}
-            {leg.cost > 0 ? ` · ${leg.cost} PLN` : ''}
+            {leg.cost > 0 ? ` · ${formatPlnAmount(leg.cost)} PLN` : ''}
           </Text>
           <Text style={styles.transitTime}>{leg.timeRangeLabel}</Text>
         </View>
