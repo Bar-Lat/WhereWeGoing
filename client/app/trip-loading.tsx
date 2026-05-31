@@ -7,6 +7,8 @@ import { useColorScheme } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTripStore } from '@/stores/tripStore';
 import { generateTripPlan, acceptTripPlan } from '@/services/openaiService';
+import { getTripSchedule } from '@/services/trips.api';
+import { mapScheduleDaysToPlanDays } from '@/utils/mapScheduleToPlan';
 import { useAuth } from '@/providers/auth.provider';
 import { useNotifications } from '@/providers/notifications.provider';
 
@@ -32,7 +34,7 @@ export default function TripLoadingScreen() {
   const progressAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current; // Animacja pulsującej ikony
 
-  const { formData, setTripPlan, setError, setSavedTripId } = useTripStore();
+  const { formData, setTripPlan, setError, setSavedTripId, setTripAccessRole } = useTripStore();
   const { session } = useAuth();
   const { refreshNotifications } = useNotifications();
 
@@ -118,16 +120,28 @@ export default function TripLoadingScreen() {
         // -------------------------------------------
 
         // 2. Automatyczny zapis w tle 
+        let savedPlan = plan;
+
         if (session?.access_token) {
-          // Używamy bezpiecznej wersji formData i zaokrąglonego planu
           const response = await acceptTripPlan(safeFormData, plan, session.access_token);
-          plan.id = response.tripId;
+          savedPlan = (response.tripPlan as typeof plan) ?? plan;
+          savedPlan.id = response.tripId;
+
+          if (!savedPlan.days?.every((day) => day.activities?.every((act) => act.coordinates))) {
+            const schedule = await getTripSchedule(session.access_token, response.tripId);
+            savedPlan = {
+              ...savedPlan,
+              id: response.tripId,
+              days: mapScheduleDaysToPlanDays(schedule.days || []),
+            };
+          }
+
           setSavedTripId(response.tripId);
+          setTripAccessRole('owner');
           await refreshNotifications();
         }
 
-        // 3. Wrzucenie gotowego planu do Store'a
-        setTripPlan(plan);
+        setTripPlan(savedPlan);
         apiDoneRef.current = true;
         tryNavigate();
       } catch (err: any) {

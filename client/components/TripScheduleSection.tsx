@@ -11,6 +11,20 @@ import {
 } from 'react-native';
 
 import type { TripScheduleActivityDto, TripScheduleDayDto } from '@/types/trips';
+import TimePickerSheet from '@/components/TimePickerSheet';
+import ActivityCostBadge from '@/components/ActivityCostBadge';
+import {
+  computeEndTime,
+  durationFromTimes,
+  formatActivityTimeRange,
+  activityRangeOverlapsSchedule,
+  buildDayScheduleContext,
+  toActivityTimeRange,
+  formatEndTimeLabel,
+  isValidActivityTimeRange,
+  type ActivityTimeRangeInput,
+  type DayActivityScheduleContext,
+} from '@/utils/activityTime';
 
 type ScheduleColors = {
   background: string;
@@ -23,10 +37,12 @@ type ScheduleColors = {
 type ActivityInput = {
   name: string;
   time: string;
+  endTime: string;
   description: string;
   category: string;
   location: string;
   cost: number;
+  durationMinutes: number;
 };
 
 type TripScheduleSectionProps = {
@@ -91,14 +107,19 @@ const getDayOfWeek = (dateStr: string) => {
 const toActivityInput = (activity: TripScheduleActivityDto): ActivityInput => ({
   name: activity.name,
   time: activity.time,
+  endTime: computeEndTime(activity.time, activity.durationMinutes),
   description: activity.description,
   category: activity.category,
   location: activity.location,
   cost: activity.cost,
+  durationMinutes: activity.durationMinutes ?? 60,
 });
 
 function ScheduleActivityCard({
   activity,
+  otherActivities,
+  nextDayActivities,
+  previousDayActivities,
   isLast,
   editable,
   saving,
@@ -107,6 +128,9 @@ function ScheduleActivityCard({
   onDelete,
 }: {
   activity: TripScheduleActivityDto;
+  otherActivities: TripScheduleActivityDto[];
+  nextDayActivities: TripScheduleActivityDto[];
+  previousDayActivities: TripScheduleActivityDto[];
   isLast: boolean;
   editable: boolean;
   saving: boolean;
@@ -116,10 +140,36 @@ function ScheduleActivityCard({
 }) {
   const [menuVisible, setMenuVisible] = useState(false);
   const [editVisible, setEditVisible] = useState(false);
+  const [timeRangeError, setTimeRangeError] = useState(false);
   const [editData, setEditData] = useState<ActivityInput>(toActivityInput(activity));
 
+  const scheduleContext: DayActivityScheduleContext = buildDayScheduleContext(
+    otherActivities.map(toActivityTimeRange),
+    nextDayActivities.map(toActivityTimeRange),
+    previousDayActivities.map(toActivityTimeRange)
+  );
+
+  const validateTimeRange = (startTime: string, endTime: string) => {
+    if (!isValidActivityTimeRange(startTime, endTime)) return false;
+    return !activityRangeOverlapsSchedule({ startTime, endTime }, scheduleContext);
+  };
+
+  const timeRangeErrorMessage =
+    'Wybrany przedział godzin koliduje z inną atrakcją tego lub następnego dnia. Popraw początek i koniec.';
+
   const handleSaveEdit = async () => {
-    await onUpdate(editData);
+    const durationMinutes = durationFromTimes(editData.time, editData.endTime);
+    if (durationMinutes === null || durationMinutes <= 0) {
+      Alert.alert('Błąd', 'Podaj prawidłowy przedział godzin (koniec może być następnego dnia).');
+      return;
+    }
+
+    if (!validateTimeRange(editData.time, editData.endTime)) {
+      setTimeRangeError(true);
+      return;
+    }
+
+    await onUpdate({ ...editData, durationMinutes });
     setEditVisible(false);
   };
 
@@ -142,8 +192,10 @@ function ScheduleActivityCard({
                 {activity.name}
               </Text>
               <View style={styles.activityMeta}>
-                <Text style={[styles.activityMetaText, { color: currentColors.subtext }]}>🕐 {activity.time}</Text>
-                {activity.cost > 0 && <Text style={styles.activityCost}>{activity.cost} PLN</Text>}
+                <Text style={[styles.activityMetaText, { color: currentColors.subtext }]}>
+                  🕐 {formatActivityTimeRange(activity.time, activity.durationMinutes)}
+                </Text>
+                {activity.cost > 0 && <ActivityCostBadge cost={activity.cost} />}
               </View>
               {activity.description ? (
                 <Text style={[styles.activityDesc, { color: currentColors.subtext }]} numberOfLines={2}>
@@ -180,6 +232,7 @@ function ScheduleActivityCard({
               style={styles.menuItem}
               onPress={() => {
                 setMenuVisible(false);
+                setTimeRangeError(false);
                 setEditData(toActivityInput(activity));
                 setEditVisible(true);
               }}
@@ -223,12 +276,45 @@ function ScheduleActivityCard({
               onChangeText={(value) => setEditData({ ...editData, name: value })}
             />
 
-            <Text style={[styles.editLabel, { color: currentColors.subtext }]}>Godzina</Text>
-            <TextInput
-              style={[styles.editInput, { color: currentColors.text, borderColor: currentColors.border }]}
-              value={editData.time}
-              onChangeText={(value) => setEditData({ ...editData, time: value })}
-            />
+            <Text style={[styles.editLabel, { color: currentColors.subtext }]}>Godziny</Text>
+            <View style={[styles.timeRow, timeRangeError && styles.timeRowError]}>
+              <View style={styles.timeColumn}>
+                <Text style={[styles.editSubLabel, { color: currentColors.subtext }]}>Początek</Text>
+                <TimePickerSheet
+                  value={editData.time}
+                  externalInvalid={timeRangeError}
+                  onChange={(time) => {
+                    setTimeRangeError(false);
+                    setEditData((prev) => ({ ...prev, time }));
+                  }}
+                  label="Godzina rozpoczęcia"
+                  textColor={currentColors.text}
+                  subtextColor={currentColors.subtext}
+                  borderColor={currentColors.border}
+                  cardColor={currentColors.card}
+                />
+              </View>
+              <View style={styles.timeColumn}>
+                <Text style={[styles.editSubLabel, { color: currentColors.subtext }]}>Koniec</Text>
+                <TimePickerSheet
+                  value={editData.endTime}
+                  displayValue={formatEndTimeLabel(editData.time, editData.endTime)}
+                  externalInvalid={timeRangeError}
+                  onChange={(endTime) => {
+                    setTimeRangeError(false);
+                    setEditData((prev) => ({ ...prev, endTime }));
+                  }}
+                  label="Godzina zakończenia"
+                  textColor={currentColors.text}
+                  subtextColor={currentColors.subtext}
+                  borderColor={currentColors.border}
+                  cardColor={currentColors.card}
+                />
+              </View>
+            </View>
+            {timeRangeError ? (
+              <Text style={styles.timeRangeErrorText}>{timeRangeErrorMessage}</Text>
+            ) : null}
 
             <Text style={[styles.editLabel, { color: currentColors.subtext }]}>Koszt (PLN)</Text>
             <TextInput
@@ -257,7 +343,10 @@ function ScheduleActivityCard({
             <View style={styles.editButtons}>
               <TouchableOpacity
                 style={[styles.editBtnCancel, { borderColor: currentColors.border }]}
-                onPress={() => setEditVisible(false)}
+                onPress={() => {
+                  setTimeRangeError(false);
+                  setEditVisible(false);
+                }}
               >
                 <Text style={[styles.editBtnCancelText, { color: currentColors.text }]}>Anuluj</Text>
               </TouchableOpacity>
@@ -275,6 +364,7 @@ function ScheduleActivityCard({
 function ScheduleDayCard({
   day,
   index,
+  allDays,
   editable,
   saving,
   currentColors,
@@ -284,6 +374,7 @@ function ScheduleDayCard({
 }: {
   day: TripScheduleDayDto;
   index: number;
+  allDays: TripScheduleDayDto[];
   editable: boolean;
   saving: boolean;
   currentColors: ScheduleColors;
@@ -326,6 +417,9 @@ function ScheduleDayCard({
               <ScheduleActivityCard
                 key={activity.id}
                 activity={activity}
+                otherActivities={day.activities.filter((item) => item.id !== activity.id)}
+                nextDayActivities={allDays[index + 1]?.activities || []}
+                previousDayActivities={allDays[index - 1]?.activities || []}
                 isLast={actIndex === day.activities.length - 1}
                 editable={editable}
                 saving={saving}
@@ -394,6 +488,7 @@ export default function TripScheduleSection({
           key={day.id}
           day={day}
           index={index}
+          allDays={days}
           editable={editable}
           saving={saving}
           currentColors={currentColors}
@@ -518,18 +613,10 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   activityMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
     marginTop: 3,
-    gap: 8,
   },
   activityMetaText: {
     fontSize: 12,
-  },
-  activityCost: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#6366f1',
   },
   activityDesc: {
     fontSize: 12,
@@ -623,6 +710,28 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 4,
     marginTop: 12,
+  },
+  editSubLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  timeRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  timeRowError: {
+    marginBottom: 4,
+  },
+  timeRangeErrorText: {
+    color: '#ef4444',
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '600',
+    marginBottom: 12,
+  },
+  timeColumn: {
+    flex: 1,
   },
   editInput: {
     borderWidth: 1,

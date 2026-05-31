@@ -204,34 +204,7 @@ const getTripStatusMeta = (trip: TripDto) => {
   return getStatusMeta(trip.status);
 };
 
-const formatPlanDate = (value?: string | null) => {
-  if (!value) return '';
-  const date = new Date(`${value.slice(0, 10)}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return value;
-  const day = date.getDate().toString().padStart(2, '0');
-  const month = (date.getMonth() + 1).toString().padStart(2, '0');
-  return `${day}.${month}.${date.getFullYear()}`;
-};
-
-const buildPlanDaysFromSchedule = (days: TripScheduleDayDto[]) => days.map((day, index) => {
-  const activities = (day.activities || []).map((activity) => ({
-    time: activity.time || '09:00',
-    name: activity.name || 'Aktywność',
-    description: activity.description || '',
-    category: activity.category || 'inne',
-    estimatedCost: Number(activity.cost) || 0,
-    location: activity.location || '',
-  }));
-
-  return {
-    day: day.dayNumber || index + 1,
-    date: formatPlanDate(day.date),
-    title: day.title || `Dzień ${day.dayNumber || index + 1}`,
-    activities,
-    estimatedDayCost: activities.reduce((sum, activity) => sum + (Number(activity.estimatedCost) || 0), 0),
-    tips: '',
-  };
-});
+import { mapScheduleDaysToPlanDays } from '@/utils/mapScheduleToPlan';
 
 const sortTripsByNearestDate = (trips: TripDto[]) => {
   const todayTime = getTodayTime();
@@ -594,6 +567,25 @@ export default function Trips() {
     setOfflineCacheDirty(false);
   }, []);
 
+  const removedTripId = useTripStore((state) => state.removedTripId);
+
+  useEffect(() => {
+    if (!removedTripId) return;
+
+    setTrips((current) => current.filter((trip) => trip.id !== removedTripId));
+    setSelectedTrip((current) => {
+      if (current?.id === removedTripId) {
+        closeTripPanel();
+        return null;
+      }
+      return current;
+    });
+    useTripStore.getState().setTrips(
+      useTripStore.getState().trips.filter((trip) => trip.id !== removedTripId)
+    );
+    useTripStore.getState().clearRemovedTripNotification();
+  }, [removedTripId, closeTripPanel]);
+
   const handleSaveSelectedTripOffline = useCallback(async () => {
     if (!selectedTrip || !userId) {
       return;
@@ -677,11 +669,13 @@ export default function Trips() {
     let planDays = Array.isArray(parsedData?.days) ? parsedData.days : [];
     let planTotalCost = trip.totalCost ?? trip.totalBudget ?? trip.total_budget ?? 0;
 
-    if (planDays.length === 0 && accessToken) {
+    if (accessToken) {
       try {
         const scheduleResponse = await getTripSchedule(accessToken, trip.id);
-        planDays = buildPlanDaysFromSchedule(scheduleResponse.days);
-        planTotalCost = scheduleResponse.totalCost ?? planTotalCost;
+        if (scheduleResponse.days?.length) {
+          planDays = mapScheduleDaysToPlanDays(scheduleResponse.days);
+          planTotalCost = scheduleResponse.totalCost ?? planTotalCost;
+        }
       } catch (error) {
         console.error('❌ BŁĄD POBIERANIA HARMONOGRAMU:', error);
       }
@@ -701,6 +695,8 @@ export default function Trips() {
     };
 
     useTripStore.getState().setTripPlan(activePlan);
+    useTripStore.getState().setSavedTripId(trip.id);
+    useTripStore.getState().setTripAccessRole(trip.accessRole);
     router.push('../trip-details');
   }, [accessToken, router]);
 
@@ -789,12 +785,29 @@ export default function Trips() {
   const handleUpdateScheduleActivity = useCallback(
     async (
       activityId: string,
-      payload: { name: string; time: string; description: string; category: string; location: string; cost: number; }
+      payload: {
+        name: string;
+        time: string;
+        endTime?: string;
+        durationMinutes: number;
+        description: string;
+        category: string;
+        location: string;
+        cost: number;
+      }
     ) => {
       if (!accessToken || !selectedTrip) return;
       try {
         setScheduleSaving(true);
-        const response = await updateTripScheduleActivity(accessToken, selectedTrip.id, activityId, payload);
+        const response = await updateTripScheduleActivity(accessToken, selectedTrip.id, activityId, {
+          name: payload.name,
+          time: payload.time,
+          durationMinutes: payload.durationMinutes,
+          description: payload.description,
+          category: payload.category,
+          location: payload.location,
+          cost: payload.cost,
+        });
         applyScheduleMutation(response);
         await loadTrips('refresh');
       } catch (error) {

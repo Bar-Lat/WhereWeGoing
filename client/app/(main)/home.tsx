@@ -15,6 +15,12 @@ import { useNetwork } from '@/providers/network.provider';
 import { useNotifications } from '@/providers/notifications.provider';
 import { useTripStore, TripPlan } from '@/stores/tripStore';
 import { getTripSchedule } from '@/services/trips.api';
+import { mapScheduleDaysToPlanDays } from '@/utils/mapScheduleToPlan';
+import { resolveHomeScheduleDay } from '@/utils/homeScheduleDay';
+import { formatActivityTimeRange } from '@/utils/activityTime';
+import { getCategoryIcon } from '@/utils/activityCategory';
+import ActivityCostBadge from '@/components/ActivityCostBadge';
+import type { TripScheduleActivityDto } from '@/types/trips';
 import { useAuth } from '@/providers/auth.provider';
 import { getCachedOfflineTrips, type CachedOfflineTrip } from '@/services/offlineTrip.storage';
 
@@ -69,7 +75,7 @@ export default function Home() {
 
   const { isOffline } = useNetwork();
   const { hasUnreadNotifications } = useNotifications();
-  const { trips, setTripPlan } = useTripStore();
+  const { trips, setTripPlan, setTripAccessRole } = useTripStore();
   
   const { session } = useAuth(); 
   const [isLoadingTrip, setIsLoadingTrip] = useState(false);
@@ -195,21 +201,7 @@ export default function Home() {
         currency: 'PLN',
         
         // Prawidłowe mapowanie danych z API do lokalnego TripStore
-        days: scheduleDays.map(day => ({
-          day: day.dayNumber,
-          date: day.date,
-          title: day.title,
-          estimatedDayCost: day.activities.reduce((sum, act) => sum + (act.cost || 0), 0),
-          tips: '',
-          activities: day.activities.map(act => ({
-            name: act.name,
-            time: act.time,
-            description: act.description,
-            category: act.category,
-            estimatedCost: act.cost, // <-- tu było ważne mapowanie!
-            location: act.location
-          }))
-        })) || [],
+        days: mapScheduleDaysToPlanDays(scheduleDays),
         
         generalTips: [],
         bestTransport: '',
@@ -217,6 +209,7 @@ export default function Home() {
       };
 
       setTripPlan(mappedPlan);
+      setTripAccessRole(upcomingTrip.accessRole);
       router.push('/(main)/trip-details');
 
     } catch (error) {
@@ -227,9 +220,9 @@ export default function Home() {
     }
   };
 
-  const [todayActivities, setTodayActivities] = useState<any[]>([]);
+  const [todayActivities, setTodayActivities] = useState<TripScheduleActivityDto[]>([]);
   const [isLoadingActivities, setIsLoadingActivities] = useState(false);
-  const [activitiesDayLabel, setActivitiesDayLabel] = useState('Najbliższe aktywności');
+  const [activitiesDayLabel, setActivitiesDayLabel] = useState('Harmonogram dnia');
 
   useEffect(() => {
     let isMounted = true;
@@ -249,27 +242,7 @@ export default function Home() {
             : [];
         if (!isMounted) return;
 
-        // Szukamy odpowiedniego dnia
-        const today = new Date();
-        const todayStr = `${String(today.getDate()).padStart(2, '0')}.${String(today.getMonth() + 1).padStart(2, '0')}.${today.getFullYear()}`;
-
-        let displayDay = scheduleDays.find(d => d.date === todayStr);
-        let label = "Dzisiaj w planie";
-
-        // Jeśli nie ma dzisiejszego dnia (wycieczka jest w przyszłości lub przeszłości)
-        if (!displayDay && scheduleDays.length > 0) {
-          if (isOffline) {
-            displayDay = scheduleDays[0];
-            label = "Pierwszy dzień wycieczki";
-          } else if (isPast) {
-            displayDay = scheduleDays[scheduleDays.length - 1];
-            label = "Ostatni dzień wycieczki";
-          } else {
-            displayDay = scheduleDays[0];
-            label = "Pierwszy dzień wycieczki";
-          }
-        }
-
+        const { day: displayDay, label } = resolveHomeScheduleDay(scheduleDays, { isOngoing, isPast });
         setTodayActivities(displayDay?.activities || []);
         setActivitiesDayLabel(label);
 
@@ -283,7 +256,7 @@ export default function Home() {
     fetchTodaySchedule();
 
     return () => { isMounted = false; };
-  }, [isOffline, offlineUpcomingCache, upcomingTrip?.id, session?.access_token, isPast]);
+  }, [isOffline, offlineUpcomingCache, upcomingTrip?.id, session?.access_token, isPast, isOngoing]);
   return (
     <View style={[styles.container, { backgroundColor: currentColors.background }]}>
       <ScrollView 
@@ -430,24 +403,20 @@ export default function Home() {
               /* Lista aktywności */
               <View style={styles.scheduleList}>
                 {todayActivities.map((act, index) => {
-                  const categoryIcon = act.category?.toLowerCase() === 'atrakcja' || act.category?.toLowerCase() === 'attraction' ? 'camera-outline' 
-                    : act.category?.toLowerCase() === 'jedzenie' || act.category?.toLowerCase() === 'food' ? 'restaurant-outline' 
-                    : act.category?.toLowerCase() === 'nocleg' || act.category?.toLowerCase() === 'accommodation' ? 'bed-outline' 
-                    : act.category?.toLowerCase() === 'transport' ? 'bus-outline' 
-                    : 'location-outline';
+                  const categoryIcon = getCategoryIcon(act.category || 'inne');
 
                   return (
-                    <View key={index} style={[styles.scheduleItem, { backgroundColor: currentColors.card, borderColor: currentColors.border, borderWidth: 1 }]}>
+                    <View key={act.id || `home-act-${index}`} style={[styles.scheduleItem, { backgroundColor: currentColors.card, borderColor: currentColors.border, borderWidth: 1 }]}>
                       <View style={[styles.scheduleIcon, { backgroundColor: currentColors.background }]}>
                         <Ionicons name={categoryIcon} size={20} color={Colors.brand.blue} />
                       </View>
                       <View style={styles.scheduleInfo}>
                         <Text style={[styles.scheduleName, { color: currentColors.text }]} numberOfLines={1}>{act.name}</Text>
-                        <Text style={[styles.scheduleTime, { color: currentColors.subtext }]}>{act.time}</Text>
+                        <Text style={[styles.scheduleTime, { color: currentColors.subtext }]}>
+                          {formatActivityTimeRange(act.time, act.durationMinutes)}
+                        </Text>
+                        {act.cost > 0 ? <ActivityCostBadge cost={act.cost} style={{ marginTop: 4 }} /> : null}
                       </View>
-                      <Text style={[styles.scheduleCost, { color: act.cost > 0 ? '#FF6B35' : currentColors.subtext, fontWeight: '700' }]}>
-                        {act.cost > 0 ? `${act.cost} PLN` : 'Darmowe'}
-                      </Text>
                     </View>
                   );
                 })}

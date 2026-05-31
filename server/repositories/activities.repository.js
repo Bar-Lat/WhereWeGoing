@@ -111,6 +111,22 @@ const deleteActivityById = async (activityId) => {
   return { error };
 };
 
+const updateActivitiesOrder = async (orderedIds) => {
+  for (let index = 0; index < orderedIds.length; index += 1) {
+    const activityId = orderedIds[index];
+    const { error } = await supabaseDbClient
+      .from(TABLE)
+      .update({ order_index: index })
+      .eq('id', activityId);
+
+    if (error) {
+      return { error };
+    }
+  }
+
+  return { error: null };
+};
+
 const getActivitiesTotalCostByTripId = async (tripId) => {
   const { data: days, error: daysError } = await supabaseDbClient
     .from('trip_days')
@@ -191,6 +207,7 @@ module.exports = {
   getNextOrderIndexForDay,
   updateActivityById,
   deleteActivityById,
+  updateActivitiesOrder,
   getActivitiesTotalCostByTripId,
   getActivitiesTotalCostsByTripIds,
 };

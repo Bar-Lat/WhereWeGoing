@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useLocalSearchParams, useRouter } from 'expo-router'
+﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   Alert,
   ActivityIndicator,
@@ -25,6 +25,7 @@ import { Colors } from '@/styles/colors';
 import ScreenHeader from '@/components/ScreenHeader';
 import { useAuth } from '@/providers/auth.provider';
 import EditProfileModal from '@/components/EditProfileModal';
+import HistoryTripDays from '@/components/HistoryTripDays';
 import { useCurrentUserProfile } from '@/hooks/useCurrentUserProfile';
 import { useProfile } from '@/providers/profile.provider';
 import {useNetwork} from '@/providers/network.provider'
@@ -65,21 +66,6 @@ const getTripCardColor = (tripId: string) => {
     hash = tripId.charCodeAt(i) + ((hash << 5) - hash);
   }
   return TRIP_CARD_COLORS[Math.abs(hash) % TRIP_CARD_COLORS.length];
-};
-
-const formatDayDate = (date: string | null | undefined) => {
-  if (!date) {
-    return null;
-  }
-
-  const isoDate = date.split('T')[0];
-  const [year, month, day] = isoDate.split('-');
-
-  if (year && month && day) {
-    return `${day}.${month}.${year}`;
-  }
-
-  return date;
 };
 
 const getInitialsFromName = (name: string, fallback = 'U') => {
@@ -805,43 +791,11 @@ export default function Profile() {
 
                     {isExpanded && (
                       <View style={[styles.historyDetails, { borderTopColor: currentColors.border }]}>
-                        {trip.days.length === 0 ? (
-                          <Text style={[styles.historyEmptyText, { color: currentColors.subtext }]}>
-                            Brak aktywności dla tej wycieczki.
-                          </Text>
-                        ) : (
-                          trip.days.map((day, dayIndex) => {
-                            const dayNumber = day.dayNumber ?? dayIndex + 1;
-                            const formattedDate = formatDayDate(day.date);
-                            const dayLabel = formattedDate
-                              ? `Dzień ${dayNumber} - ${formattedDate}`
-                              : `Dzień ${dayNumber}`;
-
-                            return (
-                              <View key={day.dayId} style={styles.historyDayBlock}>
-                                <Text style={[styles.historyDayTitle, { color: currentColors.text }]}>{dayLabel}</Text>
-                                {day.activities.map((activity) => (
-                                  <View
-                                    key={activity.id}
-                                    style={[styles.historyActivity, { borderBottomColor: currentColors.border }]}
-                                  >
-                                    <View style={styles.historyActivityLeft}>
-                                      <Text style={[styles.historyActivityName, { color: currentColors.text }]}>
-                                        {activity.name}
-                                      </Text>
-                                      <Text style={[styles.historyActivityMeta, { color: currentColors.subtext }]}>
-                                        {activity.duration_minutes !== null ? `${activity.duration_minutes} min` : '-'}
-                                      </Text>
-                                    </View>
-                                    <Text style={[styles.historyActivityCost, { color: currentColors.text }]}>
-                                      {activity.cost !== null ? `${activity.cost.toLocaleString()} PLN` : '-'}
-                                    </Text>
-                                  </View>
-                                ))}
-                              </View>
-                            );
-                          })
-                        )}
+                        <HistoryTripDays
+                          days={trip.days}
+                          destination={trip.destination}
+                          currentColors={currentColors}
+                        />
                       </View>
                     )}
                   </View>
@@ -2044,19 +1998,5 @@ const styles = StyleSheet.create({
   historyHeroDestination: { fontSize: 18, fontWeight: '700', marginBottom: 4, color: '#FFFFFF' },
   historyHeroSubtitle: { fontSize: 14, lineHeight: 20, color: 'rgba(255,255,255,0.88)' },
   historyHeroTotal: { fontSize: 15, fontWeight: '700', color: '#FFFFFF', marginTop: 2 },
-  historyDetails: { padding: 16, borderTopWidth: 1 },
-  historyEmptyText: { fontSize: 14, lineHeight: 20 },
-  historyDayBlock: { marginBottom: 18 },
-  historyDayTitle: { fontSize: 16, fontWeight: '700', marginBottom: 10 },
-  historyActivity: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-  },
-  historyActivityLeft: { flex: 1, paddingRight: 12 },
-  historyActivityName: { fontSize: 15, fontWeight: '600', marginBottom: 4 },
-  historyActivityMeta: { fontSize: 13 },
-  historyActivityCost: { fontSize: 14, fontWeight: '700' },
+  historyDetails: { padding: 12, borderTopWidth: 1 },
 });

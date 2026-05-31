@@ -28,9 +28,30 @@ export const updateTrip = async (tripId: string, tripPlan: any, accessToken: str
       { tripPlan },
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
-    return data;
+    return data as { message?: string; tripPlan?: any };
   } catch (error: any) {
     throw new Error(error.response?.data?.message || 'Nie udało się zapisać zmian');
+  }
+};
+
+export const refineTripPlanSchedule = async (
+  tripPlan: any,
+  accessToken: string,
+  options?: { tripId?: string; preferredTransport?: string[] }
+) => {
+  try {
+    const { data } = await api.post(
+      '/trip/refine-plan',
+      {
+        tripPlan,
+        tripId: options?.tripId,
+        preferredTransport: options?.preferredTransport || [],
+      },
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    return data as { tripPlan: any; refined: boolean };
+  } catch (error: any) {
+    throw new Error(error.response?.data?.message || 'Nie udało się wygenerować transportów');
   }
 };
 
@@ -40,6 +61,10 @@ export type TripHistoryActivity = {
   dayId: string;
   name: string;
   time: string | null;
+  category: string;
+  description: string;
+  location: string;
+  coordinates?: { latitude: number; longitude: number } | null;
   cost: number | null;
   duration_minutes: number | null;
   order_index: number | null;
@@ -49,6 +74,7 @@ export type TripHistoryDay = {
   dayId: string;
   dayNumber: number | null;
   date: string | null;
+  title: string | null;
   activities: TripHistoryActivity[];
 };
 
