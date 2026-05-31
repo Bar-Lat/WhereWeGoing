@@ -186,6 +186,42 @@ export const geocodeActivityLocation = async (
   }
 };
 
+const reverseGeocodeCache = new Map<string, string | null>();
+
+export const reverseGeocodeCoordinates = async (
+  coordinates: ActivityCoordinates
+): Promise<string | null> => {
+  const cacheKey = `${coordinates.latitude.toFixed(5)},${coordinates.longitude.toFixed(5)}`;
+  if (reverseGeocodeCache.has(cacheKey)) {
+    return reverseGeocodeCache.get(cacheKey) ?? null;
+  }
+
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${coordinates.latitude}&lon=${coordinates.longitude}&format=json`,
+      {
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': 'WhereWeGoing/1.0',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      reverseGeocodeCache.set(cacheKey, null);
+      return null;
+    }
+
+    const result = (await response.json()) as { display_name?: string };
+    const label = typeof result.display_name === 'string' ? result.display_name.trim() : null;
+    reverseGeocodeCache.set(cacheKey, label);
+    return label;
+  } catch {
+    reverseGeocodeCache.set(cacheKey, null);
+    return null;
+  }
+};
+
 export const resolveMapActivityPoints = async (
   activities: Array<{
     key: string;

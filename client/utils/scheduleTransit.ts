@@ -1,3 +1,10 @@
+import {
+  DEFAULT_ACTIVITY_DURATION_MINUTES,
+  formatMinutesAsTime,
+  getActivityEndMinutes,
+  parseTimeToMinutes,
+} from '@/utils/activityTime';
+
 export type ScheduleActivityLike = {
   name: string;
   location?: string;
@@ -33,19 +40,7 @@ const TRANSPORT_MODES = {
 
 type TransportMode = keyof typeof TRANSPORT_MODES;
 
-const parseTimeToMinutes = (time?: string) => {
-  if (!time || typeof time !== 'string') return null;
-  const [hours, minutes] = time.split(':').map(Number);
-  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
-  return hours * 60 + minutes;
-};
-
-const formatMinutesAsTime = (minutes: number) => {
-  const safe = Math.max(0, Math.min(23 * 60 + 59, Math.round(minutes)));
-  const h = Math.floor(safe / 60);
-  const m = safe % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-};
+const MINUTES_PER_DAY = 24 * 60;
 
 const estimateDistanceKm = (from?: string, to?: string) => {
   const fromText = (from || '').trim().toLowerCase();
@@ -86,6 +81,46 @@ const resolveActivityLocation = (
   return null;
 };
 
+const resolveTransitDurationMinutes = (
+  startTime: string,
+  endTime: string,
+  fallbackDuration: number
+): number => {
+  const start = parseTimeToMinutes(startTime);
+  const end = parseTimeToMinutes(endTime);
+  if (start === null || end === null) return fallbackDuration;
+
+  let duration = end - start;
+  if (duration <= 0) duration += MINUTES_PER_DAY;
+  return Math.max(5, duration);
+};
+
+/** Transport nie może zaczynać się przed końcem poprzedniej atrakcji. */
+export const alignTransitAfterActivity = (
+  from: ScheduleActivityLike,
+  startTime: string,
+  endTime: string,
+  fallbackDurationMinutes = 30
+): { startTime: string; endTime: string } => {
+  const earliestStart = getActivityEndMinutes(from.time ?? '09:00', from.durationMinutes);
+  if (earliestStart === null) {
+    return {
+      startTime: startTime.slice(0, 5),
+      endTime: endTime.slice(0, 5),
+    };
+  }
+
+  const proposedStart = parseTimeToMinutes(startTime);
+  const duration = resolveTransitDurationMinutes(startTime, endTime, fallbackDurationMinutes);
+  const alignedStart =
+    proposedStart === null ? earliestStart : Math.max(proposedStart, earliestStart);
+
+  return {
+    startTime: formatMinutesAsTime(alignedStart),
+    endTime: formatMinutesAsTime(alignedStart + duration),
+  };
+};
+
 export const canGenerateTransitBetween = (
   from: ScheduleActivityLike,
   to: ScheduleActivityLike
@@ -102,21 +137,23 @@ export const computeTransitLeg = (
   options?: { preferredTransport?: string[]; override?: TransitLegOverride | null }
 ): TransitLeg | null => {
   const override = options?.override;
+  const fromLocation = resolveActivityLocation(from, to);
+  const toLocation = resolveActivityLocation(to, from);
+
   if (override?.modeLabel && override.startTime && override.endTime) {
+    const aligned = alignTransitAfterActivity(from, override.startTime, override.endTime);
     return {
       mode: 'custom',
       modeLabel: override.modeLabel,
       cost: Number(override.cost) || 0,
-      startTime: override.startTime.slice(0, 5),
-      endTime: override.endTime.slice(0, 5),
-      timeRangeLabel: `${override.startTime.slice(0, 5)} - ${override.endTime.slice(0, 5)}`,
-      fromLocation: from.location || from.name,
-      toLocation: to.location || to.name,
+      startTime: aligned.startTime,
+      endTime: aligned.endTime,
+      timeRangeLabel: `${aligned.startTime} - ${aligned.endTime}`,
+      fromLocation: fromLocation || from.location || from.name,
+      toLocation: toLocation || to.location || to.name,
     };
   }
 
-  const fromLocation = resolveActivityLocation(from, to);
-  const toLocation = resolveActivityLocation(to, from);
   if (!fromLocation || !toLocation || fromLocation.toLowerCase() === toLocation.toLowerCase()) {
     return null;
   }
@@ -127,23 +164,23 @@ export const computeTransitLeg = (
   const durationMinutes = Math.max(5, Math.round((distanceKm / mode.speedKmh) * 60));
   const cost = Math.round(distanceKm * mode.costPerKm * 2) / 2;
 
-  const fromMinutes = parseTimeToMinutes(from.time);
-  const startMinutes =
-    fromMinutes !== null
-      ? fromMinutes + (from.durationMinutes ?? 60)
-      : 9 * 60;
-  const endMinutes = startMinutes + durationMinutes;
+  const earliestStart =
+    getActivityEndMinutes(from.time ?? '09:00', from.durationMinutes) ??
+    (parseTimeToMinutes(from.time) ?? 9 * 60) + DEFAULT_ACTIVITY_DURATION_MINUTES;
+  const fallbackStart = formatMinutesAsTime(earliestStart);
+  const fallbackEnd = formatMinutesAsTime(earliestStart + durationMinutes);
 
-  const startTime = override?.startTime?.slice(0, 5) || formatMinutesAsTime(startMinutes);
-  const endTime = override?.endTime?.slice(0, 5) || formatMinutesAsTime(endMinutes);
+  const rawStart = override?.startTime?.slice(0, 5) || fallbackStart;
+  const rawEnd = override?.endTime?.slice(0, 5) || fallbackEnd;
+  const aligned = alignTransitAfterActivity(from, rawStart, rawEnd, durationMinutes);
 
   return {
     mode: modeKey,
     modeLabel: override?.modeLabel || mode.label,
     cost: typeof override?.cost === 'number' ? override.cost : cost,
-    startTime,
-    endTime,
-    timeRangeLabel: `${startTime} - ${endTime}`,
+    startTime: aligned.startTime,
+    endTime: aligned.endTime,
+    timeRangeLabel: `${aligned.startTime} - ${aligned.endTime}`,
     fromLocation,
     toLocation,
   };

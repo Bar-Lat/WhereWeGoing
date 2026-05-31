@@ -696,6 +696,7 @@ export default function Trips() {
 
     useTripStore.getState().setTripPlan(activePlan);
     useTripStore.getState().setSavedTripId(trip.id);
+    useTripStore.getState().setTripAccessRole(trip.accessRole);
     router.push('../trip-details');
   }, [accessToken, router]);
 

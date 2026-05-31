@@ -10,6 +10,7 @@ const {
   updateAllParticipantsAmountOwed,
 } = require('../repositories/tripParticipants.repository');
 const { resolveAvatarUrl } = require('./friends.controller'); // lub ścieżka do Twojego pliku
+const { serializeCoordinatesForDb } = require('../utils/activityGeo');
 
 const {
   getActivitiesTotalCostByTripId,
@@ -725,6 +726,7 @@ const createTripActivityHandler = async (req, res, next) => {
     const location = typeof req.body?.location === 'string' ? req.body.location : '';
     const cost = Number(req.body?.cost) || 0;
     const durationMinutes = Number(req.body?.durationMinutes);
+    const coordinates = serializeCoordinatesForDb(req.body?.coordinates);
 
     const { orderIndex, error: orderError } = await getNextOrderIndexForDay(dayId);
     if (orderError) {
@@ -738,7 +740,7 @@ const createTripActivityHandler = async (req, res, next) => {
       type: category,
       description,
       location,
-      coordinates: null,
+      coordinates: coordinates ?? null,
       cost,
       duration_minutes:
         Number.isFinite(durationMinutes) && durationMinutes > 0 ? durationMinutes : null,
@@ -824,6 +826,9 @@ const updateTripActivityHandler = async (req, res, next) => {
       const durationMinutes = Number(req.body.durationMinutes);
       updates.duration_minutes =
         Number.isFinite(durationMinutes) && durationMinutes > 0 ? durationMinutes : null;
+    }
+    if (req.body?.coordinates !== undefined) {
+      updates.coordinates = serializeCoordinatesForDb(req.body.coordinates);
     }
 
     if (Object.keys(updates).length === 0) {

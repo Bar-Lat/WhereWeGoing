@@ -34,7 +34,7 @@ export default function TripLoadingScreen() {
   const progressAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current; // Animacja pulsującej ikony
 
-  const { formData, setTripPlan, setError, setSavedTripId } = useTripStore();
+  const { formData, setTripPlan, setError, setSavedTripId, setTripAccessRole } = useTripStore();
   const { session } = useAuth();
   const { refreshNotifications } = useNotifications();
 
@@ -137,6 +137,7 @@ export default function TripLoadingScreen() {
           }
 
           setSavedTripId(response.tripId);
+          setTripAccessRole('owner');
           await refreshNotifications();
         }
 

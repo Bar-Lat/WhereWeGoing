@@ -187,13 +187,15 @@ function DayMapPanel({
               </View>
 
               <View style={styles.pointNavigator}>
-                <TouchableOpacity
-                  style={[styles.navArrowBtn, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}
-                  onPress={goToPreviousPoint}
-                  accessibilityLabel="Poprzedni punkt"
-                >
-                  <Ionicons name="chevron-back" size={18} color={Colors.brand.blue} />
-                </TouchableOpacity>
+                <View style={styles.navArrowSlot}>
+                  <TouchableOpacity
+                    style={[styles.navArrowBtn, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}
+                    onPress={goToPreviousPoint}
+                    accessibilityLabel="Poprzedni punkt"
+                  >
+                    <Ionicons name="chevron-back" size={18} color={Colors.brand.blue} />
+                  </TouchableOpacity>
+                </View>
 
                 <View style={styles.pointCounterBox}>
                   <Text style={[styles.pointCounter, { color: currentColors.text }]}>
@@ -206,13 +208,15 @@ function DayMapPanel({
                   )}
                 </View>
 
-                <TouchableOpacity
-                  style={[styles.navArrowBtn, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}
-                  onPress={goToNextPoint}
-                  accessibilityLabel="Następny punkt"
-                >
-                  <Ionicons name="chevron-forward" size={18} color={Colors.brand.blue} />
-                </TouchableOpacity>
+                <View style={styles.navArrowSlot}>
+                  <TouchableOpacity
+                    style={[styles.navArrowBtn, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}
+                    onPress={goToNextPoint}
+                    accessibilityLabel="Następny punkt"
+                  >
+                    <Ionicons name="chevron-forward" size={18} color={Colors.brand.blue} />
+                  </TouchableOpacity>
+                </View>
               </View>
             </>
           )}
@@ -314,9 +318,12 @@ const styles = StyleSheet.create({
   pointNavigator: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
     marginTop: 10,
+  },
+  navArrowSlot: {
+    width: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   navArrowBtn: {
     width: 36,
@@ -327,9 +334,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   pointCounterBox: {
-    minWidth: 120,
+    flex: 1,
     alignItems: 'center',
     gap: 2,
+    paddingHorizontal: 8,
   },
   pointCounter: {
     fontSize: 16,
@@ -338,7 +346,7 @@ const styles = StyleSheet.create({
   pointName: {
     fontSize: 12,
     textAlign: 'center',
-    maxWidth: 180,
+    width: '100%',
   },
   emptyText: {
     fontSize: 14,

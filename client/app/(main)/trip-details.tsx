@@ -18,9 +18,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { Colors } from '@/styles/colors';
 import ScheduleDayTimeline, { type TimelineActivityItem } from '@/components/ScheduleDayTimeline';
 import TripMapTab from '@/components/TripMapTab';
+import LocationMapPickerModal from '@/components/LocationMapPickerModal';
 import { useTripStore, TripPlan, DayPlan } from '@/stores/tripStore';
 import { useAuth } from '@/providers/auth.provider';
 import { useNetwork } from '@/providers/network.provider';
@@ -29,8 +31,13 @@ import TimePickerSheet from '@/components/TimePickerSheet';
 import {
   computeEndTime,
   durationFromTimes,
-  activityRangeOverlapsOthers,
-  type ActivityTimeRangeInput,
+  activityRangeOverlapsSchedule,
+  buildDayScheduleContext,
+  toActivityTimeRange,
+  type DayActivityScheduleContext,
+  getDefaultNewActivityTimes,
+  formatEndTimeLabel,
+  isValidActivityTimeRange,
 } from '@/utils/activityTime';
 import { deleteTrip, updateTrip, refineTripPlanSchedule } from '@/services/trip.api';
 import {
@@ -42,7 +49,14 @@ import type { TripScheduleDayDto } from '@/types/trips';
 import { normalizeTripPlanNumbers } from '@/utils/normalizeTripPlan';
 import { validateTripPlanSchedule } from '@/utils/scheduleValidation';
 import { buildTransitsForActivities, mapDayTransitsToOverrides } from '@/utils/scheduleTransit';
-import { parseActivityCoordinates } from '@/utils/activityMap';
+import { parseActivityCoordinates, geocodeActivityLocation, reverseGeocodeCoordinates, type ActivityCoordinates } from '@/utils/activityMap';
+import {
+  createClientActivityKey,
+  ensureDayActivityClientKeys,
+  getActivityTimelineKey,
+  mapScheduleActivityToPlan,
+  mergePlanDayWithSchedule,
+} from '@/utils/activityPlanOrder';
 
 // ─── HELPERY ─────────────────────────────────────────────────────────────────
 const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
@@ -79,89 +93,15 @@ function getCategoryColor(category: string): string {
 const findScheduleDay = (scheduleDays: TripScheduleDayDto[], dayNumber: number) =>
   scheduleDays.find((item) => item.dayNumber === dayNumber);
 
-const assignActivityIdsForDay = (
-  day: DayPlan,
-  scheduleDay: TripScheduleDayDto | undefined
-): DayPlan['activities'] => {
-  if (!scheduleDay?.activities?.length) return day.activities;
-  const usedIds = new Set<string>();
-  return day.activities.map((activity) => {
-    const match =
-      scheduleDay.activities.find(
-        (item) => !usedIds.has(item.id) && item.name === activity.name && item.time === activity.time
-      ) ||
-      scheduleDay.activities.find((item) => !usedIds.has(item.id) && item.name === activity.name);
-    if (!match) return activity;
-    usedIds.add(match.id);
-    return {
-      ...activity,
-      id: match.id,
-      location: match.location || activity.location,
-      durationMinutes: match.durationMinutes ?? activity.durationMinutes,
-      coordinates:
-        parseActivityCoordinates(match.coordinates) ??
-        activity.coordinates ??
-        undefined,
-    };
-  });
-};
-
 const mergePlanWithSchedule = (
   plan: TripPlan,
   scheduleDays: TripScheduleDayDto[],
   preserveLocalOrder: boolean
 ): TripPlan => ({
   ...plan,
-  days: plan.days.map((day) => {
-    const scheduleDay = findScheduleDay(scheduleDays, day.day);
-    if (!scheduleDay) return day;
-    if (preserveLocalOrder) {
-      return { ...day, activities: assignActivityIdsForDay(day, scheduleDay) };
-    }
-    const usedPlanIndices = new Set<number>();
-    const activities: DayPlan['activities'] = scheduleDay.activities.map((scheduleActivity) => {
-      const planIndex = day.activities.findIndex(
-        (activity, index) =>
-          !usedPlanIndices.has(index) &&
-          activity.name === scheduleActivity.name &&
-          activity.time === scheduleActivity.time
-      );
-      const fallbackIndex =
-        planIndex >= 0
-          ? planIndex
-          : day.activities.findIndex(
-              (activity, index) => !usedPlanIndices.has(index) && activity.name === scheduleActivity.name
-            );
-      const planActivity = fallbackIndex >= 0 ? day.activities[fallbackIndex] : null;
-      if (fallbackIndex >= 0) usedPlanIndices.add(fallbackIndex);
-      return {
-        ...(planActivity || {
-          name: scheduleActivity.name,
-          time: scheduleActivity.time,
-          description: scheduleActivity.description,
-          category: scheduleActivity.category,
-          estimatedCost: scheduleActivity.cost,
-          location: scheduleActivity.location,
-          durationMinutes: scheduleActivity.durationMinutes ?? undefined,
-        }),
-        id: scheduleActivity.id,
-        location: scheduleActivity.location || planActivity?.location || '',
-        durationMinutes:
-          scheduleActivity.durationMinutes ??
-          planActivity?.durationMinutes ??
-          undefined,
-        coordinates:
-          parseActivityCoordinates(scheduleActivity.coordinates) ??
-          planActivity?.coordinates ??
-          undefined,
-        imageUrl: planActivity?.imageUrl ?? undefined,
-      };
-    });
-    day.activities.forEach((activity, index) => {
-      if (!usedPlanIndices.has(index)) activities.push(activity);
-    });
-    return { ...day, activities, transits: day.transits || scheduleDay.transits };
-  }),
+  days: plan.days.map((day) =>
+    mergePlanDayWithSchedule(day, findScheduleDay(scheduleDays, day.day), preserveLocalOrder)
+  ),
 });
 
 function formatDate(dateStr: string): string {
@@ -295,7 +235,7 @@ function DayCardView({
                 <ScheduleDayTimeline
                   destination={tripDestination}
                   activities={day.activities.map((activity, actIndex): TimelineActivityItem => ({
-                    key: activity.id ?? `${index}-${actIndex}`,
+                    key: getActivityTimelineKey(activity, index, actIndex),
                     name: activity.name,
                     time: activity.time,
                     description: activity.description,
@@ -359,9 +299,15 @@ export default function TripDetails() {
     setTripPlan,
     isEditingMode,
     setIsEditingMode,
+    tripAccessRole,
+    trips,
   } = useTripStore();
   const { session } = useAuth();
   const { isOffline } = useNetwork();
+  const resolvedAccessRole =
+    tripAccessRole ?? trips.find((trip) => trip.id === tripPlan?.id)?.accessRole ?? null;
+  const canEditTrip = !isOffline && resolvedAccessRole === 'owner';
+  const editModeActive = canEditTrip && isEditingMode;
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSavingActivity, setIsSavingActivity] = useState(false);
   const [isApplyingEdit, setIsApplyingEdit] = useState(false);
@@ -390,6 +336,12 @@ export default function TripDetails() {
 
   const [activeTab, setActiveTab] = useState<'schedule' | 'budget' | 'map'>('schedule');
   const scrollY = useRef(new Animated.Value(0)).current;
+
+  useFocusEffect(
+    React.useCallback(() => {
+      setActiveTab('schedule');
+    }, [])
+  );
 
   const HEADER_MAX_HEIGHT = 240;
   const HEADER_MIN_HEIGHT = insets.top + 120;
@@ -423,8 +375,14 @@ export default function TripDetails() {
       description: '',
       estimatedCost: '0',
       location: '',
+      coordinates: null as ActivityCoordinates | null,
     }
   });
+  const [locationPicker, setLocationPicker] = useState<{
+    visible: boolean;
+    initialCenter: ActivityCoordinates | null;
+  }>({ visible: false, initialCenter: null });
+  const [timeRangeError, setTimeRangeError] = useState(false);
   const [customAlert, setCustomAlert] = useState({
     visible: false,
     title: '',
@@ -437,6 +395,13 @@ export default function TripDetails() {
       setIsEditingMode(false);
     }
   }, [isOffline, setIsEditingMode]);
+
+  useEffect(() => {
+    if (!canEditTrip && isEditingMode) {
+      setIsEditingMode(false);
+      setBackupPlan(null);
+    }
+  }, [canEditTrip, isEditingMode, setIsEditingMode]);
 
   const resolveScheduleDay = React.useCallback(
     async (dayNumber: number): Promise<TripScheduleDayDto | undefined> => {
@@ -508,20 +473,23 @@ export default function TripDetails() {
     setCustomAlert({ visible: true, title, message, actions });
   };
 
-  const getOtherActivityRanges = (
+  const getActivityScheduleContext = (
     dayIndex: number,
     actIndex: number,
     mode: 'add' | 'edit'
-  ): ActivityTimeRangeInput[] => {
-    const day = tripPlan?.days[dayIndex];
-    if (!day) return [];
+  ): DayActivityScheduleContext => {
+    const days = tripPlan?.days || [];
+    const day = days[dayIndex];
+    if (!day) return { sameDay: [] };
 
-    return day.activities
+    const sameDay = day.activities
       .filter((_, index) => mode === 'add' || index !== actIndex)
-      .map((activity) => ({
-        startTime: activity.time,
-        durationMinutes: activity.durationMinutes,
-      }));
+      .map(toActivityTimeRange);
+
+    const nextDay = days[dayIndex + 1]?.activities.map(toActivityTimeRange);
+    const previousDay = days[dayIndex - 1]?.activities.map(toActivityTimeRange);
+
+    return buildDayScheduleContext(sameDay, nextDay, previousDay);
   };
 
   const validateActivityStartTime = (
@@ -531,13 +499,11 @@ export default function TripDetails() {
     actIndex: number,
     mode: 'add' | 'edit'
   ) => {
-    const resolvedEnd =
-      durationFromTimes(startTime, endTime) === null ? computeEndTime(startTime, 60) : endTime;
-    if (durationFromTimes(startTime, resolvedEnd) === null) return false;
+    if (!isValidActivityTimeRange(startTime, endTime)) return false;
 
-    return !activityRangeOverlapsOthers(
-      { startTime, endTime: resolvedEnd },
-      getOtherActivityRanges(dayIndex, actIndex, mode)
+    return !activityRangeOverlapsSchedule(
+      { startTime, endTime },
+      getActivityScheduleContext(dayIndex, actIndex, mode)
     );
   };
 
@@ -548,60 +514,16 @@ export default function TripDetails() {
     actIndex: number,
     mode: 'add' | 'edit'
   ) => {
-    if (durationFromTimes(startTime, endTime) === null) return false;
+    if (!isValidActivityTimeRange(startTime, endTime)) return false;
 
-    return !activityRangeOverlapsOthers(
+    return !activityRangeOverlapsSchedule(
       { startTime, endTime },
-      getOtherActivityRanges(dayIndex, actIndex, mode)
+      getActivityScheduleContext(dayIndex, actIndex, mode)
     );
   };
 
-  const persistActivityTimeRange = async (time: string, endTime: string) => {
-    const durationMinutes = durationFromTimes(time, endTime);
-    if (durationMinutes === null) return;
-
-    const { dayIndex, actIndex, mode, formData } = actModal;
-    const existing = tripPlan?.days[dayIndex]?.activities[actIndex];
-
-    setActModal((prev) => ({
-      ...prev,
-      formData: { ...prev.formData, time, endTime },
-    }));
-
-    if (mode === 'edit' && existing) {
-      updateActivity(dayIndex, actIndex, { ...existing, time, durationMinutes });
-    }
-
-    const tripId = tripPlan?.id || useTripStore.getState().savedTripId;
-    if (mode !== 'edit' || !existing?.id || !tripId || !session?.access_token || isOffline) {
-      return;
-    }
-
-    try {
-      setIsSavingActivity(true);
-      const response = await updateTripScheduleActivity(session.access_token, tripId, existing.id, {
-        name: formData.name.trim() || existing.name,
-        time,
-        durationMinutes,
-        description: formData.description || existing.description || '',
-        category: formData.category || existing.category,
-        location: formData.location.trim() || existing.location || '',
-        cost: Number(formData.estimatedCost) || existing.estimatedCost || 0,
-      });
-      setScheduleDays(response.days || []);
-      const currentPlan = useTripStore.getState().tripPlan;
-      if (currentPlan) {
-        setTripPlan(mergePlanWithSchedule(currentPlan, response.days || [], false));
-      }
-    } catch (error: any) {
-      Alert.alert('Nie udało się zapisać godziny', error?.message || 'Spróbuj ponownie.');
-    } finally {
-      setIsSavingActivity(false);
-    }
-  };
-
   const openBudgetModal = () => {
-    if (isOffline) return;
+    if (!canEditTrip) return;
     setBudgetModal({ visible: true, value: String(tripPlan?.estimatedTotalCost || 0) });
   };
 
@@ -611,8 +533,15 @@ export default function TripDetails() {
     setBudgetModal({ visible: false, value: '' });
   };
 
+  const activityTimeRangeErrorMessage =
+    'Wybrany przedział godzin koliduje z inną atrakcją tego lub następnego dnia. Popraw początek i koniec.';
+
   const openAddActivity = (dayIndex: number) => {
-    if (isOffline) return;
+    if (!canEditTrip) return;
+    setTimeRangeError(false);
+    const day = tripPlan?.days[dayIndex];
+    const nextDayActivities = tripPlan?.days[dayIndex + 1]?.activities || [];
+    const { startTime, endTime } = getDefaultNewActivityTimes(day?.activities || [], nextDayActivities);
     setActModal({
       visible: true,
       mode: 'add',
@@ -620,18 +549,79 @@ export default function TripDetails() {
       actIndex: -1,
       formData: {
       name: '',
-      time: '09:00',
-      endTime: '10:00',
+      time: startTime,
+      endTime,
       category: 'inne',
       description: '',
       estimatedCost: '0',
       location: '',
+      coordinates: null,
     }
     });
   };
 
+  const resolvePickerInitialCenter = async (): Promise<ActivityCoordinates> => {
+    const day = tripPlan?.days[actModal.dayIndex];
+    const activities = day?.activities || [];
+    let referenceActivity = null;
+
+    if (actModal.mode === 'add') {
+      referenceActivity = activities.length > 0 ? activities[activities.length - 1] : null;
+    } else if (actModal.actIndex > 0) {
+      referenceActivity = activities[actModal.actIndex - 1];
+    } else {
+      referenceActivity = activities[actModal.actIndex] ?? null;
+    }
+
+    const storedCoords = parseActivityCoordinates(referenceActivity?.coordinates);
+    if (storedCoords) return storedCoords;
+
+    if (referenceActivity?.location?.trim()) {
+      const geocoded = await geocodeActivityLocation(referenceActivity.location, tripPlan?.destination || '');
+      if (geocoded) return geocoded;
+    }
+
+    if (actModal.formData.coordinates) {
+      return actModal.formData.coordinates;
+    }
+
+    if (tripPlan?.destination?.trim()) {
+      const destinationCoords = await geocodeActivityLocation(tripPlan.destination, '');
+      if (destinationCoords) return destinationCoords;
+    }
+
+    return { latitude: 52.2297, longitude: 21.0122 };
+  };
+
+  const openLocationPicker = async () => {
+    const initialCenter = await resolvePickerInitialCenter();
+    setLocationPicker({ visible: true, initialCenter });
+  };
+
+  const handleLocationPickerConfirm = async (coordinates: ActivityCoordinates) => {
+    setLocationPicker({ visible: false, initialCenter: null });
+
+    let locationLabel = actModal.formData.location.trim();
+    if (!locationLabel) {
+      const reverseLabel = await reverseGeocodeCoordinates(coordinates);
+      if (reverseLabel) {
+        locationLabel = reverseLabel;
+      }
+    }
+
+    setActModal((prev) => ({
+      ...prev,
+      formData: {
+        ...prev.formData,
+        coordinates,
+        location: locationLabel || prev.formData.location,
+      },
+    }));
+  };
+
   const openEditActivity = (dayIndex: number, actIndex: number, activity: any) => {
-    if (isOffline) return;
+    if (!canEditTrip) return;
+    setTimeRangeError(false);
     setActModal({
       visible: true,
       mode: 'edit',
@@ -645,19 +635,24 @@ export default function TripDetails() {
         description: activity.description || '',
         estimatedCost: String(activity.estimatedCost || 0),
         location: activity.location || '',
+        coordinates: parseActivityCoordinates(activity.coordinates),
       }
     });
   };
 
   const handleSaveActivity = async () => {
     if (!actModal.formData.name.trim()) {
-      Alert.alert('Błąd', 'Nazwa atrakcji jest wymagana');
+      showAlert('Błąd', 'Nazwa atrakcji jest wymagana.', [{ text: 'OK' }]);
       return;
     }
 
     const durationMinutes = durationFromTimes(actModal.formData.time, actModal.formData.endTime);
-    if (durationMinutes === null) {
-      Alert.alert('Błąd', 'Godzina zakończenia musi być późniejsza niż rozpoczęcia.');
+    if (durationMinutes === null || durationMinutes <= 0) {
+      showAlert(
+        'Błąd',
+        'Podaj prawidłowy przedział godzin (koniec może być następnego dnia).',
+        [{ text: 'OK' }]
+      );
       return;
     }
 
@@ -670,7 +665,8 @@ export default function TripDetails() {
         actModal.mode
       )
     ) {
-      Alert.alert('Błąd', 'Wybrany przedział godzin koliduje z inną atrakcją w tym dniu.');
+      setTimeRangeError(true);
+      showAlert('Błąd', activityTimeRangeErrorMessage, [{ text: 'OK' }]);
       return;
     }
 
@@ -682,6 +678,7 @@ export default function TripDetails() {
       description: actModal.formData.description,
       estimatedCost: Number(actModal.formData.estimatedCost) || 0,
       location: actModal.formData.location.trim(),
+      coordinates: actModal.formData.coordinates ?? undefined,
     };
 
     if (actModal.mode === 'add') {
@@ -705,12 +702,32 @@ export default function TripDetails() {
             category: payload.category,
             location: payload.location,
             cost: payload.estimatedCost,
+            coordinates: payload.coordinates ?? null,
           });
 
           setScheduleDays(response.days || []);
           const currentPlan = useTripStore.getState().tripPlan;
           if (currentPlan) {
-            setTripPlan(mergePlanWithSchedule(currentPlan, response.days || [], false));
+            const createdActivity = response.activity
+              ? mapScheduleActivityToPlan(response.activity)
+              : null;
+            const newDays = [...currentPlan.days];
+            const dayActivities = [...newDays[actModal.dayIndex].activities];
+            dayActivities.push(
+              createdActivity ?? {
+                ...payload,
+                clientKey: createClientActivityKey(),
+              }
+            );
+            newDays[actModal.dayIndex] = {
+              ...newDays[actModal.dayIndex],
+              activities: dayActivities,
+              estimatedDayCost: dayActivities.reduce(
+                (sum, activity) => sum + (activity.estimatedCost || 0),
+                0
+              ),
+            };
+            setTripPlan({ ...currentPlan, days: newDays });
           }
         } catch (error: any) {
           Alert.alert('Nie udało się dodać atrakcji', error?.message || 'Spróbuj ponownie.');
@@ -737,11 +754,27 @@ export default function TripDetails() {
             category: payload.category,
             location: payload.location,
             cost: payload.estimatedCost,
+            coordinates: payload.coordinates ?? null,
           });
           setScheduleDays(response.days || []);
           const currentPlan = useTripStore.getState().tripPlan;
           if (currentPlan) {
-            setTripPlan(mergePlanWithSchedule(currentPlan, response.days || [], false));
+            const newDays = [...currentPlan.days];
+            const dayActivities = [...newDays[actModal.dayIndex].activities];
+            dayActivities[actModal.actIndex] = {
+              ...dayActivities[actModal.actIndex],
+              ...payload,
+              id: existing.id,
+            };
+            newDays[actModal.dayIndex] = {
+              ...newDays[actModal.dayIndex],
+              activities: dayActivities,
+              estimatedDayCost: dayActivities.reduce(
+                (sum, activity) => sum + (activity.estimatedCost || 0),
+                0
+              ),
+            };
+            setTripPlan({ ...currentPlan, days: newDays });
           }
         } catch (error: any) {
           Alert.alert('Nie udało się zapisać atrakcji', error?.message || 'Spróbuj ponownie.');
@@ -755,6 +788,7 @@ export default function TripDetails() {
     }
 
     setActModal((prev) => ({ ...prev, visible: false }));
+    setTimeRangeError(false);
   };
 
   const handleAddDay = async () => {
@@ -801,7 +835,7 @@ export default function TripDetails() {
 
     const activityByKey = new Map<string, DayPlan['activities'][number]>();
     day.activities.forEach((activity, actIndex) => {
-      activityByKey.set(activity.id ?? `${dayIndex}-${actIndex}`, activity);
+      activityByKey.set(getActivityTimelineKey(activity, dayIndex, actIndex), activity);
     });
 
     const reorderedActivities = orderedItems
@@ -813,7 +847,7 @@ export default function TripDetails() {
       .filter((activity): activity is DayPlan['activities'][number] => Boolean(activity));
 
     if (reorderedActivities.length !== day.activities.length) {
-      Alert.alert('Błąd', 'Nie udało się ustalić nowej kolejności.');
+      showAlert('Błąd', 'Nie udało się ustalić nowej kolejności.', [{ text: 'OK' }]);
       return;
     }
 
@@ -821,6 +855,7 @@ export default function TripDetails() {
   };
 
   const enterEditMode = async () => {
+    if (!canEditTrip) return;
     const tripId = tripPlan?.id || useTripStore.getState().savedTripId;
     let planForEdit = tripPlan;
 
@@ -830,6 +865,13 @@ export default function TripDetails() {
         const days = response.days || [];
         setScheduleDays(days);
         if (planForEdit) {
+          planForEdit = {
+            ...planForEdit,
+            days: planForEdit.days.map((day) => ({
+              ...day,
+              activities: ensureDayActivityClientKeys(day),
+            })),
+          };
           planForEdit = mergePlanWithSchedule(planForEdit, days, true);
           setTripPlan(planForEdit);
         }
@@ -894,7 +936,7 @@ export default function TripDetails() {
 
     const validation = validateTripPlanSchedule(plan);
     if (!validation.valid) {
-      Alert.alert('Nieprawidłowy harmonogram', validation.message);
+      showAlert('Nieprawidłowy harmonogram', validation.message, [{ text: 'OK' }]);
       return;
     }
 
@@ -1079,7 +1121,7 @@ export default function TripDetails() {
                         index={index}
                         tripDestination={tripPlan.destination}
                         currentColors={currentColors}
-                        isEditingMode={isEditingMode}
+                        isEditingMode={editModeActive}
                         preferredTransport={formData?.transport}
                         onAddActivity={openAddActivity}
                         onEditActivity={openEditActivity}
@@ -1092,7 +1134,7 @@ export default function TripDetails() {
                     />
                 ))}
 
-                {isEditingMode && (
+                {editModeActive && (
                     <TouchableOpacity style={[styles.addDayBtn, { backgroundColor: Colors.brand.blue }]} onPress={handleAddDay}>
                       <Ionicons name="add-circle-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
                       <Text style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}>Dodaj kolejny dzień</Text>
@@ -1117,7 +1159,7 @@ export default function TripDetails() {
                     <Text style={{ color: currentColors.text, fontSize: 28, fontWeight: '800' }}>
                       {tripPlan.estimatedTotalCost} {tripPlan.currency}
                     </Text>
-                    {isEditingMode && (
+                    {editModeActive && (
                         <TouchableOpacity onPress={openBudgetModal} style={{ padding: 6, backgroundColor: 'rgba(59, 130, 246, 0.1)', borderRadius: 20 }}>
                           <Ionicons name="pencil" size={18} color={Colors.brand.blue} />
                         </TouchableOpacity>
@@ -1155,8 +1197,8 @@ export default function TripDetails() {
                 </TouchableOpacity>
 
                 <View style={{ flexDirection: 'row', gap: 10 }}>
-                  {!isOffline && (
-                      isEditingMode ? (
+                  {canEditTrip && (
+                      editModeActive ? (
                           <>
                             <TouchableOpacity
                                 style={[styles.heroNavBtn, { backgroundColor: '#ef4444' }]}
@@ -1207,8 +1249,8 @@ export default function TripDetails() {
                 <Text style={styles.heroCity} numberOfLines={1}>{tripPlan.destination}</Text>
                 <View style={styles.heroBadges}>
                   <TouchableOpacity
-                      style={[styles.heroBadge, isEditingMode && { backgroundColor: Colors.brand.blue, borderColor: 'rgba(255,255,255,0.4)' }]}
-                      disabled={!isEditingMode}
+                      style={[styles.heroBadge, editModeActive && { backgroundColor: Colors.brand.blue, borderColor: 'rgba(255,255,255,0.4)' }]}
+                      disabled={!editModeActive}
                       onPress={() => {
                         const firstDay = tripPlan.days?.[0]?.date || '';
                         const lastDay = tripPlan.days?.[tripPlan.days.length - 1]?.date || firstDay;
@@ -1219,7 +1261,7 @@ export default function TripDetails() {
                     <Text style={styles.heroBadgeText}>
                       {tripPlan.days?.[0]?.date ? `${formatDate(tripPlan.days[0].date)} • ` : ''}{totalDays} dni
                     </Text>
-                    {isEditingMode && <Ionicons name="pencil" size={12} color="#fff" style={{ marginLeft: 6 }} />}
+                    {editModeActive && <Ionicons name="pencil" size={12} color="#fff" style={{ marginLeft: 6 }} />}
                   </TouchableOpacity>
 
                   <View style={styles.heroBadge}>
@@ -1249,7 +1291,7 @@ export default function TripDetails() {
 
         <Modal visible={actModal.visible} transparent animationType="slide">
           <View style={styles.modalOverlay}>
-            <View style={[styles.modalCard, { backgroundColor: currentColors.background }]}>
+            <View style={[styles.modalCard, { backgroundColor: currentColors.card }]}>
               <Text style={[styles.modalTitle, { color: currentColors.text }]}>{actModal.mode === 'add' ? 'Nowa atrakcja' : 'Edytuj atrakcję'}</Text>
               <ScrollView showsVerticalScrollIndicator={false} style={{ width: '100%' }}>
                 <Text style={[styles.inputLabel, { color: currentColors.subtext }]}>Nazwa</Text>
@@ -1260,63 +1302,36 @@ export default function TripDetails() {
                     <Text style={[styles.inputLabel, { color: currentColors.subtext, marginBottom: 6 }]}>Początek</Text>
                     <TimePickerSheet
                       value={actModal.formData.time}
+                      externalInvalid={timeRangeError}
                       onChange={(time) => {
-                        const endTime =
-                          durationFromTimes(time, actModal.formData.endTime) === null
-                            ? computeEndTime(time, 60)
-                            : actModal.formData.endTime;
+                        setTimeRangeError(false);
                         setActModal((p) => ({
                           ...p,
-                          formData: { ...p.formData, time, endTime },
+                          formData: { ...p.formData, time },
                         }));
                       }}
-                      onConfirm={async (time) => {
-                        const endTime =
-                          durationFromTimes(time, actModal.formData.endTime) === null
-                            ? computeEndTime(time, 60)
-                            : actModal.formData.endTime;
-                        await persistActivityTimeRange(time, endTime);
-                      }}
-                      validateDraft={(draft) =>
-                        validateActivityStartTime(
-                          draft,
-                          actModal.formData.endTime,
-                          actModal.dayIndex,
-                          actModal.actIndex,
-                          actModal.mode
-                        )
-                      }
                       label="Godzina rozpoczęcia"
                       textColor={currentColors.text}
                       subtextColor={currentColors.subtext}
                       borderColor={currentColors.border}
-                      cardColor={currentColors.background}
+                      cardColor={currentColors.card}
                     />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.inputLabel, { color: currentColors.subtext, marginBottom: 6 }]}>Koniec</Text>
                     <TimePickerSheet
                       value={actModal.formData.endTime}
-                      onChange={(endTime) =>
-                        setActModal((p) => ({ ...p, formData: { ...p.formData, endTime } }))
-                      }
-                      onConfirm={async (endTime) => {
-                        await persistActivityTimeRange(actModal.formData.time, endTime);
+                      displayValue={formatEndTimeLabel(actModal.formData.time, actModal.formData.endTime)}
+                      externalInvalid={timeRangeError}
+                      onChange={(endTime) => {
+                        setTimeRangeError(false);
+                        setActModal((p) => ({ ...p, formData: { ...p.formData, endTime } }));
                       }}
-                      validateDraft={(draft) =>
-                        validateActivityEndTime(
-                          actModal.formData.time,
-                          draft,
-                          actModal.dayIndex,
-                          actModal.actIndex,
-                          actModal.mode
-                        )
-                      }
                       label="Godzina zakończenia"
                       textColor={currentColors.text}
                       subtextColor={currentColors.subtext}
                       borderColor={currentColors.border}
-                      cardColor={currentColors.background}
+                      cardColor={currentColors.card}
                     />
                   </View>
                 </View>
@@ -1330,18 +1345,34 @@ export default function TripDetails() {
                   keyboardType="numeric"
                 />
                 <Text style={[styles.inputLabel, { color: currentColors.subtext }]}>Lokalizacja (opcjonalnie)</Text>
-                <TextInput
-                  style={[styles.input, { color: currentColors.text, borderColor: currentColors.border }]}
-                  value={actModal.formData.location}
-                  onChangeText={(t) => setActModal((p) => ({ ...p, formData: { ...p.formData, location: t } }))}
-                  placeholder="np. Stare Miasto"
-                  placeholderTextColor={currentColors.subtext}
-                />
+                <View style={styles.locationRow}>
+                  <TextInput
+                    style={[styles.input, styles.locationInput, { color: currentColors.text, borderColor: currentColors.border }]}
+                    value={actModal.formData.location}
+                    onChangeText={(t) => setActModal((p) => ({ ...p, formData: { ...p.formData, location: t } }))}
+                    placeholder="np. Stare Miasto"
+                    placeholderTextColor={currentColors.subtext}
+                  />
+                  <TouchableOpacity
+                    style={[styles.mapPickBtn, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}
+                    onPress={() => {
+                      void openLocationPicker();
+                    }}
+                    accessibilityLabel="Wybierz lokalizację na mapie"
+                  >
+                    <Ionicons name="map-outline" size={22} color={Colors.brand.blue} />
+                  </TouchableOpacity>
+                </View>
+                {actModal.formData.coordinates ? (
+                  <Text style={[styles.mapPickHint, { color: currentColors.subtext }]}>
+                    Wskazano punkt na mapie — będzie widoczny na zakładce Mapa
+                  </Text>
+                ) : null}
                 <Text style={[styles.inputLabel, { color: currentColors.subtext }]}>Opis</Text>
                 <TextInput style={[styles.input, { color: currentColors.text, borderColor: currentColors.border, height: 80, textAlignVertical: 'top' }]} value={actModal.formData.description} onChangeText={t => setActModal(p => ({ ...p, formData: { ...p.formData, description: t } }))} multiline />
               </ScrollView>
               <View style={styles.modalActions}>
-                <TouchableOpacity onPress={() => setActModal(p => ({ ...p, visible: false }))} style={styles.modalCancelBtn}><Text style={{ color: currentColors.subtext, fontWeight: '600' }}>Anuluj</Text></TouchableOpacity>
+                <TouchableOpacity onPress={() => { setTimeRangeError(false); setActModal(p => ({ ...p, visible: false })); }} style={styles.modalCancelBtn}><Text style={{ color: currentColors.subtext, fontWeight: '600' }}>Anuluj</Text></TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleSaveActivity}
                   disabled={isSavingActivity}
@@ -1358,9 +1389,20 @@ export default function TripDetails() {
           </View>
         </Modal>
 
+        <LocationMapPickerModal
+          visible={locationPicker.visible}
+          initialCenter={locationPicker.initialCenter}
+          selectedCoordinates={actModal.formData.coordinates}
+          currentColors={currentColors}
+          onClose={() => setLocationPicker({ visible: false, initialCenter: null })}
+          onConfirm={(coordinates) => {
+            void handleLocationPickerConfirm(coordinates);
+          }}
+        />
+
         <Modal visible={budgetModal.visible} transparent animationType="fade">
           <View style={styles.modalOverlay}>
-            <View style={[styles.modalCard, { backgroundColor: currentColors.background, paddingVertical: 32 }]}>
+            <View style={[styles.modalCard, { backgroundColor: currentColors.card, paddingVertical: 32 }]}>
               <Text style={[styles.modalTitle, { color: currentColors.text, marginBottom: 8 }]}>Edytuj budżet</Text>
               <TextInput style={[styles.input, { color: currentColors.text, borderColor: currentColors.border, width: '100%', fontSize: 24, textAlign: 'center', fontWeight: '700' }]} value={budgetModal.value} onChangeText={t => setBudgetModal(p => ({ ...p, value: t.replace(/[^0-9]/g, '') }))} keyboardType="numeric" />
               <View style={styles.modalActions}>
@@ -1373,7 +1415,7 @@ export default function TripDetails() {
 
         <Modal visible={customAlert.visible} transparent animationType="fade">
           <View style={styles.modalOverlay}>
-            <View style={[styles.modalCard, { backgroundColor: currentColors.background, width: '85%', padding: 24 }]}>
+            <View style={[styles.alertCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}>
               <Text style={[{ fontSize: 20, fontWeight: '800', textAlign: 'center', color: currentColors.text, marginBottom: 12 }]}>{customAlert.title}</Text>
               <Text style={[{ fontSize: 15, textAlign: 'center', color: currentColors.subtext, marginBottom: 24, lineHeight: 22 }]}>{customAlert.message}</Text>
               <View style={{ width: '100%', gap: 10 }}>
@@ -1396,7 +1438,7 @@ export default function TripDetails() {
 
         <Modal visible={datesModal.visible} transparent animationType="fade">
           <View style={styles.modalOverlay}>
-            <View style={[styles.modalCard, { backgroundColor: currentColors.background, paddingVertical: 24, width: '100%' }]}>
+            <View style={[styles.modalCard, { backgroundColor: currentColors.card, paddingVertical: 24, width: '100%' }]}>
               <Text style={[styles.modalTitle, { color: currentColors.text, marginBottom: 16 }]}>Termin wycieczki</Text>
               <ScrollView style={{ width: '100%', flexShrink: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 10 }}>
                 <DateRangePicker departureDate={datesModal.startDate} returnDate={datesModal.endDate} onDatesChange={(start, end) => setDatesModal(prev => ({ ...prev, startDate: start, endDate: end }))} />
@@ -1470,9 +1512,34 @@ const styles = StyleSheet.create({
   editOverlayCard: { borderRadius: 20, paddingHorizontal: 32, paddingVertical: 28, alignItems: 'center', gap: 16, minWidth: 200 },
   editOverlayText: { fontSize: 16, fontWeight: '700' },
   modalCard: { width: '100%', maxHeight: '80%', borderRadius: 24, padding: 24, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.25, shadowRadius: 20, elevation: 10 },
+  alertCard: {
+    width: '85%',
+    maxWidth: 360,
+    borderRadius: 24,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    elevation: 10,
+  },
   modalTitle: { fontSize: 22, fontWeight: '800', marginBottom: 20 },
   inputLabel: { fontSize: 13, fontWeight: '600', marginBottom: 6, marginTop: 12 },
   input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 15 },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  locationInput: { flex: 1, marginBottom: 0 },
+  mapPickBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mapPickHint: { fontSize: 12, marginBottom: 12, lineHeight: 18 },
+  timeRangeErrorText: { fontSize: 12, lineHeight: 18, marginBottom: 12, fontWeight: '600' },
   modalActions: { flexDirection: 'row', marginTop: 24, width: '100%', gap: 12 },
   modalCancelBtn: { flex: 1, paddingVertical: 14, borderRadius: 12, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.05)' },
   modalSaveBtn: { flex: 1, paddingVertical: 14, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },

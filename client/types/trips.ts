@@ -108,4 +108,5 @@ export type TripScheduleActivityInput = {
   category?: string;
   location?: string;
   cost?: number;
+  coordinates?: { latitude: number; longitude: number } | null;
 };

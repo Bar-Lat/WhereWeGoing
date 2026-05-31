@@ -12,6 +12,7 @@ const {
   normalizeDurationMinutes,
   validateTripPlanCoordinates,
 } = require('../utils/activityGeo');
+const { alignTransitAfterActivity } = require('../utils/scheduleTransit');
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
@@ -707,6 +708,7 @@ Priorytet: POPRAWNOŚĆ, nie szybkość. Nie zmieniaj kolejności, nazw ani godz
 Preferowany transport na miejscu: ${transport}.
 Generuj transit tylko miedzy sasiednimi aktywnosciami, gdy da sie ustalic trase: uzyj location aktywnosci, a gdy brak - location sasiedniej aktywnosci. Gdy nadal brak sensownej trasy - pomin ten transit.
 Godziny transitow musza byc chronologiczne wzgledem godzin aktywnosci.
+startTime kazdego transitu MUSI byc >= koniec poprzedniej aktywnosci (time + durationMinutes). Transport nie moze zaczynac sie w trakcie poprzedniej atrakcji.
 
 Zwróć WYŁĄCZNIE pełny obiekt JSON planu (ten sam schemat co wejście + transits w każdym dniu + uzupełnione location/durationMinutes).
 
@@ -750,14 +752,34 @@ const mergeRefinedTripPlan = (originalPlan, refinedPlan) => {
         }),
         transits: Array.isArray(refinedDay.transits)
           ? refinedDay.transits
-              .map((transit, transitIndex) => ({
-                afterActivityIndex:
-                  typeof transit.afterActivityIndex === 'number' ? transit.afterActivityIndex : transitIndex,
-                modeLabel: transit.modeLabel || 'Transport',
-                estimatedCost: roundMoney(transit.estimatedCost),
-                startTime: String(transit.startTime || '09:00').slice(0, 5),
-                endTime: String(transit.endTime || '09:30').slice(0, 5),
-              }))
+              .map((transit, transitIndex) => {
+                const mergedActivities = activities.map((activity, actIndex) => ({
+                  ...activity,
+                  ...(refinedActivities[actIndex] || {}),
+                  durationMinutes: normalizeDurationMinutes(
+                    { ...(refinedActivities[actIndex] || {}), ...activity },
+                    activities,
+                    actIndex
+                  ),
+                }));
+                const from = mergedActivities[
+                  typeof transit.afterActivityIndex === 'number' ? transit.afterActivityIndex : transitIndex
+                ];
+                const rawStart = String(transit.startTime || '09:00').slice(0, 5);
+                const rawEnd = String(transit.endTime || '09:30').slice(0, 5);
+                const aligned = from
+                  ? alignTransitAfterActivity(from, rawStart, rawEnd)
+                  : { startTime: rawStart, endTime: rawEnd };
+
+                return {
+                  afterActivityIndex:
+                    typeof transit.afterActivityIndex === 'number' ? transit.afterActivityIndex : transitIndex,
+                  modeLabel: transit.modeLabel || 'Transport',
+                  estimatedCost: roundMoney(transit.estimatedCost),
+                  startTime: aligned.startTime,
+                  endTime: aligned.endTime,
+                };
+              })
               .filter((transit) => {
                 const mergedActivities = activities.map((activity, actIndex) => ({
                   ...activity,

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { TripDto } from '@/types/trips';
+import { TripDto, TripAccessRole } from '@/types/trips';
 
 export interface TripFormData {
   destination: string;
@@ -27,6 +27,7 @@ export interface DayPlan {
   title: string;
   activities: {
     id?: string;
+    clientKey?: string;
     time: string;
     name: string;
     description: string;
@@ -72,9 +73,11 @@ interface TripStore {
   isLoading: boolean;
   error: string | null;
   trips: TripDto[];
+  tripAccessRole: TripAccessRole | null;
   isEditingMode: boolean;
   removedTripId: string | null;
   setIsEditingMode: (val: boolean) => void;
+  setTripAccessRole: (role: TripAccessRole | null) => void;
   setTrips: (trips: TripDto[]) => void;
   setFormData: (data: TripFormData) => void;
   setTripPlan: (plan: TripPlan) => void;
@@ -102,9 +105,11 @@ export const useTripStore = create<TripStore>((set) => ({
   isLoading: false,
   error: null,
   trips: [],
+  tripAccessRole: null,
   isEditingMode: false,
   removedTripId: null,
   setIsEditingMode: (val) => set({ isEditingMode: val }),
+  setTripAccessRole: (role) => set({ tripAccessRole: role }),
   setTrips: (trips) => set({ trips }),
   setFormData: (data) => set({ formData: data }),
   setTripPlan: (plan) => set({ tripPlan: plan }),
@@ -117,6 +122,7 @@ export const useTripStore = create<TripStore>((set) => ({
       formData: null,
       tripPlan: null,
       savedTripId: null,
+      tripAccessRole: null,
       isLoading: false,
       error: null,
       isEditingMode: false,
@@ -185,7 +191,12 @@ export const useTripStore = create<TripStore>((set) => ({
     set((state) => {
       if (!state.tripPlan) return state;
       const newDays = [...state.tripPlan.days];
-      newDays[dayIndex].activities.push(newActivity);
+      newDays[dayIndex].activities.push({
+        ...newActivity,
+        clientKey:
+          newActivity.clientKey ||
+          (newActivity.id ? undefined : `client-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`),
+      });
       newDays[dayIndex].estimatedDayCost = newDays[dayIndex].activities.reduce(
         (sum, act) => sum + (act.estimatedCost || 0),
         0
