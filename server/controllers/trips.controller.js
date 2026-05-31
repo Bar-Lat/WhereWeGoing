@@ -994,4 +994,9 @@ module.exports = {
   updateTripActivityHandler,
   deleteTripActivityHandler,
   reorderTripDayActivitiesHandler,
+  buildActivityTimestamp,
+  sortTripsByNearestDate,
+  normalizeScheduleActivity,
+  normalizeTrip,
+  formatActivityTime
 };
