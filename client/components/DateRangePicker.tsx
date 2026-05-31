@@ -46,7 +46,6 @@ export default function DateRangePicker({
 }: DateRangePickerProps) {
   const colorScheme = useColorScheme() ?? 'light';
   const currentColors = Colors[colorScheme];
-  const isDark = colorScheme === 'dark';
 
   // Konwertuj do ISO dla kalendarza
   const [startISO, setStartISO] = useState(
@@ -170,6 +169,7 @@ export default function DateRangePicker({
 
       {/* Kalendarz */}
       <Calendar
+        key={colorScheme}
         markingType="period"
         markedDates={buildMarkedDates()}
         onDayPress={handleDayPress}
@@ -179,14 +179,20 @@ export default function DateRangePicker({
           backgroundColor: currentColors.card,
           calendarBackground: currentColors.card,
           textSectionTitleColor: currentColors.subtext,
-          selectedDayBackgroundColor: '#6366f1',
+          textSectionTitleDisabledColor: currentColors.border,
+          selectedDayBackgroundColor: Colors.brand.blue,
           selectedDayTextColor: '#fff',
-          todayTextColor: '#6366f1',
+          todayTextColor: Colors.brand.blue,
           dayTextColor: currentColors.text,
           textDisabledColor: currentColors.border,
-          dotColor: '#6366f1',
-          arrowColor: '#6366f1',
+          dotColor: Colors.brand.blue,
+          selectedDotColor: '#fff',
+          arrowColor: Colors.brand.blue,
+          disabledArrowColor: currentColors.border,
           monthTextColor: currentColors.text,
+          textDayStyle: { color: currentColors.text },
+          textMonthStyle: { color: currentColors.text },
+          textDayHeaderStyle: { color: currentColors.subtext },
           textDayFontWeight: '500',
           textMonthFontWeight: '700',
           textDayHeaderFontWeight: '600',
