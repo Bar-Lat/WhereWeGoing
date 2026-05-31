@@ -11,6 +11,12 @@ type ActivityCostBadgeProps = {
   style?: object;
 };
 
+export const formatPlnAmount = (value: number) =>
+  new Intl.NumberFormat('pl-PL', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+
 export default function ActivityCostBadge({
   cost,
   color = Colors.brand.blue,
@@ -25,7 +31,7 @@ export default function ActivityCostBadge({
   return (
     <View style={[styles.row, style]}>
       <Ionicons name="cash-outline" size={iconSize} color={color} />
-      <Text style={[styles.text, { color, fontSize }]}>{cost} PLN</Text>
+      <Text style={[styles.text, { color, fontSize }]}>{formatPlnAmount(cost)} PLN</Text>
     </View>
   );
 }
