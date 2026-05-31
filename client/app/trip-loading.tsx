@@ -1,9 +1,8 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, Animated, StyleSheet } from 'react-native';
+import { View, Text, Animated, StyleSheet, TouchableOpacity, useColorScheme } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/styles/colors';
-import { useColorScheme } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTripStore } from '@/stores/tripStore';
 import { generateTripPlan, acceptTripPlan } from '@/services/openaiService';
@@ -24,6 +23,30 @@ const STEPS = [
 
 const STEP_INTERVAL = 1200;
 
+const getRetryAfterMinutes = (message: string) => {
+  const match = message.match(/try again in\s+(?:(\d+(?:\.\d+)?)h)?(?:(\d+(?:\.\d+)?)m)?(?:(\d+(?:\.\d+)?)s)?/i);
+
+  if (!match) {
+    return null;
+  }
+
+  const hours = Number(match[1] ?? 0);
+  const minutes = Number(match[2] ?? 0);
+  const seconds = Number(match[3] ?? 0);
+  const totalMinutes = Math.max(1, Math.ceil(hours * 60 + minutes + seconds / 60));
+
+  return totalMinutes;
+};
+
+const formatRetryAfter = (minutes: number) => {
+  if (minutes === 1) return '1 minutę';
+  if (minutes % 10 >= 2 && minutes % 10 <= 4 && (minutes % 100 < 12 || minutes % 100 > 14)) {
+    return `${minutes} minuty`;
+  }
+
+  return `${minutes} minut`;
+};
+
 export default function TripLoadingScreen() {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme() ?? 'light';
@@ -31,6 +54,7 @@ export default function TripLoadingScreen() {
   const router = useRouter();
 
   const [currentStep, setCurrentStep] = useState(-1);
+  const [generationError, setGenerationError] = useState<string | null>(null);
   const progressAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current; // Animacja pulsującej ikony
 
@@ -40,6 +64,7 @@ export default function TripLoadingScreen() {
 
   const apiDoneRef = useRef(false);
   const animDoneRef = useRef(false);
+  const generationFailedRef = useRef(false);
 
   const tryNavigate = useCallback(() => {
     if (apiDoneRef.current && animDoneRef.current) {
@@ -78,6 +103,11 @@ export default function TripLoadingScreen() {
   useEffect(() => {
     let stepIndex = 0;
     const timer = setInterval(() => {
+      if (generationFailedRef.current) {
+        clearInterval(timer);
+        return;
+      }
+
       setCurrentStep(stepIndex);
       stepIndex++;
 
@@ -145,8 +175,12 @@ export default function TripLoadingScreen() {
         apiDoneRef.current = true;
         tryNavigate();
       } catch (err: any) {
-        setError(err.message);
-        console.error('❌ Błąd generatora lub błąd zapisu:', err.message);
+        const message = err?.message || 'Nie udało się wygenerować planu. Spróbuj ponownie później.';
+        generationFailedRef.current = true;
+        clearInterval(timer);
+        setGenerationError(message);
+        setError(message);
+        console.error('❌ Błąd generatora lub błąd zapisu:', message);
       }
     };
 
@@ -159,6 +193,38 @@ export default function TripLoadingScreen() {
     inputRange: [0, 1],
     outputRange: ['0%', '100%'],
   });
+  const retryAfterMinutes = generationError ? getRetryAfterMinutes(generationError) : null;
+  const userFriendlyError = retryAfterMinutes
+    ? `Za duża ilość prób. Spróbuj ponownie za: ${formatRetryAfter(retryAfterMinutes)}.`
+    : 'Nie udało się wygenerować planu. Spróbuj ponownie później.';
+
+  if (generationError) {
+    return (
+      <View style={[styles.container, { backgroundColor: currentColors.background, paddingTop: insets.top + 40 }]}>
+        <View style={styles.iconWrapper}>
+          <View style={[styles.errorIconCircle, { backgroundColor: 'rgba(239, 68, 68, 0.12)' }]}>
+            <Ionicons name="alert-circle-outline" size={44} color="#ef4444" />
+          </View>
+        </View>
+
+        <Text style={[styles.title, { color: currentColors.text }]}>
+          Nie udało się wygenerować planu
+        </Text>
+        <Text style={[styles.subtitle, styles.errorSubtitle, { color: currentColors.subtext }]}>
+          {userFriendlyError}
+        </Text>
+
+        <TouchableOpacity
+          style={[styles.closeButton, { backgroundColor: Colors.brand.blue }]}
+          activeOpacity={0.85}
+          onPress={() => router.replace('/(main)/create')}
+        >
+          <Ionicons name="close-outline" size={20} color="#fff" />
+          <Text style={styles.closeButtonText}>Zamknij</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: currentColors.background, paddingTop: insets.top + 40 }]}>
@@ -270,6 +336,13 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 8,
   },
+  errorIconCircle: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   title: {
     fontSize: 24,
     fontWeight: '800',
@@ -284,6 +357,11 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     paddingHorizontal: 20,
   },
+  errorSubtitle: {
+    fontSize: 18,
+    lineHeight: 26,
+    marginBottom: 28,
+  },
   card: {
     width: '100%',
     borderRadius: 20,
@@ -294,6 +372,22 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 15,
     elevation: 4,
+  },
+  closeButton: {
+    minHeight: 48,
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 6,
+  },
+  closeButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '800',
   },
   stepsContainer: {
     gap: 16,

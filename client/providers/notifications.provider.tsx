@@ -9,6 +9,7 @@ import React, {
 } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '@/providers/auth.provider';
+import { useNetwork } from '@/providers/network.provider';
 import { getMyTrips } from '@/services/trips.api';
 import { getInspirationOffers } from '@/services/inspiration.api';
 import type { TripDto } from '@/types/trips';
@@ -48,6 +49,24 @@ const NotificationsContext = createContext<NotificationsContextValue | undefined
 const READ_NOTIFICATIONS_KEY = 'wherewegoing_read_notifications_v1';
 const NOTIFICATION_OPEN_TIMES_KEY = 'wherewegoing_notification_open_times_v1';
 const DAILY_INSPIRATION_KEY = 'wherewegoing_daily_inspiration_v1';
+const NOTIFICATIONS_CACHE_PREFIX = 'wherewegoing_notifications_cache_v1';
+
+const getNotificationsCacheKey = (userId: string) => `${NOTIFICATIONS_CACHE_PREFIX}:${userId}`;
+
+const isAppNotification = (item: unknown): item is AppNotification => {
+  if (!item || typeof item !== 'object') return false;
+
+  const notification = item as Partial<AppNotification>;
+  return (
+    typeof notification.id === 'string' &&
+    typeof notification.title === 'string' &&
+    typeof notification.message === 'string' &&
+    typeof notification.createdAt === 'string' &&
+    typeof notification.icon === 'string' &&
+    typeof notification.color === 'string' &&
+    (notification.kind === 'trip-reminder' || notification.kind === 'daily-inspiration')
+  );
+};
 
 const getLocalDateKey = (date = new Date()) => {
   const year = date.getFullYear();
@@ -141,9 +160,47 @@ export const NotificationsProvider = ({ children }: { children: React.ReactNode 
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [readIds, setReadIds] = useState<string[]>([]);
   const { session, isAuthenticated } = useAuth();
+  const { isOffline } = useNetwork();
   const accessToken = session?.access_token ?? null;
+  const userId = session?.user?.id ?? null;
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const saveCachedNotifications = useCallback(async (nextNotifications: AppNotification[]) => {
+    if (!userId) return;
+
+    await AsyncStorage.setItem(
+      getNotificationsCacheKey(userId),
+      JSON.stringify(nextNotifications)
+    );
+  }, [userId]);
+
+  const loadCachedNotifications = useCallback(async () => {
+    if (!userId) {
+      setNotifications([]);
+      return;
+    }
+
+    const raw = await AsyncStorage.getItem(getNotificationsCacheKey(userId));
+
+    if (!raw) {
+      setNotifications([]);
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(raw);
+
+      if (Array.isArray(parsed)) {
+        setNotifications(parsed.filter(isAppNotification));
+        return;
+      }
+    } catch {
+      await AsyncStorage.removeItem(getNotificationsCacheKey(userId));
+    }
+
+    setNotifications([]);
+  }, [userId]);
   
   const getClockTime = (date = new Date()) => {
     const hours = String(date.getHours()).padStart(2, '0');
@@ -210,13 +267,19 @@ export const NotificationsProvider = ({ children }: { children: React.ReactNode 
     });
 
     setNotifications(nextNotifications);
+    await saveCachedNotifications(nextNotifications);
 
     if (changed) {
       await AsyncStorage.setItem(NOTIFICATION_OPEN_TIMES_KEY, JSON.stringify(storedTimes));
     }
-  }, [notifications]);
+  }, [notifications, saveCachedNotifications]);
 
   const buildNotifications = useCallback(async () => {
+  if (isOffline) {
+    await loadCachedNotifications();
+    return;
+  }
+
   if (!isAuthenticated || !accessToken) {
     setNotifications([]);
     return;
@@ -270,15 +333,21 @@ export const NotificationsProvider = ({ children }: { children: React.ReactNode 
     }
 
     setNotifications(generated);
+    await saveCachedNotifications(generated);
   } catch {
-    setNotifications([]);
+    await loadCachedNotifications();
   }
-}, [accessToken, isAuthenticated]);
+}, [accessToken, isAuthenticated, isOffline, loadCachedNotifications, saveCachedNotifications]);
 
   useEffect(() => {
     if (timerRef.current) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
+    }
+
+    if (isOffline) {
+      void loadCachedNotifications();
+      return;
     }
 
     if (!isAuthenticated || !accessToken) {
@@ -305,7 +374,7 @@ export const NotificationsProvider = ({ children }: { children: React.ReactNode 
         timerRef.current = null;
       }
     };
-  }, [accessToken, buildNotifications, isAuthenticated]);
+  }, [accessToken, buildNotifications, isAuthenticated, isOffline, loadCachedNotifications]);
 
   useEffect(() => {
     const loadReadIds = async () => {
@@ -376,9 +445,11 @@ export const NotificationsProvider = ({ children }: { children: React.ReactNode 
         return current;
       }
 
-      return [notification, ...current];
+      const nextNotifications = [notification, ...current];
+      void saveCachedNotifications(nextNotifications);
+      return nextNotifications;
     });
-  }, []);
+  }, [saveCachedNotifications]);
 
   const markAsUnread = useCallback(() => {
     void AsyncStorage.removeItem(READ_NOTIFICATIONS_KEY);
