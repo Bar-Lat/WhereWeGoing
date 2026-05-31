@@ -10,7 +10,14 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "icon": "./assets/images/icon/WWG_transparent.png"
+      "icon": "./assets/images/icon/WWG_transparent.png",
+      "bundleIdentifier": "com.pater10.WhereWeGoing",
+      "buildNumber": "1.0.0",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Aplikacja potrzebuje dostępu do galerii, aby ustawić avatar.",
+        "NSCameraUsageDescription": "Aplikacja potrzebuje dostępu do aparatu, aby wykonać zdjęcie avatara.",
+        "NSMicrophoneUsageDescription": "Aplikacja potrzebuje dostępu do mikrofonu do nagrywania dźwięku."
+      }
     },
     "android": {
       "adaptiveIcon": {
