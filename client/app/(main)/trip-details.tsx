@@ -13,6 +13,7 @@ import {
   TextInput,
   ScrollView,
   BackHandler,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -248,6 +249,7 @@ function DayCardView({
                   }))}
                   editable={isEditingMode}
                   showTransits={!isEditingMode}
+                  showOriginToFirstLeg={!isEditingMode && index === 0 && Platform.OS !== 'web'}
                   transitOverrides={mapDayTransitsToOverrides(day.transits)}
                   preferredTransport={preferredTransport}
                   currentColors={currentColors}

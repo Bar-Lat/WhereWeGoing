@@ -16,7 +16,8 @@
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "Aplikacja potrzebuje dostępu do galerii, aby ustawić avatar.",
         "NSCameraUsageDescription": "Aplikacja potrzebuje dostępu do aparatu, aby wykonać zdjęcie avatara.",
-        "NSMicrophoneUsageDescription": "Aplikacja potrzebuje dostępu do mikrofonu do nagrywania dźwięku."
+        "NSMicrophoneUsageDescription": "Aplikacja potrzebuje dostępu do mikrofonu do nagrywania dźwięku.",
+        "NSLocationWhenInUseUsageDescription": "Aplikacja użyje lokalizacji, aby pokazać trasę z Twojego miejsca do pierwszego punktu planu (pierwszy dzień)."
       }
     },
     "android": {
@@ -28,7 +29,9 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "permissions": [
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
       ],
       "package": "com.pater10.WhereWeGoing"
     },
@@ -38,6 +41,12 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Aplikacja użyje lokalizacji, aby pokazać trasę z Twojego miejsca do pierwszego punktu planu (pierwszy dzień)."
+        }
+      ],
       [
         "expo-splash-screen",
         {
