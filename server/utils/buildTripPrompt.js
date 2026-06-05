@@ -70,7 +70,9 @@ Zwróć WYŁĄCZNIE obiekt JSON (bez markdown, bez komentarzy) w tym schemacie:
   "bestTransport": "string (rekomendacja transportu)"
 }
 
-Każdy dzień powinien mieć dokładnie ${attractionsPerDay} atrakcji (nie licząc transportu i posiłków).
+Każdy dzień powinien mieć dokładnie ${attractionsPerDay} atrakcji kategorii "atrakcja". 
+Posiłki (kategoria "jedzenie") i transport (kategoria "transport") są DODATKIEM i nie wliczają się do tej liczby.
+Oznacza to że każdy dzień powinien zawierać ${attractionsPerDay} atrakcji PLUS posiłki i transport.
 Wszystkie koszty (estimatedCost, estimatedDayCost, estimatedTotalCost) dotyczą CAŁEJ grupy ${data.travelers} osób, nie jednej osoby.
 estimatedDayCost każdego dnia musi być równy sumie estimatedCost aktywności tego dnia.
 Suma estimatedDayCost ze wszystkich dni powinna być zbliżona do budżetu ${data.budget} PLN.
