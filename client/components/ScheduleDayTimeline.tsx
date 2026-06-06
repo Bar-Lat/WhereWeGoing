@@ -19,9 +19,11 @@ import { getCategoryColor, getCategoryIcon } from '@/utils/activityCategory';
 import {
   openGoogleMapsBetweenActivities,
   openGoogleMapsFromCurrentLocation,
+  openGoogleMapsFromUserCoordinates,
   openGoogleMapsPlace,
   type MapLocationInput,
 } from '@/utils/googleMapsLinks';
+import { useOriginToFirstActivityTransit } from '@/hooks/useOriginToFirstActivityTransit';
 import ActivityCostBadge, { formatPlnAmount } from '@/components/ActivityCostBadge';
 
 export type TimelineActivityItem = {
@@ -70,6 +72,8 @@ type ScheduleDayTimelineProps = {
   scrollOffsetRef?: React.RefObject<number>;
   showMapActions?: boolean;
   mapLinkMode?: 'directions' | 'place';
+  /** Pierwszy dzień planu (podgląd): trasa z Twojej lokalizacji do pierwszej atrakcji. */
+  showOriginToFirstLeg?: boolean;
 };
 
 const toMapLocation = (item: TimelineActivityItem): MapLocationInput => ({
@@ -301,6 +305,7 @@ export default function ScheduleDayTimeline({
   mapLinkMode = 'directions',
   parentScrollRef,
   scrollOffsetRef,
+  showOriginToFirstLeg = false,
 }: ScheduleDayTimelineProps) {
   const [items, setItems] = useState(activities);
   const [reorderIndex, setReorderIndex] = useState<number | null>(null);
@@ -363,6 +368,35 @@ export default function ScheduleDayTimeline({
     );
   }, [items, preferredTransport, showTransits, transitOverrides]);
 
+  const originActivityInput = useMemo(() => {
+    const first = items[0];
+    if (!first) return null;
+    return {
+      name: first.name,
+      location: first.location,
+      coordinates: first.coordinates,
+      time: first.time,
+      durationMinutes: first.durationMinutes ?? null,
+      category: first.category,
+    };
+  }, [
+    items[0]?.key,
+    items[0]?.name,
+    items[0]?.location,
+    items[0]?.time,
+    items[0]?.durationMinutes,
+    items[0]?.coordinates,
+    items[0]?.category,
+  ]);
+
+  const originEnabled = Boolean(showOriginToFirstLeg && showTransits && items.length > 0);
+  const originTransit = useOriginToFirstActivityTransit(
+    originEnabled,
+    originActivityInput,
+    destination,
+    preferredTransport
+  );
+
   const moveItem = (fromIndex: number, toIndex: number) => {
     if (toIndex < 0 || toIndex >= items.length || fromIndex === toIndex) return;
 
@@ -394,6 +428,10 @@ export default function ScheduleDayTimeline({
 
   const mapActionsVisible = showMapActions ?? !editable;
 
+  const originPending =
+    originTransit.loading ||
+    (originTransit.permissionStatus === null && originEnabled);
+
   if (items.length === 0) {
     return (
       <Text style={[styles.emptyDayText, { color: currentColors.subtext }]}>
@@ -404,6 +442,72 @@ export default function ScheduleDayTimeline({
 
   return (
     <View>
+      {originEnabled && (
+        <View style={styles.originLegWrap}>
+          {originPending ? (
+            <View style={[styles.transitRow, { minHeight: 44 }]}>
+              <View style={styles.transitLeftSpacer} />
+              <View style={[styles.transitBubble, { flex: 1, flexDirection: 'row', alignItems: 'center' }]}>
+                <ActivityIndicator size="small" color={Colors.brand.blue} />
+                <Text style={[styles.transitTime, { marginLeft: 8 }]}>Wczytywanie trasy…</Text>
+              </View>
+            </View>
+          ) : !originTransit.granted ? (
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => {
+                void originTransit.requestPermission();
+              }}
+              style={styles.transitRow}
+            >
+              <View style={styles.transitLeftSpacer} />
+              <View style={styles.transitBubble}>
+                <Ionicons name="location-outline" size={12} color="#94a3b8" />
+                <View style={styles.transitTextBox}>
+                  <Text style={styles.transitTitle}>Wczytaj trasę</Text>
+                  <Text style={styles.transitTime}>
+                    Włącz lokalizację — trasę odświeżymy automatycznie.
+                  </Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+          ) : originTransit.leg && originTransit.userCoords ? (
+            <View style={styles.transitRow}>
+              <View style={styles.transitLeftSpacer} />
+              <View style={styles.transitBubble}>
+                <Ionicons name="swap-horizontal-outline" size={12} color="#94a3b8" />
+                <View style={styles.transitTextBox}>
+                  <Text style={styles.transitTitle}>
+                    {originTransit.leg.modeLabel}
+                    {originTransit.leg.cost > 0 ? ` · ${formatPlnAmount(originTransit.leg.cost)} PLN` : ''}
+                  </Text>
+                  <Text style={styles.transitTime}>{originTransit.leg.timeRangeLabel}</Text>
+                </View>
+              </View>
+              <MapsPillButton
+                onPress={() => {
+                  void openGoogleMapsFromUserCoordinates(
+                    originTransit.userCoords!,
+                    toMapLocation(items[0]),
+                    destination
+                  );
+                }}
+              />
+            </View>
+          ) : (
+            <View style={styles.transitRow}>
+              <View style={styles.transitLeftSpacer} />
+              <View style={styles.transitBubble}>
+                <Ionicons name="alert-circle-outline" size={12} color="#94a3b8" />
+                <View style={styles.transitTextBox}>
+                  <Text style={styles.transitTitle}>Nie udało się wczytać trasy</Text>
+                  <Text style={styles.transitTime}>Uzupełnij adres lub współrzędne pierwszej atrakcji.</Text>
+                </View>
+              </View>
+            </View>
+          )}
+        </View>
+      )}
       {items.map((item, index) => (
         <View key={item.key}>
           <TimelineRow
@@ -445,6 +549,7 @@ export default function ScheduleDayTimeline({
 
 const styles = StyleSheet.create({
   emptyDayText: { fontSize: 14, paddingVertical: 8 },
+  originLegWrap: { marginBottom: 10 },
   timelineRow: { flexDirection: 'row', marginBottom: 4 },
   timelineLeft: { width: 44, alignItems: 'center' },
   timelineDot: { width: 14, height: 14, borderRadius: 7, marginTop: 18, zIndex: 2 },

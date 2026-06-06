@@ -98,6 +98,25 @@ export const openGoogleMapsPlace = async (input: MapLocationInput, tripDestinati
 const buildMapLocationLabel = (input: MapLocationInput, tripDestination: string): string =>
   [input.location, input.name, tripDestination].filter(Boolean).join(', ');
 
+export const openGoogleMapsFromUserCoordinates = async (
+  origin: ActivityCoordinates,
+  input: MapLocationInput,
+  tripDestination: string
+) => {
+  const destCoords = await resolveMapLocation(input, tripDestination);
+  if (destCoords) {
+    await Linking.openURL(buildGoogleMapsBetweenUrl(origin, destCoords));
+    return;
+  }
+
+  const fallback = buildMapLocationLabel(input, tripDestination);
+  if (fallback) {
+    await Linking.openURL(
+      `https://www.google.com/maps/dir/?api=1&origin=${origin.latitude},${origin.longitude}&destination=${encodeURIComponent(fallback)}`
+    );
+  }
+};
+
 export const openGoogleMapsBetweenActivities = async (
   from: MapLocationInput,
   to: MapLocationInput,

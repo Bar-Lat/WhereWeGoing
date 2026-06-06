@@ -1,5 +1,6 @@
 import {
   DEFAULT_ACTIVITY_DURATION_MINUTES,
+  formatEndTimeLabel,
   formatMinutesAsTime,
   getActivityEndMinutes,
   parseTimeToMinutes,
@@ -31,7 +32,7 @@ export type TransitLeg = {
   toLocation: string;
 };
 
-const TRANSPORT_MODES = {
+export const TRANSPORT_MODES = {
   walking: { label: 'Pieszo', speedKmh: 4.5, costPerKm: 0 },
   metro: { label: 'Metro/autobus', speedKmh: 22, costPerKm: 0.85 },
   car: { label: 'Samochód', speedKmh: 32, costPerKm: 2.4 },
@@ -39,6 +40,80 @@ const TRANSPORT_MODES = {
 } as const;
 
 type TransportMode = keyof typeof TRANSPORT_MODES;
+
+/** Odległość po powierzchni Ziemi (km). */
+export const haversineDistanceKm = (
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number => {
+  const R = 6371;
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
+
+const modesForOriginLeg = (preferredTransport: string[] | undefined, distanceKm: number): TransportMode[] => {
+  const prefs = (preferredTransport || []).filter((id): id is TransportMode => id in TRANSPORT_MODES);
+  if (prefs.length > 0) return prefs;
+  return [pickTransportMode(undefined, distanceKm)];
+};
+
+/**
+ * Trasa z bieżącej lokalizacji do pierwszej atrakcji dnia — wybór najkrótszego czasu
+ * spośród preferowanych środków transportu. Czasy kończą się na starcie pierwszej atrakcji.
+ */
+export const computeFastestOriginToFirstActivityLeg = (
+  distanceKm: number,
+  firstActivity: ScheduleActivityLike,
+  preferredTransport?: string[]
+): TransitLeg | null => {
+  const toLocation =
+    firstActivity.location?.trim() ||
+    firstActivity.name?.trim() ||
+    'Pierwszy punkt planu';
+
+  if (!Number.isFinite(distanceKm) || distanceKm < 0) return null;
+
+  const modes = modesForOriginLeg(preferredTransport, Math.max(distanceKm, 0.05));
+  let best: { mode: TransportMode; durationMinutes: number; cost: number } | null = null;
+
+  for (const modeKey of modes) {
+    const mode = TRANSPORT_MODES[modeKey];
+    const durationMinutes = Math.max(5, Math.round((distanceKm / mode.speedKmh) * 60));
+    const cost = Math.round(distanceKm * mode.costPerKm * 2) / 2;
+    if (!best || durationMinutes < best.durationMinutes) {
+      best = { mode: modeKey, durationMinutes, cost };
+    }
+  }
+
+  if (!best) return null;
+
+  const mode = TRANSPORT_MODES[best.mode];
+  const activityStart =
+    parseTimeToMinutes(firstActivity.time ?? '09:00') ?? 9 * 60;
+  const endMinutes = activityStart;
+  const startMinutes = endMinutes - best.durationMinutes;
+  const startTime = formatMinutesAsTime(startMinutes);
+  const endTime = formatMinutesAsTime(endMinutes);
+
+  return {
+    mode: best.mode,
+    modeLabel: mode.label,
+    cost: best.cost,
+    startTime,
+    endTime,
+    timeRangeLabel: `${startTime} - ${formatEndTimeLabel(startTime, endTime)}`,
+    fromLocation: 'Twoja lokalizacja',
+    toLocation,
+  };
+};
 
 const MINUTES_PER_DAY = 24 * 60;
 
