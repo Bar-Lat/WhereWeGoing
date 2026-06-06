@@ -248,22 +248,8 @@ const generateTripPlan = async (req, res, next) => {
       return res.status(422).json({ message: coordinateValidation.message });
     }
 
-    const ownerId = await getUserIdFromRequest(req);
-    let tripId = null;
-
-    if (ownerId) {
-      const { trip, error: persistError } = await persistTripPlan({
-        ownerId,
-        formData: req.body,
-        tripPlan,
-      });
-      if (persistError || !trip) {
-        return res.status(500).json({ message: persistError?.message || 'Nie udało się zapisać wycieczki' });
-      }
-      tripId = trip.id;
-    }
-
-    return res.status(200).json({ tripPlan, tripId });
+    // Zapis do bazy tylko w POST /trip/accept — inaczej powstają dwie wycieczki (generate + accept).
+    return res.status(200).json({ tripPlan, tripId: null });
   } catch (err) {
     return next(err);
   }

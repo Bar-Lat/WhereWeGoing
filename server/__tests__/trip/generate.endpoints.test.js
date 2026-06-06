@@ -1,7 +1,7 @@
 /**
  * TESTY INTEGRACYJNE – generowanie wycieczki (POST /api/trip/generate)
  *
- * Walidacja formularza, zapis do bazy, odpowiedz tripPlan/tripId.
+ * Walidacja formularza, odpowiedz tripPlan (bez zapisu przy generate — zapis w /trip/accept).
  * Wywolanie Groq jest mockowane – szczegoly HTTP w groq.api.test.js.
  */
 
@@ -158,7 +158,7 @@ describe('POST /api/trip/generate – generowanie wycieczki', () => {
     process.env.GROQ_API_KEY = process.env.GROQ_API_KEY || 'test-groq-key';
   });
 
-  it('200 – plan zapisany w trips, trip_days i activities, zwrocony tripId', async () => {
+  it('200 – zwraca plan AI; zapis do bazy dopiero w /trip/accept (brak podwójnej wycieczki)', async () => {
     withValidAuth();
     mockGroqSuccess();
     setupPersistMocks();
@@ -173,10 +173,10 @@ describe('POST /api/trip/generate – generowanie wycieczki', () => {
     expect(res.body.tripPlan.destination).toBe('Krakow');
     expect(res.body.tripPlan.days).toHaveLength(1);
     expect(res.body.tripPlan.days[0].activities).toHaveLength(1);
-    expect(res.body.tripId).toBe(TRIP_ID);
-    expect(createTrip).toHaveBeenCalledTimes(1);
-    expect(createTripDays).toHaveBeenCalledTimes(1);
-    expect(createActivities).toHaveBeenCalledTimes(1);
+    expect(res.body.tripId).toBeNull();
+    expect(createTrip).not.toHaveBeenCalled();
+    expect(createTripDays).not.toHaveBeenCalled();
+    expect(createActivities).not.toHaveBeenCalled();
   });
 
   it('200 – bez tokenu plan zwracany, zapis pominiety, tripId null', async () => {
@@ -258,20 +258,4 @@ describe('POST /api/trip/generate – generowanie wycieczki', () => {
     expect(createTrip).not.toHaveBeenCalled();
   });
 
-  it('500 – blad zapisu wycieczki w bazie (zalogowany uzytkownik)', async () => {
-    withValidAuth();
-    mockGroqSuccess();
-    createTrip.mockResolvedValue({
-      data: null,
-      error: { message: 'Blad zapisu trips' },
-    });
-
-    const res = await request(app)
-      .post('/api/trip/generate')
-      .set('Authorization', 'Bearer valid-token')
-      .send(VALID_FORM);
-
-    expect(res.status).toBe(500);
-    expect(res.body.message).toContain('Blad zapisu');
-  });
 });

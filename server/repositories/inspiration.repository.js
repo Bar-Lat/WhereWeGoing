@@ -1,6 +1,7 @@
 const { supabaseDbClient } = require('../configs/supabaseClient');
 const { createTripDays } = require('./tripDays.repository');
 const { createActivities } = require('./activities.repository');
+const { addParticipant } = require('./tripParticipants.repository');
 
 const TRIP_COLUMNS = `
   id,
@@ -276,6 +277,16 @@ const createTripFromOffer = async ({ ownerId, offer }) => {
 
   if (scheduleError) {
     return { data: null, error: scheduleError };
+  }
+
+  const { error: participantError } = await addParticipant({
+    tripId: data.id,
+    userId: ownerId,
+    role: 'owner',
+    amountOwed: 0,
+  });
+  if (participantError) {
+    return { data: null, error: participantError };
   }
 
   return { data, error };
