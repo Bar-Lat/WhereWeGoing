@@ -155,9 +155,37 @@ const recalculateTripCostSplit = async (tripId) => {
     return { error: tripError || new Error('Wycieczka nie znaleziona') };
   }
 
-  const { data: participantRows, error: participantsError } = await getParticipantsByTripId(tripId);
+  let { data: participantRows, error: participantsError } = await getParticipantsByTripId(tripId);
   if (participantsError) {
     return { error: participantsError };
+  }
+
+  const ownerId = trip.owner_id;
+  if (ownerId) {
+    const rowsBefore = participantRows || [];
+    const hasOwnerRow = rowsBefore.some((row) => row.user_id === ownerId);
+    if (!hasOwnerRow) {
+      const { error: insertOwnerError } = await addParticipant({
+        tripId,
+        userId: ownerId,
+        role: 'owner',
+        amountOwed: 0,
+      });
+      if (insertOwnerError) {
+        const msg = String(insertOwnerError.message || '').toLowerCase();
+        const code = insertOwnerError.code;
+        const isDuplicate =
+          code === '23505' || msg.includes('duplicate') || msg.includes('unique') || msg.includes('already exists');
+        if (!isDuplicate) {
+          return { error: insertOwnerError };
+        }
+      }
+      const refetched = await getParticipantsByTripId(tripId);
+      if (refetched.error) {
+        return { error: refetched.error };
+      }
+      participantRows = refetched.data;
+    }
   }
 
   const rows = participantRows || [];
@@ -170,15 +198,28 @@ const recalculateTripCostSplit = async (tripId) => {
     return { error: activitiesError };
   }
 
-  const totalCost = activitiesTotal ?? Number(trip.total_budget) ?? 0;
-  const amountPerPerson = totalCost / rows.length;
-  const { error: updateError } = await updateAllParticipantsAmountOwed(tripId, amountPerPerson);
+  const activityNumeric =
+    activitiesTotal !== null && activitiesTotal !== undefined && Number.isFinite(Number(activitiesTotal))
+      ? Number(activitiesTotal)
+      : null;
+  const budgetParsed = Number(trip.total_budget);
+  const safeBudget = Number.isFinite(budgetParsed) ? budgetParsed : 0;
+  const totalCost =
+    activityNumeric !== null && activityNumeric > 0 ? activityNumeric : safeBudget;
+  const totalCostSafe = Number.isFinite(totalCost) ? Math.max(0, totalCost) : 0;
+
+  const amountPerPerson = totalCostSafe / rows.length;
+  const amountPerPersonSafe = Number.isFinite(amountPerPerson) ? amountPerPerson : 0;
+  // Często amount_owed w bazie to INTEGER / BIGINT — ułamki powodują błąd zapisu i komunikat o nieudanym przeliczeniu.
+  const amountPerPersonRounded = Math.round(amountPerPersonSafe);
+
+  const { error: updateError } = await updateAllParticipantsAmountOwed(tripId, amountPerPersonRounded);
 
   if (updateError) {
     return { error: updateError };
   }
 
-  return { amountPerPerson, participantCount: rows.length, totalCost };
+  return { amountPerPerson: amountPerPersonRounded, participantCount: rows.length, totalCost: totalCostSafe };
 };
 
 const buildParticipantsList = async (trip) => {
@@ -250,7 +291,13 @@ const getTrips = async (req, res, next) => {
       return res.status(500).json({ message: sharedError.message });
     }
 
-    const trips = [...safeOwnedTrips, ...(sharedTrips || [])];
+    const mergedTrips = [...safeOwnedTrips, ...(sharedTrips || [])];
+    const seenTripIds = new Set();
+    const trips = mergedTrips.filter((trip) => {
+      if (!trip?.id || seenTripIds.has(trip.id)) return false;
+      seenTripIds.add(trip.id);
+      return true;
+    });
     const tripIds = trips.map((trip) => trip.id);
     const { data: allParticipantRows, error: participantCountError } = await getParticipantsByTripIds(tripIds);
 

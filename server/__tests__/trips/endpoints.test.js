@@ -46,7 +46,9 @@ jest.mock('../../repositories/tripParticipants.repository', () => ({
   getParticipantsByTripIds: jest.fn().mockResolvedValue({ data: [], error: null }),
   getParticipantByTripAndUser: jest.fn().mockResolvedValue({ data: null, error: null }),
   getParticipantsByTripId: jest.fn().mockResolvedValue({ data: [], error: null }),
-  updateAllParticipantsAmountOwed: jest.fn().mockResolvedValue({ error: null }), 
+  addParticipant: jest.fn().mockResolvedValue({ data: { id: 'part-owner', user_id: 'user-abc-123', role: 'owner' }, error: null }),
+  deleteParticipant: jest.fn().mockResolvedValue({ error: null }),
+  updateAllParticipantsAmountOwed: jest.fn().mockResolvedValue({ error: null }),
 }));
 
 jest.mock('../../repositories/activities.repository', () => ({
@@ -215,6 +217,19 @@ describe('POST /api/trip/:id/days/:dayId/activities', () => {
     daysRepo.getTripDayById.mockResolvedValue({ data: DAY_ROW, error: null });
     activityRepo.createActivity.mockResolvedValue({ data: ACTIVITY_ROW, error: null });
     activityRepo.getNextOrderIndexForDay.mockResolvedValue({ orderIndex: 1, error: null });
+    participantRepo.getParticipantsByTripId.mockResolvedValue({
+      data: [
+        {
+          id: 'part-1',
+          trip_id: 'trip-1',
+          user_id: VALID_USER.id,
+          role: 'owner',
+          amount_owed: 0,
+          currency: 'PLN',
+        },
+      ],
+      error: null,
+    });
 
     const res = await request(app)
       .post('/api/trip/trip-1/days/day-1/activities')
@@ -251,6 +266,19 @@ describe('DELETE /api/trip/:id/activities/:activityId', () => {
     tripRepo.getTripById.mockResolvedValue({ data: TRIP_ROW, error: null });
     activityRepo.getActivityWithDay.mockResolvedValue({ activity: ACTIVITY_ROW, day: DAY_ROW, error: null });
     activityRepo.deleteActivityById.mockResolvedValue({ error: null });
+    participantRepo.getParticipantsByTripId.mockResolvedValue({
+      data: [
+        {
+          id: 'part-1',
+          trip_id: 'trip-1',
+          user_id: VALID_USER.id,
+          role: 'owner',
+          amount_owed: 0,
+          currency: 'PLN',
+        },
+      ],
+      error: null,
+    });
 
     const res = await request(app)
       .delete('/api/trip/trip-1/activities/act-1')

@@ -748,7 +748,7 @@ export default function Trips() {
     (response: { days: TripScheduleDayDto[]; totalCost: number | null; participants?: TripParticipantDto[] }) => {
       setScheduleDays(response.days);
       setOfflineCacheDirty(true);
-      if (response.participants?.length) {
+      if (Array.isArray(response.participants)) {
         setParticipants(response.participants);
       }
       setSelectedTrip((current) =>
