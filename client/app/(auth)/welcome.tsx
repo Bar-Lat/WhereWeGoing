@@ -6,82 +6,88 @@ import Logo from '@/assets/images/WhereWeGoingLogo.png';
 import GradientButton from '@/components/GradientButton';
 import { Colors } from '@/styles/colors';
 import { styles } from '@/styles/welcome.styles';
+import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const { width } = Dimensions.get('window');
 
+// Używamy aliasu @/ dla pewności, że bundler znajdzie pliki
 const DATA = [
   {
     id: '1',
     title: 'Paryż',
-    description: 'Wieża Eiffla',
-    image: require('../../assets/images/cities/paris.jpg'),
+    description: 'Wieża Eiffla i romantyczne uliczki',
+    image: require('@/assets/images/cities/paris.jpg'),
+    days: 4,
+    price: 1200,
   },
   {
     id: '2',
     title: 'Barcelona',
-    description: 'Pyszne tapas',
-    image: require('../../assets/images/cities/barcelona.jpg'),
+    description: 'Słońce, Gaudí i pyszne tapas',
+    image: require('@/assets/images/cities/barcelona.jpg'),
+    days: 5,
+    price: 1450,
   },
   {
     id: '3',
     title: 'Londyn',
-    description: 'Angielska herbatka',
-    image: require('../../assets/images/cities/london.jpg'),
+    description: 'Kultowe miejsca i herbata o piątej',
+    image: require('@/assets/images/cities/london.jpg'),
+    days: 3,
+    price: 980,
   },
   {
     id: '4',
     title: 'Tokio',
-    description: 'Sushi omakase',
-    image: require('../../assets/images/cities/tokyo.jpg'),
+    description: 'Tradycja spotyka nowoczesność',
+    image: require('@/assets/images/cities/tokyo.jpg'),
+    days: 7,
+    price: 3500,
   },
   {
     id: '5',
     title: 'Wenecja',
-    description: 'Zachód słońca',
-    image: require('../../assets/images/cities/venice.jpg'),
+    description: 'Rejsy gondolą o zachodzie słońca',
+    image: require('@/assets/images/cities/venice.jpg'),
+    days: 4,
+    price: 1300,
   },
   {
     id: '6',
     title: 'Warszawa',
-    description: 'Życie nocne',
-    image: require('../../assets/images/cities/warsaw.jpg'),
+    description: 'Dynamiczna stolica pełna historii i nocnego życia',
+    image: require('@/assets/images/cities/warsaw.jpg'),
+    days: 3,
+    price: 850,
   },
 ];
 
-// Budujemy listę do nieskończonej pętli: [Ostatni, 1, 2, 3, 4, Pierwszy]
 const SLIDES = [DATA[DATA.length - 1], ...DATA, DATA[0]];
 
 export default function Welcome() {
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
   const currentColors = Colors[colorScheme];
-  
-  // Startujemy od indeksu 1 (prawdziwy pierwszy slajd)
+
   const [currentIndex, setCurrentIndex] = useState(1);
   const flatListRef = useRef<FlatList>(null);
 
-  // Funkcja do obsługi zapętlenia bez animacji
   const handleScroll = (event: any) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
     const index = Math.round(contentOffsetX / width);
 
-    // Jeśli jesteśmy na "fałszywym" ostatnim (końcu), skaczemy na prawdziwy pierwszy
     if (index >= SLIDES.length - 1) {
       flatListRef.current?.scrollToOffset({ offset: width, animated: false });
       setCurrentIndex(1);
-    } 
-    // Jeśli jesteśmy na "fałszywym" pierwszym (początku), skaczemy na prawdziwy ostatni
-    else if (index <= 0) {
+    } else if (index <= 0) {
       flatListRef.current?.scrollToOffset({ offset: width * (SLIDES.length - 2), animated: false });
       setCurrentIndex(SLIDES.length - 2);
-    } 
-    else {
+    } else {
       setCurrentIndex(index);
     }
   };
 
-  // Automatyczne przesuwanie zawsze w prawo
   useEffect(() => {
     const interval = setInterval(() => {
       flatListRef.current?.scrollToIndex({
@@ -92,21 +98,37 @@ export default function Welcome() {
     return () => clearInterval(interval);
   }, [currentIndex]);
 
+  const formatPrice = (price: number) => {
+    return `${new Intl.NumberFormat('pl-PL').format(price)} PLN`;
+  };
+
   const renderItem = ({ item }: { item: typeof DATA[0] }) => (
-  <View style={styles.slideWrapper}>
+    <View style={styles.slideWrapper}>
       <View style={styles.slideContainer}>
         <Image source={item.image} style={styles.slideImage} />
-      <LinearGradient
-        colors={['rgba(0, 0, 0, 0)', 'rgba(0, 0, 0, 0.9)']}
-        locations={[0.5, 1]}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-        style={styles.slideGradientOverlay}
-      />
-      
+        <LinearGradient
+          colors={['rgba(0, 0, 0, 0)', 'rgba(0, 0, 0, 0.8)']}
+          locations={[0.4, 1]}
+          style={styles.slideGradientOverlay}
+        />
+        
         <View style={styles.slideTextWrapper}>
           <Text style={styles.slideTitle}>{item.title}</Text>
-          <Text style={styles.slideDescription}>{item.description}</Text>
+          <Text style={styles.slideDescription} numberOfLines={2}>
+            {item.description}
+          </Text>
+          
+          <View style={styles.metaRow}>
+            <View style={styles.welcomeMetaPill}>
+              <Ionicons name="time-outline" size={14} color="#fff" />
+              <Text style={styles.welcomeMetaText}>{item.days} dni</Text>
+            </View>
+            
+            <View style={styles.welcomeMetaPill}>
+              <Ionicons name="cash-outline" size={14} color="#fff" />
+              <Text style={styles.welcomeMetaText}>{formatPrice(item.price)}</Text>
+            </View>
+          </View>
         </View>
       </View>
     </View>
@@ -114,7 +136,6 @@ export default function Welcome() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: currentColors.background }]}>
-      
       <Stack.Screen options={{ headerShown: false }} />
       
       <View style={styles.header}>
@@ -131,22 +152,16 @@ export default function Welcome() {
           pagingEnabled
           showsHorizontalScrollIndicator={false}
           onMomentumScrollEnd={handleScroll}
-          // Optymalizacja przesuwania
           getItemLayout={(_, index) => ({
             length: width,
             offset: width * index,
             index,
           })}
-          // Startujemy od razu od pierwszego prawdziwego zdjęcia
           contentOffset={{ x: width, y: 0 }}
         />
-
-
-
-        {/* Kropki - mapujemy po oryginalnej tablicy DATA */}
+        
         <View style={styles.dotsContainer}>
           {DATA.map((_, index) => {
-            // Logika kropki musi uwzględniać przesunięcie o 1
             const activeDot = (currentIndex - 1 + DATA.length) % DATA.length;
             return (
               <View 
