@@ -20,6 +20,7 @@ import {
   openGoogleMapsBetweenActivities,
   openGoogleMapsFromCurrentLocation,
   openGoogleMapsFromUserCoordinates,
+  openGoogleMapsToUserCoordinates,
   openGoogleMapsPlace,
   type MapLocationInput,
 } from '@/utils/googleMapsLinks';
@@ -74,6 +75,10 @@ type ScheduleDayTimelineProps = {
   mapLinkMode?: 'directions' | 'place';
   /** Pierwszy dzień planu (podgląd): trasa z Twojej lokalizacji do pierwszej atrakcji. */
   showOriginToFirstLeg?: boolean;
+  /** Ostatni dzień planu (podgląd): trasa z ostatniej atrakcji do Twojej lokalizacji. */
+  showLastToOriginLeg?: boolean;
+  /** Dynamiczny koszt dojazdu/powrotu widoczny tylko w UI, bez zapisu w bazie. */
+  onDynamicTravelCostChange?: (cost: number) => void;
 };
 
 const toMapLocation = (item: TimelineActivityItem): MapLocationInput => ({
@@ -306,6 +311,8 @@ export default function ScheduleDayTimeline({
   parentScrollRef,
   scrollOffsetRef,
   showOriginToFirstLeg = false,
+  showLastToOriginLeg = false,
+  onDynamicTravelCostChange,
 }: ScheduleDayTimelineProps) {
   const [items, setItems] = useState(activities);
   const [reorderIndex, setReorderIndex] = useState<number | null>(null);
@@ -397,6 +404,36 @@ export default function ScheduleDayTimeline({
     preferredTransport
   );
 
+  const returnActivityInput = useMemo(() => {
+    const last = items[items.length - 1];
+    if (!last) return null;
+    return {
+      name: last.name,
+      location: last.location,
+      coordinates: last.coordinates,
+      time: last.time,
+      durationMinutes: last.durationMinutes ?? null,
+      category: last.category,
+    };
+  }, [
+    items[items.length - 1]?.key,
+    items[items.length - 1]?.name,
+    items[items.length - 1]?.location,
+    items[items.length - 1]?.time,
+    items[items.length - 1]?.durationMinutes,
+    items[items.length - 1]?.coordinates,
+    items[items.length - 1]?.category,
+  ]);
+
+  const returnEnabled = Boolean(showLastToOriginLeg && showTransits && items.length > 0);
+  const returnTransit = useOriginToFirstActivityTransit(
+    returnEnabled,
+    returnActivityInput,
+    destination,
+    preferredTransport,
+    'activity-to-origin'
+  );
+
   const moveItem = (fromIndex: number, toIndex: number) => {
     if (toIndex < 0 || toIndex >= items.length || fromIndex === toIndex) return;
 
@@ -431,6 +468,15 @@ export default function ScheduleDayTimeline({
   const originPending =
     originTransit.loading ||
     (originTransit.permissionStatus === null && originEnabled);
+  const returnPending =
+    returnTransit.loading ||
+    (returnTransit.permissionStatus === null && returnEnabled);
+
+  useEffect(() => {
+    const originCost = originEnabled ? Number(originTransit.leg?.cost) || 0 : 0;
+    const returnCost = returnEnabled ? Number(returnTransit.leg?.cost) || 0 : 0;
+    onDynamicTravelCostChange?.(originCost + returnCost);
+  }, [originEnabled, originTransit.leg?.cost, returnEnabled, returnTransit.leg?.cost, onDynamicTravelCostChange]);
 
   if (items.length === 0) {
     return (
@@ -543,6 +589,72 @@ export default function ScheduleDayTimeline({
           )}
         </View>
       ))}
+      {returnEnabled && (
+        <View style={styles.originLegWrap}>
+          {returnPending ? (
+            <View style={[styles.transitRow, { minHeight: 44 }]}>
+              <View style={styles.transitLeftSpacer} />
+              <View style={[styles.transitBubble, { flex: 1, flexDirection: 'row', alignItems: 'center' }]}>
+                <ActivityIndicator size="small" color={Colors.brand.blue} />
+                <Text style={[styles.transitTime, { marginLeft: 8 }]}>Wczytywanie powrotu…</Text>
+              </View>
+            </View>
+          ) : !returnTransit.granted ? (
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => {
+                void returnTransit.requestPermission();
+              }}
+              style={styles.transitRow}
+            >
+              <View style={styles.transitLeftSpacer} />
+              <View style={styles.transitBubble}>
+                <Ionicons name="location-outline" size={12} color="#94a3b8" />
+                <View style={styles.transitTextBox}>
+                  <Text style={styles.transitTitle}>Wczytaj powrót</Text>
+                  <Text style={styles.transitTime}>
+                    Włącz lokalizację — trasę powrotną odświeżymy automatycznie.
+                  </Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+          ) : returnTransit.leg && returnTransit.userCoords ? (
+            <View style={styles.transitRow}>
+              <View style={styles.transitLeftSpacer} />
+              <View style={styles.transitBubble}>
+                <Ionicons name="swap-horizontal-outline" size={12} color="#94a3b8" />
+                <View style={styles.transitTextBox}>
+                  <Text style={styles.transitTitle}>
+                    Powrót do domu · {returnTransit.leg.modeLabel}
+                    {returnTransit.leg.cost > 0 ? ` · ${formatPlnAmount(returnTransit.leg.cost)} PLN` : ''}
+                  </Text>
+                  <Text style={styles.transitTime}>{returnTransit.leg.timeRangeLabel}</Text>
+                </View>
+              </View>
+              <MapsPillButton
+                onPress={() => {
+                  void openGoogleMapsToUserCoordinates(
+                    toMapLocation(items[items.length - 1]),
+                    returnTransit.userCoords!,
+                    destination
+                  );
+                }}
+              />
+            </View>
+          ) : (
+            <View style={styles.transitRow}>
+              <View style={styles.transitLeftSpacer} />
+              <View style={styles.transitBubble}>
+                <Ionicons name="alert-circle-outline" size={12} color="#94a3b8" />
+                <View style={styles.transitTextBox}>
+                  <Text style={styles.transitTitle}>Nie udało się wczytać powrotu</Text>
+                  <Text style={styles.transitTime}>Uzupełnij adres lub współrzędne ostatniej atrakcji.</Text>
+                </View>
+              </View>
+            </View>
+          )}
+        </View>
+      )}
     </View>
   );
 }

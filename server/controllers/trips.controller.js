@@ -45,6 +45,25 @@ const getDisplayName = (profile) => {
   return name || 'Uzytkownik WhereWeGoing';
 };
 
+const parseTripPlanFromNotes = (notes) => {
+  if (!notes) return {};
+  try {
+    return typeof notes === 'string' ? JSON.parse(notes) : notes;
+  } catch {
+    return {};
+  }
+};
+
+const sumTransitCostsFromTripPlan = (tripPlan) => {
+  const days = Array.isArray(tripPlan?.days) ? tripPlan.days : [];
+  return days.reduce((total, day) => {
+    const transits = Array.isArray(day?.transits) ? day.transits : [];
+    return total + transits.reduce((sum, transit) => sum + (Number(transit?.estimatedCost) || 0), 0);
+  }, 0);
+};
+
+const sumTransitCostsFromTripNotes = (notes) => sumTransitCostsFromTripPlan(parseTripPlanFromNotes(notes));
+
 const normalizeTrip = (trip, userId, participantsCount = 0, totalCost = null) => ({
   id: trip.id,
   ownerId: trip.owner_id,
@@ -204,8 +223,10 @@ const recalculateTripCostSplit = async (tripId) => {
       : null;
   const budgetParsed = Number(trip.total_budget);
   const safeBudget = Number.isFinite(budgetParsed) ? budgetParsed : 0;
-  const totalCost =
-    activityNumeric !== null && activityNumeric > 0 ? activityNumeric : safeBudget;
+  const transitTotal = sumTransitCostsFromTripNotes(trip.notes);
+  const planCost =
+    (activityNumeric !== null && activityNumeric > 0 ? activityNumeric : 0) + transitTotal;
+  const totalCost = planCost > 0 ? planCost : safeBudget;
   const totalCostSafe = Number.isFinite(totalCost) ? Math.max(0, totalCost) : 0;
 
   const amountPerPerson = totalCostSafe / rows.length;
@@ -321,7 +342,12 @@ const getTrips = async (req, res, next) => {
         const uniqueParticipantIds = participantsByTripId[trip.id] || new Set();
         uniqueParticipantIds.add(trip.owner_id);
         const activityTotal = totalsByTripId[trip.id] ?? null;
-        return normalizeTrip(trip, userId, uniqueParticipantIds.size, activityTotal);
+        const transitTotal = sumTransitCostsFromTripNotes(trip.notes);
+        const totalCost =
+          activityTotal !== null || transitTotal > 0
+            ? (Number(activityTotal) || 0) + transitTotal
+            : null;
+        return normalizeTrip(trip, userId, uniqueParticipantIds.size, totalCost);
       }));
 
     return res.status(200).json({ trips: normalizedTrips });
@@ -637,15 +663,6 @@ const normalizeScheduleTransit = (transit, index) => ({
   endTime: typeof transit?.endTime === 'string' ? transit.endTime.slice(0, 5) : '09:30',
 });
 
-const parseTripPlanFromNotes = (notes) => {
-  if (!notes) return {};
-  try {
-    return typeof notes === 'string' ? JSON.parse(notes) : notes;
-  } catch {
-    return {};
-  }
-};
-
 const getTransitsByDayNumber = (tripPlan) => {
   const days = Array.isArray(tripPlan?.days) ? tripPlan.days : [];
   return days.reduce((acc, day) => {
@@ -693,10 +710,14 @@ const buildSchedulePayload = async (tripId) => {
     transits: transitsByDayNumber[day.day_number] || undefined,
   }));
 
-  const totalCost = days.reduce(
-    (sum, day) => sum + day.activities.reduce((daySum, activity) => daySum + (Number(activity.cost) || 0), 0),
-    0
-  );
+  const totalCost = days.reduce((sum, day) => {
+    const activityTotal = day.activities.reduce((daySum, activity) => daySum + (Number(activity.cost) || 0), 0);
+    const transitTotal = (day.transits || []).reduce(
+      (daySum, transit) => daySum + (Number(transit.estimatedCost) || 0),
+      0
+    );
+    return sum + activityTotal + transitTotal;
+  }, 0);
 
   return { days, totalCost: totalCost > 0 ? totalCost : null };
 };

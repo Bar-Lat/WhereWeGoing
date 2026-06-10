@@ -117,6 +117,25 @@ export const openGoogleMapsFromUserCoordinates = async (
   }
 };
 
+export const openGoogleMapsToUserCoordinates = async (
+  input: MapLocationInput,
+  destination: ActivityCoordinates,
+  tripDestination: string
+) => {
+  const originCoords = await resolveMapLocation(input, tripDestination);
+  if (originCoords) {
+    await Linking.openURL(buildGoogleMapsBetweenUrl(originCoords, destination));
+    return;
+  }
+
+  const fallback = buildMapLocationLabel(input, tripDestination);
+  if (fallback) {
+    await Linking.openURL(
+      `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(fallback)}&destination=${destination.latitude},${destination.longitude}`
+    );
+  }
+};
+
 export const openGoogleMapsBetweenActivities = async (
   from: MapLocationInput,
   to: MapLocationInput,

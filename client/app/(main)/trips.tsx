@@ -11,6 +11,7 @@ import {
   View,
   useColorScheme,
 } from 'react-native';
+import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -39,6 +40,12 @@ import { getCachedOfflineTrips, removeCachedOfflineTrip, saveCachedOfflineTrip }
 import { useTripStore, TripPlan } from '@/stores/tripStore';
 import type { FriendProfile } from '@/types/friends';
 import type { TripDto, TripParticipantDto, TripScheduleDayDto } from '@/types/trips';
+import { parseActivityCoordinates, type ActivityCoordinates } from '@/utils/activityMap';
+import {
+  computeFastestOriginToFirstActivityLeg,
+  computeLastActivityToOriginLeg,
+  haversineDistanceKm,
+} from '@/utils/scheduleTransit';
 
 const PLACEHOLDER_IMAGES = [
   'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=900',
@@ -137,6 +144,12 @@ const formatBudget = (value: number | null | undefined) => {
 
 const getTripDisplayCost = (trip: TripDto) => trip.totalCost ?? trip.totalBudget;
 
+const getDisplayedTripCost = (trip: TripDto, dynamicTravelCost = 0) => {
+  const baseCost = getTripDisplayCost(trip);
+  if (baseCost === null || baseCost === undefined) return dynamicTravelCost > 0 ? dynamicTravelCost : baseCost;
+  return Number(baseCost) + dynamicTravelCost;
+};
+
 const formatParticipantCost = (value: number | null | undefined, currency = 'PLN') => {
   if (value === null || value === undefined || Number.isNaN(Number(value))) {
     return 'Brak naliczonego kosztu';
@@ -145,6 +158,61 @@ const formatParticipantCost = (value: number | null | undefined, currency = 'PLN
 };
 
 const getStatusMeta = (status: string) => statusLabels[status] || { label: status || 'Plan', color: Colors.brand.blue };
+
+const getFirstScheduleActivity = (days: TripScheduleDayDto[]) => {
+  for (const day of days) {
+    const activity = day.activities?.[0];
+    if (activity) return activity;
+  }
+  return null;
+};
+
+const getLastScheduleActivity = (days: TripScheduleDayDto[]) => {
+  for (let dayIndex = days.length - 1; dayIndex >= 0; dayIndex -= 1) {
+    const activities = days[dayIndex]?.activities || [];
+    const activity = activities[activities.length - 1];
+    if (activity) return activity;
+  }
+  return null;
+};
+
+const getScheduleActivityCoords = (activity: ReturnType<typeof getFirstScheduleActivity>) =>
+  parseActivityCoordinates(activity?.coordinates);
+
+const estimateDynamicTravelCost = (user: ActivityCoordinates, days: TripScheduleDayDto[]) => {
+  const first = getFirstScheduleActivity(days);
+  const last = getLastScheduleActivity(days);
+  const firstCoords = getScheduleActivityCoords(first);
+  const lastCoords = getScheduleActivityCoords(last);
+
+  const firstLeg = first && firstCoords
+    ? computeFastestOriginToFirstActivityLeg(
+        haversineDistanceKm(user.latitude, user.longitude, firstCoords.latitude, firstCoords.longitude),
+        {
+          name: first.name,
+          location: first.location,
+          time: first.time,
+          durationMinutes: first.durationMinutes,
+          category: first.category,
+        }
+      )
+    : null;
+
+  const returnLeg = last && lastCoords
+    ? computeLastActivityToOriginLeg(
+        haversineDistanceKm(user.latitude, user.longitude, lastCoords.latitude, lastCoords.longitude),
+        {
+          name: last.name,
+          location: last.location,
+          time: last.time,
+          durationMinutes: last.durationMinutes,
+          category: last.category,
+        }
+      )
+    : null;
+
+  return (Number(firstLeg?.cost) || 0) + (Number(returnLeg?.cost) || 0);
+};
 
 const getTripImage = (trip: TripDto | any, index: number) => {
   const url = trip.imageUrl || trip.image_url;
@@ -307,6 +375,8 @@ export default function Trips() {
   const [tripListFilter, setTripListFilter] = useState<TripListFilter>('all');
   const [scheduleExpanded, setScheduleExpanded] = useState(false);
   const [scheduleDays, setScheduleDays] = useState<TripScheduleDayDto[]>([]);
+  const [selectedTripDynamicTravelCost, setSelectedTripDynamicTravelCost] = useState(0);
+  const [tripDynamicTravelCosts, setTripDynamicTravelCosts] = useState<Record<string, number>>({});
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [scheduleSaving, setScheduleSaving] = useState(false);
   const [offlineSaving, setOfflineSaving] = useState(false);
@@ -333,6 +403,42 @@ export default function Trips() {
     selectedTrip && getNearestTripForOffline(trips)?.id === selectedTrip.id
   );
   const selectedTripCanBeRemovedFromOffline = selectedTripIsSavedOffline && !selectedTripIsNearestOffline;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadDynamicTravelCost = async () => {
+      setSelectedTripDynamicTravelCost(0);
+      if (!selectedTrip || scheduleDays.length === 0 || isOffline) return;
+
+      try {
+        const permission = await Location.requestForegroundPermissionsAsync();
+        if (permission.status !== 'granted') return;
+
+        const position = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        const userCoords = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        };
+        const cost = estimateDynamicTravelCost(userCoords, scheduleDays);
+        if (!cancelled) {
+          setSelectedTripDynamicTravelCost(Math.round(cost * 100) / 100);
+        }
+      } catch {
+        if (!cancelled) {
+          setSelectedTripDynamicTravelCost(0);
+        }
+      }
+    };
+
+    void loadDynamicTravelCost();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOffline, scheduleDays, selectedTrip]);
 
   useEffect(() => {
     let isMounted = true;
@@ -533,6 +639,7 @@ export default function Trips() {
       setParticipants([]);
       setFriends([]);
       setScheduleDays([]);
+      setSelectedTripDynamicTravelCost(0);
       setScheduleExpanded(false);
       setOfflineCacheDirty(false);
       await loadPanelData(trip);
@@ -562,6 +669,7 @@ export default function Trips() {
     setParticipants([]);
     setFriends([]);
     setScheduleDays([]);
+    setSelectedTripDynamicTravelCost(0);
     setScheduleExpanded(false);
     setActionProfileId(null);
     setOfflineCacheDirty(false);
@@ -667,14 +775,13 @@ export default function Trips() {
     const parsedData: any = parseStoredTripPlan(rawPlan);
 
     let planDays = Array.isArray(parsedData?.days) ? parsedData.days : [];
-    let planTotalCost = trip.totalCost ?? trip.totalBudget ?? trip.total_budget ?? 0;
+    const declaredBudget = trip.totalBudget ?? trip.total_budget ?? parsedData?.estimatedTotalCost ?? 0;
 
     if (accessToken) {
       try {
         const scheduleResponse = await getTripSchedule(accessToken, trip.id);
         if (scheduleResponse.days?.length) {
           planDays = mapScheduleDaysToPlanDays(scheduleResponse.days);
-          planTotalCost = scheduleResponse.totalCost ?? planTotalCost;
         }
       } catch (error) {
         console.error('❌ BŁĄD POBIERANIA HARMONOGRAMU:', error);
@@ -686,7 +793,7 @@ export default function Trips() {
       destination: trip.destination || "Nieznane miejsce",
       summary: parsedData?.summary || getTripDescription(trip.notes) || "Brak opisu",
       totalDays: planDays.length,
-      estimatedTotalCost: planTotalCost,
+      estimatedTotalCost: declaredBudget,
       currency: parsedData?.currency || "PLN",
       days: planDays,
       generalTips: Array.isArray(parsedData?.generalTips) ? parsedData.generalTips : [],
@@ -730,6 +837,59 @@ export default function Trips() {
     return sortTripsByNearestDate(filteredTrips);
   }, [tripListFilter, trips]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadCardTravelCosts = async () => {
+      if (!accessToken || isOffline || visibleTrips.length === 0) {
+        setTripDynamicTravelCosts({});
+        return;
+      }
+
+      try {
+        const permission = await Location.getForegroundPermissionsAsync();
+        if (permission.status !== 'granted') {
+          setTripDynamicTravelCosts({});
+          return;
+        }
+
+        const position = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        const userCoords = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        };
+
+        const entries = await Promise.all(
+          visibleTrips.map(async (trip) => {
+            try {
+              const schedule = await getTripSchedule(accessToken, trip.id);
+              const cost = estimateDynamicTravelCost(userCoords, schedule.days || []);
+              return [trip.id, Math.round(cost * 100) / 100] as const;
+            } catch {
+              return [trip.id, 0] as const;
+            }
+          })
+        );
+
+        if (!cancelled) {
+          setTripDynamicTravelCosts(Object.fromEntries(entries));
+        }
+      } catch {
+        if (!cancelled) {
+          setTripDynamicTravelCosts({});
+        }
+      }
+    };
+
+    void loadCardTravelCosts();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, isOffline, visibleTrips]);
+
   const selectedTripIndex = useMemo(() => {
     if (!selectedTrip) return 0;
     const index = trips.findIndex((trip) => trip.id === selectedTrip.id);
@@ -738,6 +898,13 @@ export default function Trips() {
 
   const selectedTripDays = selectedTrip ? getTripDays(selectedTrip) : null;
   const selectedStatusMeta = selectedTrip ? getTripStatusMeta(selectedTrip) : null;
+  const selectedTripDisplayedCost = selectedTrip
+    ? getDisplayedTripCost(selectedTrip, selectedTripDynamicTravelCost)
+    : null;
+  const selectedTripDisplayedAmountPerPerson =
+    selectedTripDisplayedCost !== null && selectedTripDisplayedCost !== undefined && participants.length > 0
+      ? selectedTripDisplayedCost / participants.length
+      : null;
   
   const scheduleActivityCount = useMemo(
     () => scheduleDays.reduce((sum, day) => sum + day.activities.length, 0),
@@ -905,6 +1072,7 @@ export default function Trips() {
     const statusMeta = getTripStatusMeta(trip);
     const days = getTripDays(trip);
     const isOwner = trip.accessRole === 'owner';
+    const displayedCost = getDisplayedTripCost(trip, tripDynamicTravelCosts[trip.id] || 0);
     return (
       <TouchableOpacity
         key={trip.id}
@@ -942,7 +1110,7 @@ export default function Trips() {
             </View>
             <View style={[styles.metaPill, { backgroundColor: currentColors.background }]}> 
               <Ionicons name="wallet-outline" size={16} color={Colors.brand.yellow} />
-              <Text style={[styles.metaPillText, { color: currentColors.text }]}>{formatBudget(getTripDisplayCost(trip))}</Text>
+              <Text style={[styles.metaPillText, { color: currentColors.text }]}>{formatBudget(displayedCost)}</Text>
             </View>
           </View>
 
@@ -983,7 +1151,10 @@ export default function Trips() {
             {participant.isOwner ? 'Organizator wycieczki' : 'Uczestnik wycieczki'}
           </Text>
           <Text style={[styles.personCost, { color: Colors.brand.blue }]}>
-            {formatParticipantCost(participant.amountOwed, participant.currency)}
+            {formatParticipantCost(
+              selectedTripDisplayedAmountPerPerson ?? participant.amountOwed,
+              participant.currency
+            )}
           </Text>
         </View>
         {canRemove && 
@@ -1051,7 +1222,7 @@ export default function Trips() {
           <View style={styles.detailsGridRow}>
             <View style={[styles.detailsCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}>
               <Ionicons name="wallet-outline" size={20} color={Colors.brand.yellow} />
-              <Text style={[styles.detailsValue, { color: currentColors.text }]}>{formatBudget(getTripDisplayCost(selectedTrip))}</Text>
+              <Text style={[styles.detailsValue, { color: currentColors.text }]}>{formatBudget(selectedTripDisplayedCost)}</Text>
               <Text style={[styles.detailsLabel, { color: currentColors.subtext }]}>koszt</Text>
             </View>
             <View style={[styles.detailsCard, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}>

@@ -4,6 +4,7 @@ import * as Location from 'expo-location';
 import type { ActivityCoordinates } from '@/utils/activityMap';
 import { resolveMapLocation } from '@/utils/googleMapsLinks';
 import {
+  computeLastActivityToOriginLeg,
   computeFastestOriginToFirstActivityLeg,
   haversineDistanceKm,
   type TransitLeg,
@@ -22,7 +23,8 @@ export function useOriginToFirstActivityTransit(
   enabled: boolean,
   firstActivity: OriginFirstActivityInput | null,
   destination: string,
-  preferredTransport?: string[]
+  preferredTransport?: string[],
+  direction: 'origin-to-activity' | 'activity-to-origin' = 'origin-to-activity'
 ) {
   const [permissionStatus, setPermissionStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -97,14 +99,17 @@ export function useOriginToFirstActivityTransit(
       }
 
       const km = haversineDistanceKm(user.latitude, user.longitude, dest.latitude, dest.longitude);
-      const computed = computeFastestOriginToFirstActivityLeg(km, fa, preferredRef.current);
+      const computed =
+        direction === 'activity-to-origin'
+          ? computeLastActivityToOriginLeg(km, fa, preferredRef.current)
+          : computeFastestOriginToFirstActivityLeg(km, fa, preferredRef.current);
       setLeg(computed);
     } catch {
       setLeg(null);
     } finally {
       setLoading(false);
     }
-  }, [enabled, destination]);
+  }, [enabled, destination, direction]);
 
   useEffect(() => {
     if (!enabled || !fingerprint) {
@@ -115,7 +120,7 @@ export function useOriginToFirstActivityTransit(
       return;
     }
     void refresh();
-  }, [enabled, fingerprint, destination, refresh]);
+  }, [enabled, fingerprint, destination, direction, refresh]);
 
   useEffect(() => {
     if (!enabled) return;

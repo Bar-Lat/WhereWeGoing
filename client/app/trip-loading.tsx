@@ -4,10 +4,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/styles/colors';
 import { useRouter } from 'expo-router';
-import { useTripStore } from '@/stores/tripStore';
+import { useTripStore, type TripPlan } from '@/stores/tripStore';
 import { generateTripPlan, acceptTripPlan } from '@/services/openaiService';
 import { getTripSchedule } from '@/services/trips.api';
 import { mapScheduleDaysToPlanDays } from '@/utils/mapScheduleToPlan';
+import { buildTransitsForActivities } from '@/utils/scheduleTransit';
 import { useAuth } from '@/providers/auth.provider';
 import { useNotifications } from '@/providers/notifications.provider';
 
@@ -149,12 +150,31 @@ export default function TripLoadingScreen() {
         };
         // -------------------------------------------
 
+        const planWithLocalTransits: TripPlan = {
+          ...plan,
+          days: (plan.days || []).map((day) => ({
+            ...day,
+            transits: day.transits?.length
+              ? day.transits
+              : buildTransitsForActivities(
+                  (day.activities || []).map((activity) => ({
+                    name: activity.name,
+                    location: activity.location,
+                    category: activity.category,
+                    time: activity.time,
+                    durationMinutes: activity.durationMinutes,
+                  })),
+                  safeFormData.transport || []
+                ),
+          })),
+        };
+
         // 2. Automatyczny zapis w tle 
-        let savedPlan = plan;
+        let savedPlan = planWithLocalTransits;
 
         if (session?.access_token) {
-          const response = await acceptTripPlan(safeFormData, plan, session.access_token);
-          savedPlan = (response.tripPlan as typeof plan) ?? plan;
+          const response = await acceptTripPlan(safeFormData, planWithLocalTransits, session.access_token);
+          savedPlan = (response.tripPlan as typeof planWithLocalTransits) ?? planWithLocalTransits;
           savedPlan.id = response.tripId;
 
           if (!savedPlan.days?.every((day) => day.activities?.every((act) => act.coordinates))) {

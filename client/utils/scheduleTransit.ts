@@ -37,6 +37,9 @@ export const TRANSPORT_MODES = {
   metro: { label: 'Metro/autobus', speedKmh: 22, costPerKm: 0.85 },
   car: { label: 'Samochód', speedKmh: 32, costPerKm: 2.4 },
   bike: { label: 'Rower', speedKmh: 14, costPerKm: 0 },
+  bus: { label: 'Autobus dalekobieżny', speedKmh: 70, costPerKm: 0.18 },
+  train: { label: 'Pociąg', speedKmh: 110, costPerKm: 0.28 },
+  flight: { label: 'Samolot', speedKmh: 780, costPerKm: 0.22 },
 } as const;
 
 type TransportMode = keyof typeof TRANSPORT_MODES;
@@ -61,8 +64,40 @@ export const haversineDistanceKm = (
 
 const modesForOriginLeg = (preferredTransport: string[] | undefined, distanceKm: number): TransportMode[] => {
   const prefs = (preferredTransport || []).filter((id): id is TransportMode => id in TRANSPORT_MODES);
+  if (distanceKm >= 1000) return ['flight'];
+  if (distanceKm >= 250) {
+    const longDistancePrefs = prefs.filter((mode) => mode === 'train' || mode === 'bus' || mode === 'flight');
+    return longDistancePrefs.length > 0 ? longDistancePrefs : ['train'];
+  }
+  if (distanceKm >= 80) {
+    const regionalPrefs = prefs.filter((mode) => mode !== 'walking' && mode !== 'bike');
+    return regionalPrefs.length > 0 ? regionalPrefs : ['bus'];
+  }
   if (prefs.length > 0) return prefs;
   return [pickTransportMode(undefined, distanceKm)];
+};
+
+const estimateTransportCost = (modeKey: TransportMode, distanceKm: number) => {
+  const safeDistance = Math.max(distanceKm, 0);
+
+  if (modeKey === 'flight') {
+    return Math.round(Math.min(2600, Math.max(350, 450 + safeDistance * 0.22)));
+  }
+
+  if (modeKey === 'train') {
+    return Math.round(Math.min(900, Math.max(40, safeDistance * 0.28)));
+  }
+
+  if (modeKey === 'bus') {
+    return Math.round(Math.min(650, Math.max(30, safeDistance * 0.18)));
+  }
+
+  if (modeKey === 'car') {
+    return Math.round(Math.min(700, safeDistance * TRANSPORT_MODES.car.costPerKm) * 2) / 2;
+  }
+
+  const mode = TRANSPORT_MODES[modeKey];
+  return Math.round(safeDistance * mode.costPerKm * 2) / 2;
 };
 
 /**
@@ -87,7 +122,7 @@ export const computeFastestOriginToFirstActivityLeg = (
   for (const modeKey of modes) {
     const mode = TRANSPORT_MODES[modeKey];
     const durationMinutes = Math.max(5, Math.round((distanceKm / mode.speedKmh) * 60));
-    const cost = Math.round(distanceKm * mode.costPerKm * 2) / 2;
+    const cost = estimateTransportCost(modeKey, distanceKm);
     if (!best || durationMinutes < best.durationMinutes) {
       best = { mode: modeKey, durationMinutes, cost };
     }
@@ -136,11 +171,70 @@ const pickTransportMode = (
   const prefs = (preferredTransport || []).filter(Boolean);
   if (prefs.includes('walking') && distanceKm <= 2) return 'walking';
   if (prefs.includes('bike') && distanceKm <= 6) return 'bike';
-  if (prefs.includes('car')) return 'car';
+  if (distanceKm >= 1000) return 'flight';
+  if (distanceKm >= 250) {
+    if (prefs.includes('train')) return 'train';
+    if (prefs.includes('bus')) return 'bus';
+    if (prefs.includes('flight')) return 'flight';
+    return 'train';
+  }
+  if (distanceKm >= 80) {
+    if (prefs.includes('train')) return 'train';
+    if (prefs.includes('bus')) return 'bus';
+    if (prefs.includes('flight')) return 'flight';
+    return 'bus';
+  }
+  if (prefs.includes('car') && distanceKm <= 120) return 'car';
   if (prefs.includes('metro')) return 'metro';
   if (distanceKm <= 1.5) return 'walking';
   if (distanceKm <= 8) return 'metro';
-  return 'car';
+  if (distanceKm <= 80) return 'car';
+  return 'bus';
+};
+
+export const computeLastActivityToOriginLeg = (
+  distanceKm: number,
+  lastActivity: ScheduleActivityLike,
+  preferredTransport?: string[]
+): TransitLeg | null => {
+  const fromLocation =
+    lastActivity.location?.trim() ||
+    lastActivity.name?.trim() ||
+    'Ostatni punkt planu';
+
+  if (!Number.isFinite(distanceKm) || distanceKm < 0) return null;
+
+  const modes = modesForOriginLeg(preferredTransport, Math.max(distanceKm, 0.05));
+  let best: { mode: TransportMode; durationMinutes: number; cost: number } | null = null;
+
+  for (const modeKey of modes) {
+    const mode = TRANSPORT_MODES[modeKey];
+    const durationMinutes = Math.max(5, Math.round((distanceKm / mode.speedKmh) * 60));
+    const cost = estimateTransportCost(modeKey, distanceKm);
+    if (!best || durationMinutes < best.durationMinutes) {
+      best = { mode: modeKey, durationMinutes, cost };
+    }
+  }
+
+  if (!best) return null;
+
+  const mode = TRANSPORT_MODES[best.mode];
+  const activityEnd =
+    getActivityEndMinutes(lastActivity.time ?? '17:00', lastActivity.durationMinutes) ??
+    ((parseTimeToMinutes(lastActivity.time) ?? 17 * 60) + DEFAULT_ACTIVITY_DURATION_MINUTES);
+  const startTime = formatMinutesAsTime(activityEnd);
+  const endTime = formatMinutesAsTime(activityEnd + best.durationMinutes);
+
+  return {
+    mode: best.mode,
+    modeLabel: mode.label,
+    cost: best.cost,
+    startTime,
+    endTime,
+    timeRangeLabel: `${startTime} - ${formatEndTimeLabel(startTime, endTime)}`,
+    fromLocation,
+    toLocation: 'Twoja lokalizacja',
+  };
 };
 
 const resolveActivityLocation = (
@@ -237,7 +331,7 @@ export const computeTransitLeg = (
   const modeKey = pickTransportMode(options?.preferredTransport, distanceKm);
   const mode = TRANSPORT_MODES[modeKey];
   const durationMinutes = Math.max(5, Math.round((distanceKm / mode.speedKmh) * 60));
-  const cost = Math.round(distanceKm * mode.costPerKm * 2) / 2;
+  const cost = estimateTransportCost(modeKey, distanceKm);
 
   const earliestStart =
     getActivityEndMinutes(from.time ?? '09:00', from.durationMinutes) ??

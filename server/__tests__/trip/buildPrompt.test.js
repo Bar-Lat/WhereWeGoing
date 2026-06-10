@@ -80,6 +80,30 @@ describe('buildPrompt()', () => {
     expect(prompt).toContain('4000 PLN (1000 PLN/osobę)');
   });
 
+  it('wymusza realistyczny transport dla tras dalekodystansowych', () => {
+    const prompt = buildPrompt(BASE_DATA);
+
+    expect(prompt).toContain('powyżej 1000 km');
+    expect(prompt).toContain('rekomenduj samolot, nie samochód');
+    expect(prompt).toContain('20-35% budżetu');
+    expect(prompt).toContain('nie dodawaj dojazdu z domu ani powrotu do domu jako aktywności');
+    expect(prompt).toContain('aplikacja pokazuje te odcinki dynamicznie');
+    expect(prompt).toContain('w bestTransport opisz rekomendowany dojazd i powrót');
+  });
+
+  it('wymaga sensownego wykorzystania budzetu i noclegow przy dluzszych wyjazdach', () => {
+    const prompt = buildPrompt({
+      ...BASE_DATA,
+      destination: 'Gdansk',
+      budget: 3000,
+    });
+
+    expect(prompt).toContain('2250-2850 PLN');
+    expect(prompt).toContain('75-95% budżetu');
+    expect(prompt).toContain('400 PLN przy budżecie 3000 PLN');
+    expect(prompt).toContain('Dla 4 dni zwykle zaplanuj 3 noclegi');
+  });
+
   it('domyslnie ustawia attractionsPerDay na 3 gdy brak w danych', () => {
     const prompt = buildPrompt(BASE_DATA);
 
