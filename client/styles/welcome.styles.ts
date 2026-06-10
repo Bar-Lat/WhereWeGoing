@@ -1,8 +1,6 @@
 import { Dimensions, StyleSheet } from 'react-native';
 
 const { width, height } = Dimensions.get('window');
-
-// Prosta funkcja pomocnicza do sprawdzania czy to mały ekran
 const isSmallDevice = height < 700;
 
 export const styles = StyleSheet.create({
@@ -11,7 +9,6 @@ export const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    // Używamy marginu zamiast sztywnego marginTop: '15%'
     marginTop: isSmallDevice ? 20 : 40,
     zIndex: 20,
   },
@@ -31,22 +28,27 @@ export const styles = StyleSheet.create({
     width: width,
     justifyContent: 'center',
     alignItems: 'center',
-    // Zmniejszamy padding na mniejszych urządzeniach
     paddingHorizontal: isSmallDevice ? 16 : 24,
   },
   slideContainer: {
     width: width - (isSmallDevice ? 32 : 48),
     height: height * 0.55, 
-    minHeight: 320, // Żeby na bardzo małych nie zrobił się pasek
-    maxHeight: 500, // Żeby na iPadach nie był gigantyczny
+    minHeight: 320,
+    maxHeight: 500,
     borderRadius: 32,
     overflow: 'hidden',
     justifyContent: 'flex-end',
     padding: isSmallDevice ? 20 : 32,
-    
+    // Dodany cień dla kafelka
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 8,
   },
   slideImage: {
-    position: 'absolute',
+    // Rozciągnięcie na pełny ekran kafelka, aby wyeliminować białe marginesy
+    ...StyleSheet.absoluteFillObject,
     width: '130%', 
     height: '120%',
     resizeMode: 'cover',
@@ -54,25 +56,48 @@ export const styles = StyleSheet.create({
   slideGradientOverlay: {
     ...StyleSheet.absoluteFillObject,
   },
+  slideTextWrapper: {
+    zIndex: 10,
+  },
   slideTitle: {
     color: '#ffffff',
-    fontSize: isSmallDevice ? 26 : 32, // Skalujemy font
+    fontSize: isSmallDevice ? 26 : 32,
     fontWeight: 'bold',
-    marginBottom: 8,
-    textShadowColor: 'rgba(0, 0, 0, 0.8)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 10,
+    marginBottom: 6,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   slideDescription: {
     color: '#f0f0f0',
     fontSize: isSmallDevice ? 14 : 16,
-    lineHeight: isSmallDevice ? 20 : 24,
-    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    lineHeight: isSmallDevice ? 20 : 22,
+    marginBottom: 16,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 8,
+    textShadowRadius: 3,
   },
-  slideTextWrapper: {
-    zIndex: 10,
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  welcomeMetaPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
+    gap: 6,
+  },
+  welcomeMetaText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '600',
   },
   dotsContainer: {
     flexDirection: 'row',
@@ -89,7 +114,6 @@ export const styles = StyleSheet.create({
   footer: {
     width: '100%',
     paddingHorizontal: 24,
-    // paddingBottom zostanie obsłużony przez SafeAreaView
     zIndex: 20,
   },
   footerBase: {

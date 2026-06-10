@@ -3,6 +3,7 @@ import {
   View, Text, ScrollView, TouchableOpacity, 
   Image, useColorScheme, ActivityIndicator 
 } from 'react-native';
+import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,9 +21,15 @@ import { resolveHomeScheduleDay } from '@/utils/homeScheduleDay';
 import { formatActivityTimeRange } from '@/utils/activityTime';
 import { getCategoryIcon } from '@/utils/activityCategory';
 import ActivityCostBadge from '@/components/ActivityCostBadge';
-import type { TripScheduleActivityDto } from '@/types/trips';
+import type { TripScheduleActivityDto, TripScheduleDayDto } from '@/types/trips';
 import { useAuth } from '@/providers/auth.provider';
 import { getCachedOfflineTrips, type CachedOfflineTrip } from '@/services/offlineTrip.storage';
+import { parseActivityCoordinates, type ActivityCoordinates } from '@/utils/activityMap';
+import {
+  computeFastestOriginToFirstActivityLeg,
+  computeLastActivityToOriginLeg,
+  haversineDistanceKm,
+} from '@/utils/scheduleTransit';
 
 // --- HELPERY DO DAT ---
 // Zakładamy, że startDate przychodzi z bazy jako ISO string, np. "2024-06-12T00:00:00.000Z" lub "2024-06-12"
@@ -64,6 +71,58 @@ const sortTripsByNearestDate = <T extends { trip: any }>(items: T[]) => {
   });
 };
 
+const getFirstScheduleActivity = (days: TripScheduleDayDto[]) => {
+  for (const day of days) {
+    const activity = day.activities?.[0];
+    if (activity) return activity;
+  }
+  return null;
+};
+
+const getLastScheduleActivity = (days: TripScheduleDayDto[]) => {
+  for (let dayIndex = days.length - 1; dayIndex >= 0; dayIndex -= 1) {
+    const activities = days[dayIndex]?.activities || [];
+    const activity = activities[activities.length - 1];
+    if (activity) return activity;
+  }
+  return null;
+};
+
+const estimateDynamicTravelCost = (user: ActivityCoordinates, days: TripScheduleDayDto[]) => {
+  const first = getFirstScheduleActivity(days);
+  const last = getLastScheduleActivity(days);
+  const firstCoords = parseActivityCoordinates(first?.coordinates);
+  const lastCoords = parseActivityCoordinates(last?.coordinates);
+
+  const firstLeg = first && firstCoords
+    ? computeFastestOriginToFirstActivityLeg(
+        haversineDistanceKm(user.latitude, user.longitude, firstCoords.latitude, firstCoords.longitude),
+        {
+          name: first.name,
+          location: first.location,
+          time: first.time,
+          durationMinutes: first.durationMinutes,
+          category: first.category,
+        }
+      )
+    : null;
+
+  const returnLeg = last && lastCoords
+    ? computeLastActivityToOriginLeg(
+        haversineDistanceKm(user.latitude, user.longitude, lastCoords.latitude, lastCoords.longitude),
+        {
+          name: last.name,
+          location: last.location,
+          time: last.time,
+          durationMinutes: last.durationMinutes,
+          category: last.category,
+        }
+      )
+    : null;
+
+  return (Number(firstLeg?.cost) || 0) + (Number(returnLeg?.cost) || 0);
+};
+
 
 
 export default function Home() {
@@ -80,6 +139,7 @@ export default function Home() {
   const { session } = useAuth(); 
   const [isLoadingTrip, setIsLoadingTrip] = useState(false);
   const [cachedOfflineTrips, setCachedOfflineTrips] = useState<CachedOfflineTrip[]>([]);
+  const [dynamicTravelCost, setDynamicTravelCost] = useState(0);
   
 
 
@@ -169,6 +229,51 @@ export default function Home() {
     [cachedOfflineTrips, isOffline, upcomingTrip]
   );
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadDynamicTravelCost = async () => {
+      setDynamicTravelCost(0);
+      if (!upcomingTrip) return;
+
+      try {
+        const scheduleDays = isOffline
+          ? offlineUpcomingCache?.scheduleDays || []
+          : session?.access_token
+            ? (await getTripSchedule(session.access_token, upcomingTrip.id)).days || []
+            : [];
+
+        if (scheduleDays.length === 0) return;
+
+        const permission = await Location.getForegroundPermissionsAsync();
+        if (permission.status !== 'granted') return;
+
+        const position = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        const cost = estimateDynamicTravelCost(
+          {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          },
+          scheduleDays
+        );
+
+        if (!cancelled) {
+          setDynamicTravelCost(Math.round(cost * 100) / 100);
+        }
+      } catch {
+        if (!cancelled) setDynamicTravelCost(0);
+      }
+    };
+
+    void loadDynamicTravelCost();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOffline, offlineUpcomingCache, upcomingTrip?.id, session?.access_token]);
+
   // --- PRZYGOTOWANIE ZMIENNYCH DLA WIDOKU ---
   const heroImage = upcomingTrip?.imageUrl || 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?q=80&w=1000&auto=format&fit=crop';
   const startDateText = formatShortDate(upcomingTrip?.startDate);
@@ -176,7 +281,7 @@ export default function Home() {
   
   // Bezpośrednie czytanie budżetu z TripDto
   const budget = upcomingTrip?.totalBudget || 0;
-  const spent = upcomingTrip?.totalCost || 0;
+  const spent = (upcomingTrip?.totalCost || 0) + dynamicTravelCost;
   const progressPercent = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
   const isOverBudget = spent > budget;
 

@@ -73,9 +73,13 @@ const calculateTripTotalCost = (tripPlan, fallbackBudget) => {
   const days = Array.isArray(tripPlan?.days) ? tripPlan.days : [];
   const fromDays = days.reduce((sum, day) => {
     const activities = Array.isArray(day.activities) ? day.activities : [];
+    const transits = Array.isArray(day.transits) ? day.transits : [];
     const activityTotal = activities.reduce((daySum, activity) => daySum + (Number(activity.estimatedCost) || 0), 0);
-    if (activityTotal > 0) return sum + activityTotal;
-    if (typeof day.estimatedDayCost === 'number' && !Number.isNaN(day.estimatedDayCost)) return sum + day.estimatedDayCost;
+    const transitTotal = transits.reduce((daySum, transit) => daySum + (Number(transit.estimatedCost) || 0), 0);
+    if (activityTotal > 0 || transitTotal > 0) return sum + activityTotal + transitTotal;
+    if (typeof day.estimatedDayCost === 'number' && !Number.isNaN(day.estimatedDayCost)) {
+      return sum + day.estimatedDayCost;
+    }
     return sum;
   }, 0);
 
@@ -91,6 +95,14 @@ const getTripPlanSummary = (tripPlan, destination) => {
 
   const safeDestination = destination || tripPlan?.destination || 'wybranego miejsca';
   return `Plan podróży do ${safeDestination}.`;
+};
+
+const serializeTripPlanForNotes = (tripPlan, destination) => {
+  const summary = getTripPlanSummary(tripPlan, destination);
+  return JSON.stringify({
+    ...tripPlan,
+    summary,
+  });
 };
 
 const persistTripPlan = async ({ ownerId, formData, tripPlan }) => {
@@ -115,7 +127,7 @@ const persistTripPlan = async ({ ownerId, formData, tripPlan }) => {
     total_budget: budget,
     status: 'planned',
     image_url: generatedImageUrl,
-    notes: getTripPlanSummary(tripPlan, destination),
+    notes: serializeTripPlanForNotes(tripPlan, destination),
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
@@ -325,8 +337,7 @@ const updateTripHandler = async (req, res, next) => {
     }
 
     const updateData = {
-      notes: getTripPlanSummary(enrichedPlan, trip.destination || tripPlan.destination),
-      total_budget: enrichedPlan.estimatedTotalCost || trip.total_budget,
+      notes: serializeTripPlanForNotes(enrichedPlan, trip.destination || tripPlan.destination),
       image_url: enrichedPlan.imageUrl || trip.image_url,
       updated_at: new Date().toISOString()
     };
@@ -443,7 +454,7 @@ const getTripHistory = async (req, res, next) => {
 
     const { data: tripsData, error: tripsError } = await supabaseDbClient
       .from('trips')
-      .select('id, destination, start_date, end_date, total_budget, image_url')
+      .select('id, destination, start_date, end_date, total_budget, image_url, notes')
       .in('id', tripIds);
     if (tripsError) return res.status(500).json({ message: 'Nie udało się pobrać wycieczek do historii.' });
 
@@ -457,6 +468,7 @@ const getTripHistory = async (req, res, next) => {
         total: null,
         budget: toNumber(trip.total_budget),
         imageUrl: trip.image_url || null,
+        notes: trip.notes,
       }));
 
     const { data: dayRows, error: dayError } = await supabaseDbClient
@@ -527,7 +539,21 @@ const getTripHistory = async (req, res, next) => {
           activities: day.activities.sort((a, b) => (a.order_index !== null && b.order_index !== null) ? a.order_index - b.order_index : 0),
         }));
       const spentTotal = spentByTripId.get(trip.id);
-      return { ...trip, total: spentTotal !== undefined ? spentTotal : null, days };
+      const transitTotal = (() => {
+        try {
+          const parsed = typeof trip.notes === 'string' ? JSON.parse(trip.notes) : trip.notes;
+          const parsedDays = Array.isArray(parsed?.days) ? parsed.days : [];
+          return parsedDays.reduce((sum, day) => {
+            const transits = Array.isArray(day?.transits) ? day.transits : [];
+            return sum + transits.reduce((daySum, transit) => daySum + (Number(transit?.estimatedCost) || 0), 0);
+          }, 0);
+        } catch {
+          return 0;
+        }
+      })();
+      const total = (spentTotal || 0) + transitTotal;
+      const { notes, ...tripWithoutNotes } = trip;
+      return { ...tripWithoutNotes, total: total > 0 ? total : null, days };
     });
 
     return res.status(200).json({ message: 'Historia podróży pobrana poprawnie.', trips });
@@ -628,6 +654,8 @@ Dla KAŻDEJ aktywności uzupełnij brakujące pola:
 Priorytet: POPRAWNOŚĆ, nie szybkość. Nie zmieniaj kolejności, nazw ani godzin aktywnosci (time).
 
 Preferowany transport na miejscu: ${transport}.
+Przy dalekich trasach i transporcie do celu nie wybieraj samochodu dla dystansow ponad 1000 km ani dla innego kontynentu. W takich przypadkach uzyj samolotu, ewentualnie pociagu/autobusu dla tras regionalnych.
+Koszt transportu musi byc realistyczny, ale nie powinien pochlaniac wiekszosci budzetu planu. Jesli dystans jest bardzo duzy, wpisz koszt ekonomicznego lotu/pociagu/autobusu dla calej grupy, a nie koszt przejazdu autem liczony po kilometrach.
 Generuj transit tylko miedzy sasiednimi aktywnosciami, gdy da sie ustalic trase: uzyj location aktywnosci, a gdy brak - location sasiedniej aktywnosci. Gdy nadal brak sensownej trasy - pomin ten transit.
 Godziny transitow musza byc chronologiczne wzgledem godzin aktywnosci.
 startTime kazdego transitu MUSI byc >= koniec poprzedniej aktywnosci (time + durationMinutes). Transport nie moze zaczynac sie w trakcie poprzedniej atrakcji.
@@ -812,7 +840,7 @@ const refineTripPlanHandler = async (req, res, next) => {
 
     if (tripId) {
       const { error: updateError } = await updateTripById(tripId, {
-        notes: getTripPlanSummary(enrichedPlan, enrichedPlan?.destination || tripPlan?.destination),
+        notes: serializeTripPlanForNotes(enrichedPlan, enrichedPlan?.destination || tripPlan?.destination),
         updated_at: new Date().toISOString(),
       });
       if (updateError) {

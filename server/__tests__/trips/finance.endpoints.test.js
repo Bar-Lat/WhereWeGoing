@@ -199,6 +199,40 @@ describe('GET /api/trip/:id/schedule – koszty planu', () => {
     expect(res.body.accessRole).toBe('owner');
   });
 
+  it('200 – dolicza koszty transportow zapisane w planie', async () => {
+    withValidAuth();
+    getTripById.mockResolvedValue({
+      data: {
+        ...TRIP_ROW,
+        notes: JSON.stringify({
+          days: [
+            {
+              day: 1,
+              transits: [
+                {
+                  afterActivityIndex: 0,
+                  modeLabel: 'Pociąg',
+                  estimatedCost: 40,
+                  startTime: '12:00',
+                  endTime: '12:30',
+                },
+              ],
+            },
+          ],
+        }),
+      },
+      error: null,
+    });
+
+    const res = await request(app)
+      .get(`/api/trip/${TRIP_ID}/schedule`)
+      .set('Authorization', 'Bearer valid-token');
+
+    expect(res.status).toBe(200);
+    expect(res.body.days[0].transits).toHaveLength(1);
+    expect(res.body.totalCost).toBe(340);
+  });
+
   it('401 – brak autoryzacji', async () => {
     const res = await request(app).get(`/api/trip/${TRIP_ID}/schedule`);
 
@@ -287,6 +321,40 @@ describe('POST /api/trip/:id/days/:dayId/activities – dodanie kosztu', () => {
     expect(res.body.totalCost).toBe(450);
     expect(res.body.amountPerPerson).toBe(225);
     expect(updateAllParticipantsAmountOwed).toHaveBeenCalledWith(TRIP_ID, 225);
+  });
+
+  it('201 – przelicza podzial kosztow razem z transportem', async () => {
+    withValidAuth();
+    getTripById.mockResolvedValue({
+      data: {
+        ...TRIP_ROW,
+        notes: JSON.stringify({
+          days: [
+            {
+              day: 1,
+              transits: [{ afterActivityIndex: 0, modeLabel: 'Samolot', estimatedCost: 40 }],
+            },
+          ],
+        }),
+      },
+      error: null,
+    });
+
+    const res = await request(app)
+      .post(`/api/trip/${TRIP_ID}/days/${DAY_ID}/activities`)
+      .set('Authorization', 'Bearer valid-token')
+      .send({
+        name: 'Kolacja',
+        time: '18:00',
+        cost: 150,
+        durationMinutes: 60,
+        category: 'jedzenie',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.totalCost).toBe(490);
+    expect(res.body.amountPerPerson).toBe(245);
+    expect(updateAllParticipantsAmountOwed).toHaveBeenCalledWith(TRIP_ID, 245);
   });
 
   it('403 – uczestnik nie moze dodawac aktywnosci', async () => {

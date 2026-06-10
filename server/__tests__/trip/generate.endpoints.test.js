@@ -79,8 +79,8 @@ jest.mock('../../controllers/friends.controller', () => ({
 }));
 
 const app = require('../../server');
-const { supabaseAuthClient } = require('../../configs/supabaseClient');
-const { createTrip } = require('../../repositories/trip.repository');
+const { supabaseAuthClient, supabaseDbClient } = require('../../configs/supabaseClient');
+const { createTrip, getTripById, updateTripById } = require('../../repositories/trip.repository');
 const { createTripDays } = require('../../repositories/tripDays.repository');
 const { createActivities } = require('../../repositories/activities.repository');
 const { validateTripPlanCoordinates } = require('../../utils/activityGeo');
@@ -258,4 +258,48 @@ describe('POST /api/trip/generate – generowanie wycieczki', () => {
     expect(createTrip).not.toHaveBeenCalled();
   });
 
+});
+
+describe('PUT /api/trip/:id – zapis planu', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    global.fetch = jest.fn();
+    process.env.GROQ_API_KEY = process.env.GROQ_API_KEY || 'test-groq-key';
+    supabaseDbClient.from.mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockResolvedValue({ data: [], error: null }),
+    });
+  });
+
+  it('200 – nie nadpisuje deklarowanego budzetu kosztem szacunkowym', async () => {
+    withValidAuth();
+    getTripById.mockResolvedValue({
+      data: {
+        id: TRIP_ID,
+        owner_id: VALID_USER.id,
+        destination: 'Krakow',
+        total_budget: 2000,
+        image_url: null,
+      },
+      error: null,
+    });
+    updateTripById.mockResolvedValue({ error: null });
+
+    const res = await request(app)
+      .put(`/api/trip/${TRIP_ID}`)
+      .set('Authorization', 'Bearer valid-token')
+      .send({
+        tripPlan: {
+          ...SAMPLE_TRIP_PLAN,
+          estimatedTotalCost: 750,
+          days: [],
+        },
+      });
+
+    expect(res.status).toBe(200);
+    expect(updateTripById).toHaveBeenCalledWith(
+      TRIP_ID,
+      expect.not.objectContaining({ total_budget: expect.anything() })
+    );
+  });
 });

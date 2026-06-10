@@ -191,8 +191,6 @@ export default function DateRangePicker({
           disabledArrowColor: currentColors.border,
           monthTextColor: currentColors.text,
           textDayStyle: { color: currentColors.text },
-          textMonthStyle: { color: currentColors.text },
-          textDayHeaderStyle: { color: currentColors.subtext },
           textDayFontWeight: '500',
           textMonthFontWeight: '700',
           textDayHeaderFontWeight: '600',
