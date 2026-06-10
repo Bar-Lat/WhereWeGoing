@@ -40,6 +40,7 @@ import { getCachedOfflineTrips, removeCachedOfflineTrip, saveCachedOfflineTrip }
 import { useTripStore, TripPlan } from '@/stores/tripStore';
 import type { FriendProfile } from '@/types/friends';
 import type { TripDto, TripParticipantDto, TripScheduleDayDto } from '@/types/trips';
+import { formatPlnAmount } from '@/components/ActivityCostBadge';
 import { parseActivityCoordinates, type ActivityCoordinates } from '@/utils/activityMap';
 import {
   computeFastestOriginToFirstActivityLeg,
@@ -139,7 +140,7 @@ const formatDaysLabel = (days: number | null) => {
 
 const formatBudget = (value: number | null | undefined) => {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return 'Brak kosztu';
-  return `${Math.round(Number(value)).toLocaleString('pl-PL')} PLN`;
+  return `${formatPlnAmount(Number(value))} PLN`;
 };
 
 const getTripDisplayCost = (trip: TripDto) => trip.totalCost ?? trip.totalBudget;
@@ -154,7 +155,7 @@ const formatParticipantCost = (value: number | null | undefined, currency = 'PLN
   if (value === null || value === undefined || Number.isNaN(Number(value))) {
     return 'Brak naliczonego kosztu';
   }
-  return `${Math.round(Number(value)).toLocaleString('pl-PL')} ${currency}`;
+  return `${formatPlnAmount(Number(value))} ${currency}`;
 };
 
 const getStatusMeta = (status: string) => statusLabels[status] || { label: status || 'Plan', color: Colors.brand.blue };

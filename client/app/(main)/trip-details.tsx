@@ -25,6 +25,7 @@ import { Colors } from '@/styles/colors';
 import ScheduleDayTimeline, { type TimelineActivityItem } from '@/components/ScheduleDayTimeline';
 import TripMapTab from '@/components/TripMapTab';
 import LocationMapPickerModal from '@/components/LocationMapPickerModal';
+import { formatPlnAmount } from '@/components/ActivityCostBadge';
 import { useTripStore, TripPlan, DayPlan } from '@/stores/tripStore';
 import { useAuth } from '@/providers/auth.provider';
 import { useNetwork } from '@/providers/network.provider';
@@ -1307,7 +1308,7 @@ export default function TripDetails() {
                   </View>
                   <View style={{ height: 1, backgroundColor: currentColors.border, width: '100%', marginVertical: 12 }} />
                   <Text style={{ color: currentColors.subtext, fontSize: 14 }}>
-                    Szacowany koszt planu: <Text style={{ color: Colors.brand.blue, fontWeight: 'bold' }}>{calculatedTotalCost} {tripPlan.currency}</Text>
+                    Szacowany koszt planu: <Text style={{ color: Colors.brand.blue, fontWeight: 'bold' }}>{formatPlnAmount(calculatedTotalCost)} {tripPlan.currency}</Text>
                   </Text>
                 </View>
                 <Text style={{ color: currentColors.text, fontSize: 18, fontWeight: '700', marginTop: 10, marginBottom: 12 }}>
@@ -1320,7 +1321,7 @@ export default function TripDetails() {
                         <Text style={{ color: currentColors.subtext, fontSize: 12 }}>{day.activities.length} aktywności</Text>
                       </View>
                       <Text style={{ color: Colors.brand.blue, fontWeight: '700', fontSize: 16 }}>
-                        {getDayDisplayCost(day, index)} PLN
+                        {formatPlnAmount(getDayDisplayCost(day, index))} PLN
                       </Text>
                     </View>
                 ))}
@@ -1408,7 +1409,7 @@ export default function TripDetails() {
 
                   <View style={styles.heroBadge}>
                     <Ionicons name="wallet-outline" size={12} color="#fff" style={{ marginRight: 4 }} />
-                    <Text style={styles.heroBadgeText}>{tripPlan.estimatedTotalCost || 0} PLN</Text>
+                    <Text style={styles.heroBadgeText}>{formatPlnAmount(tripPlan.estimatedTotalCost || 0)} PLN</Text>
                   </View>
                 </View>
               </View>
