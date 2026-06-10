@@ -20,7 +20,7 @@ import { mapScheduleDaysToPlanDays } from '@/utils/mapScheduleToPlan';
 import { resolveHomeScheduleDay } from '@/utils/homeScheduleDay';
 import { formatActivityTimeRange } from '@/utils/activityTime';
 import { getCategoryIcon } from '@/utils/activityCategory';
-import ActivityCostBadge from '@/components/ActivityCostBadge';
+import ActivityCostBadge, { formatPlnAmount } from '@/components/ActivityCostBadge';
 import type { TripScheduleActivityDto, TripScheduleDayDto } from '@/types/trips';
 import { useAuth } from '@/providers/auth.provider';
 import { getCachedOfflineTrips, type CachedOfflineTrip } from '@/services/offlineTrip.storage';
@@ -448,7 +448,9 @@ export default function Home() {
                   <Ionicons name="wallet-outline" size={18} color={Colors.brand.blue} />
                   <Text style={[styles.cardTitle, { color: currentColors.text }]}>Szacowane koszty</Text>
                 </View>
-                <Text style={[styles.cardSubValue, { color: currentColors.subtext }]}>{spent} / {budget} PLN</Text>
+                <Text style={[styles.cardSubValue, { color: currentColors.subtext }]}>
+                  {formatPlnAmount(spent)} / {formatPlnAmount(budget)} PLN
+                </Text>
               </View>
               <View style={[styles.progressTrack, { backgroundColor: currentColors.border }]}>
                 <LinearGradient 
@@ -462,7 +464,9 @@ export default function Home() {
                   {isOverBudget ? '⚠️ Przekroczony' : '✓ W normie'}
                 </Text>
                 <Text style={[styles.remainingText, { color: currentColors.subtext }]}>
-                  {isOverBudget ? `Przekroczono o: ${spent - budget} PLN` : `Zostało: ${budget - spent} PLN`}
+                  {isOverBudget
+                    ? `Przekroczono o: ${formatPlnAmount(spent - budget)} PLN`
+                    : `Zostało: ${formatPlnAmount(budget - spent)} PLN`}
                 </Text>
               </View>
             </View>
