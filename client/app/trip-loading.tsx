@@ -190,6 +190,7 @@ export default function TripLoadingScreen() {
 
         const planWithLocalTransits: TripPlan = {
           ...plan,
+          estimatedTotalCost: safeFormData.budget,
           days: (plan.days || []).map((day) => ({
             ...day,
             transits: day.transits?.length
@@ -214,12 +215,14 @@ export default function TripLoadingScreen() {
           const response = await acceptTripPlan(safeFormData, planWithLocalTransits, session.access_token);
           savedPlan = (response.tripPlan as typeof planWithLocalTransits) ?? planWithLocalTransits;
           savedPlan.id = response.tripId;
+          savedPlan.estimatedTotalCost = safeFormData.budget;
 
           if (!savedPlan.days?.every((day) => day.activities?.every((act) => act.coordinates))) {
             const schedule = await getTripSchedule(session.access_token, response.tripId);
             savedPlan = {
               ...savedPlan,
               id: response.tripId,
+              estimatedTotalCost: safeFormData.budget,
             days: mapScheduleDaysToPlanDays(schedule.days || []),
             travelCost: schedule.travelCost,
             returnCost: schedule.returnCost,
