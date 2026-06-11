@@ -59,7 +59,7 @@ Zwróć WYŁĄCZNIE obiekt JSON (bez markdown, bez komentarzy) w tym schemacie:
           "time": "string (np. 09:00)",
           "name": "string",
           "description": "string (1-2 zdania)",
-          "category": "string (jedzenie|atrakcja|transport|nocleg|inne)",
+          "category": "string (jedzenie|atrakcja|nocleg|inne)",
           "estimatedCost": number,
           "location": "string (pełny adres: nazwa miejsca + ulica/dzielnica + miasto)",
           "durationMinutes": number (realistyczny czas wizyty w minutach),
@@ -81,12 +81,13 @@ Dobierz dojazd do celu podróży realistycznie:
 - jeśli podróż jest na inny kontynent albo wyraźnie powyżej 1000 km, rekomenduj samolot, nie samochód;
 - dla długich tras w Europie preferuj pociąg, autobus lub samolot, a samochód tylko gdy dystans i kontekst mają sens;
 - nie twórz kosztu transportu, który pochłania większość budżetu; transport dalekodystansowy powinien zwykle mieścić się w 20-35% budżetu, chyba że budżet jest skrajnie niski;
-- nie dodawaj dojazdu z domu ani powrotu do domu jako aktywności w days[].activities; aplikacja pokazuje te odcinki dynamicznie na podstawie lokalizacji użytkownika;
+- ABSOLUTNIE nie dodawaj lotu, przylotu, wylotu, dojazdu do miasta docelowego ani powrotu do domu jako aktywności w days[].activities; aplikacja pokazuje te odcinki osobno na podstawie wyboru użytkownika;
+- nie dodawaj transportu lokalnego jako aktywności; przejazdy między punktami planu obsługuje aplikacja poza days[].activities;
 - w bestTransport opisz rekomendowany dojazd i powrót realistycznie, np. pociąg/autobus/samolot zamiast samochodu przez bardzo długą trasę;
 - jeśli budżet nie wystarcza na realistyczną drogą podróż, wybierz tańszy wariant i zostaw sensowną część na zwiedzanie.
 Każdy dzień powinien mieć dokładnie ${attractionsPerDay} atrakcji kategorii "atrakcja". 
-Posiłki (kategoria "jedzenie"), transport (kategoria "transport") i noclegi (kategoria "nocleg") są DODATKIEM i nie wliczają się do tej liczby.
-Oznacza to że każdy dzień powinien zawierać ${attractionsPerDay} atrakcji PLUS posiłki, transport i nocleg, jeśli wycieczka trwa dłużej niż 1 dzień.
+Posiłki (kategoria "jedzenie") i noclegi (kategoria "nocleg") są DODATKIEM i nie wliczają się do tej liczby.
+Oznacza to że każdy dzień powinien zawierać ${attractionsPerDay} atrakcji PLUS posiłki i nocleg, jeśli wycieczka trwa dłużej niż 1 dzień.
 Przy wycieczce wielodniowej uwzględnij realistyczny koszt noclegów dla całej grupy. Dla 4 dni zwykle zaplanuj 3 noclegi, chyba że daty wskazują inaczej.
 Wszystkie koszty (estimatedCost, estimatedDayCost, estimatedTotalCost) dotyczą CAŁEJ grupy ${data.travelers} osób, nie jednej osoby.
 estimatedDayCost każdego dnia musi być równy sumie estimatedCost aktywności tego dnia.

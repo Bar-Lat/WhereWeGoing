@@ -86,8 +86,10 @@ describe('buildPrompt()', () => {
     expect(prompt).toContain('powyżej 1000 km');
     expect(prompt).toContain('rekomenduj samolot, nie samochód');
     expect(prompt).toContain('20-35% budżetu');
-    expect(prompt).toContain('nie dodawaj dojazdu z domu ani powrotu do domu jako aktywności');
-    expect(prompt).toContain('aplikacja pokazuje te odcinki dynamicznie');
+    expect(prompt).toContain('ABSOLUTNIE nie dodawaj lotu');
+    expect(prompt).toContain('dojazdu do miasta docelowego ani powrotu do domu jako aktywności');
+    expect(prompt).toContain('aplikacja pokazuje te odcinki osobno');
+    expect(prompt).toContain('nie dodawaj transportu lokalnego jako aktywności');
     expect(prompt).toContain('w bestTransport opisz rekomendowany dojazd i powrót');
   });
 

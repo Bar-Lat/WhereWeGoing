@@ -14,6 +14,7 @@ const {
 } = require('../utils/activityGeo');
 const { alignTransitAfterActivity } = require('../utils/scheduleTransit');
 const { buildPrompt, TRANSPORT_LABELS } = require('../utils/buildTripPrompt');
+const { removeTravelToDestinationActivities } = require('../utils/tripPlanSanitizer');
 const { toISO } = require('../utils/tripDates');
 
 const getUserIdFromRequest = async (req) => {
@@ -253,6 +254,7 @@ const generateTripPlan = async (req, res, next) => {
       return res.status(502).json({ message: 'Nie udało się sparsować odpowiedzi AI' });
     }
 
+    tripPlan = removeTravelToDestinationActivities(tripPlan);
     tripPlan = await enrichTripPlanActivities(tripPlan, destination);
 
     const coordinateValidation = validateTripPlanCoordinates(tripPlan);
@@ -280,7 +282,8 @@ const acceptTripPlan = async (req, res, next) => {
       return res.status(400).json({ message: 'Brakujące dane formularza' });
     }
 
-    const enrichedPlan = await enrichTripPlanActivities(tripPlan, destination);
+    const sanitizedPlan = removeTravelToDestinationActivities(tripPlan);
+    const enrichedPlan = await enrichTripPlanActivities(sanitizedPlan, destination);
 
     const coordinateValidation = validateTripPlanCoordinates(enrichedPlan);
     if (!coordinateValidation.valid) {
@@ -329,7 +332,8 @@ const updateTripHandler = async (req, res, next) => {
     if (fetchError || !trip) return res.status(404).json({ message: 'Wycieczka nie znaleziona' });
     if (trip.owner_id !== ownerId) return res.status(403).json({ message: 'Brak dostępu do tej wycieczki' });
 
-    const enrichedPlan = await enrichTripPlanActivities(tripPlan, trip.destination || tripPlan.destination || '');
+    const sanitizedPlan = removeTravelToDestinationActivities(tripPlan);
+    const enrichedPlan = await enrichTripPlanActivities(sanitizedPlan, trip.destination || tripPlan.destination || '');
 
     const coordinateValidation = validateTripPlanCoordinates(enrichedPlan);
     if (!coordinateValidation.valid) {
@@ -828,8 +832,9 @@ const refineTripPlanHandler = async (req, res, next) => {
     }
 
     const mergedPlan = mergeRefinedTripPlan(tripPlan, refinedRaw);
+    const sanitizedPlan = removeTravelToDestinationActivities(mergedPlan);
     const enrichedPlan = await enrichTripPlanActivities(
-      mergedPlan,
+      sanitizedPlan,
       mergedPlan?.destination || tripPlan?.destination || ''
     );
 

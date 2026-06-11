@@ -124,6 +124,29 @@ const SAMPLE_TRIP_PLAN = {
   ],
 };
 
+const TRIP_PLAN_WITH_ARRIVAL_FLIGHT = {
+  ...SAMPLE_TRIP_PLAN,
+  estimatedTotalCost: 1900,
+  days: [
+    {
+      ...SAMPLE_TRIP_PLAN.days[0],
+      estimatedDayCost: 900,
+      activities: [
+        {
+          name: 'Lot do Krakowa',
+          time: '08:00',
+          durationMinutes: 90,
+          location: 'Lotnisko Krakow-Balice',
+          coordinates: { latitude: 50.0777, longitude: 19.7848 },
+          category: 'transport',
+          estimatedCost: 400,
+        },
+        ...SAMPLE_TRIP_PLAN.days[0].activities,
+      ],
+    },
+  ],
+};
+
 const withValidAuth = () =>
   supabaseAuthClient.auth.getUser.mockResolvedValue({
     data: { user: VALID_USER },
@@ -135,6 +158,15 @@ const mockGroqSuccess = () => {
     ok: true,
     json: async () => ({
       choices: [{ message: { content: JSON.stringify(SAMPLE_TRIP_PLAN) } }],
+    }),
+  });
+};
+
+const mockGroqPlan = (tripPlan) => {
+  global.fetch.mockResolvedValueOnce({
+    ok: true,
+    json: async () => ({
+      choices: [{ message: { content: JSON.stringify(tripPlan) } }],
     }),
   });
 };
@@ -190,6 +222,19 @@ describe('POST /api/trip/generate – generowanie wycieczki', () => {
     expect(createTrip).not.toHaveBeenCalled();
     expect(createTripDays).not.toHaveBeenCalled();
     expect(createActivities).not.toHaveBeenCalled();
+  });
+
+  it('200 – usuwa lot do miejsca docelowego z aktywnosci wygenerowanych przez AI', async () => {
+    mockGroqPlan(TRIP_PLAN_WITH_ARRIVAL_FLIGHT);
+
+    const res = await request(app).post('/api/trip/generate').send(VALID_FORM);
+
+    expect(res.status).toBe(200);
+    expect(res.body.tripPlan.days[0].activities).toHaveLength(1);
+    expect(res.body.tripPlan.days[0].activities[0].name).toBe('Wawel');
+    expect(res.body.tripPlan.days[0].activities[0].category).toBe('atrakcja');
+    expect(res.body.tripPlan.days[0].estimatedDayCost).toBe(100);
+    expect(res.body.tripPlan.estimatedTotalCost).toBe(100);
   });
 
   it('400 – brak wymaganego pola destination', async () => {
