@@ -86,6 +86,7 @@ Zwróć WYŁĄCZNIE obiekt JSON (bez markdown, bez komentarzy) w tym schemacie:
 
 Dobierz dojazd do celu podróży realistycznie:
 - jeśli podróż jest na inny kontynent albo wyraźnie powyżej 1000 km, rekomenduj samolot, nie samochód;
+- kraje poza Europą, np. Malezja, USA, Japonia, Tajlandia, Australia, Kanada albo Brazylia, zawsze traktuj jako dojazd samolotem niezależnie od preferencji samochodu lub pociągu;
 - dla długich tras w Europie preferuj pociąg, autobus lub samolot, a samochód tylko gdy dystans i kontekst mają sens;
 - nie twórz kosztu transportu, który pochłania większość budżetu; transport dalekodystansowy powinien zwykle mieścić się w 20-35% budżetu, chyba że budżet jest skrajnie niski;
 - ABSOLUTNIE nie dodawaj lotu, przylotu, wylotu, dojazdu do miasta docelowego ani powrotu do domu jako aktywności w days[].activities; aplikacja pokazuje te odcinki osobno na podstawie wyboru użytkownika;

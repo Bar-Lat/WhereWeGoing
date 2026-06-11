@@ -77,4 +77,28 @@ describe('tripTravelFields', () => {
     expect(plan.travelDurationMinutes).toBeGreaterThanOrEqual(90);
     expect(plan.travelDurationMinutes).toBeLessThanOrEqual(150);
   });
+
+  it('nadpisuje auto lub pociag samolotem przy trasie miedzykontynentalnej', () => {
+    const plan = normalizeTripTravelCosts(
+      {
+        travelWay: 'Pociąg',
+        travelCost: 300,
+        returnWay: 'Pociąg',
+        returnCost: 300,
+        days: [{ estimatedDayCost: 1500 }],
+      },
+      {
+        destination: 'Malezja',
+        originLabel: 'Rzeszów, Polska',
+        originCoordinates: { latitude: 50.0413, longitude: 21.999 },
+        travelers: 1,
+        transport: ['car', 'metro'],
+      }
+    );
+
+    expect(plan.travelWay).toBe('Samolot');
+    expect(plan.returnWay).toBe('Samolot');
+    expect(plan.travelCost).toBeGreaterThanOrEqual(1800);
+    expect(plan.travelDurationMinutes).toBe(720);
+  });
 });

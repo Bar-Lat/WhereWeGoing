@@ -11,7 +11,7 @@ const normalizeSearchText = (value) =>
     .toLowerCase();
 
 const NON_EUROPE_DESTINATION_PATTERN =
-  /\b(usa|stany|ameryk|nowy jork|nowego jorku|new york|los angeles|chicago|miami|kanada|canada|meksyk|mexico|brazylia|brazil|argentyna|maroko|egipt|egypt|dubaj|dubai|emiraty|qatar|chiny|china|japonia|japan|tokio|tokyo|seul|korea|tajlandia|thailand|bangkok|indie|india|indonezja|bali|australia|nowa zelandia|new zealand)\b/i;
+  /\b(usa|stany|ameryk|nowy jork|nowego jorku|new york|los angeles|chicago|miami|kanada|canada|meksyk|mexico|brazylia|brazil|argentyna|maroko|egipt|egypt|dubaj|dubai|emiraty|qatar|azja|asia|chiny|china|japonia|japan|tokio|tokyo|seul|korea|tajlandia|thailand|bangkok|malezja|malezji|malaysia|kuala lumpur|singapur|singapore|wietnam|vietnam|indie|india|indonezja|bali|afryka|africa|kenia|kenya|rpa|australia|nowa zelandia|new zealand)\b/i;
 
 const CITY_COORDINATES = [
   { pattern: /\b(rzeszow|rzeszowa|rzeszowie)\b/, latitude: 50.0413, longitude: 21.999 },
