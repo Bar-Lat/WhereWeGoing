@@ -11,7 +11,6 @@ import {
   View,
   useColorScheme,
 } from 'react-native';
-import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -41,12 +40,6 @@ import { useTripStore, TripPlan } from '@/stores/tripStore';
 import type { FriendProfile } from '@/types/friends';
 import type { TripDto, TripParticipantDto, TripScheduleDayDto } from '@/types/trips';
 import { formatPlnAmount } from '@/components/ActivityCostBadge';
-import { parseActivityCoordinates, type ActivityCoordinates } from '@/utils/activityMap';
-import {
-  computeFastestOriginToFirstActivityLeg,
-  computeLastActivityToOriginLeg,
-  haversineDistanceKm,
-} from '@/utils/scheduleTransit';
 
 const PLACEHOLDER_IMAGES = [
   'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=900',
@@ -159,61 +152,6 @@ const formatParticipantCost = (value: number | null | undefined, currency = 'PLN
 };
 
 const getStatusMeta = (status: string) => statusLabels[status] || { label: status || 'Plan', color: Colors.brand.blue };
-
-const getFirstScheduleActivity = (days: TripScheduleDayDto[]) => {
-  for (const day of days) {
-    const activity = day.activities?.[0];
-    if (activity) return activity;
-  }
-  return null;
-};
-
-const getLastScheduleActivity = (days: TripScheduleDayDto[]) => {
-  for (let dayIndex = days.length - 1; dayIndex >= 0; dayIndex -= 1) {
-    const activities = days[dayIndex]?.activities || [];
-    const activity = activities[activities.length - 1];
-    if (activity) return activity;
-  }
-  return null;
-};
-
-const getScheduleActivityCoords = (activity: ReturnType<typeof getFirstScheduleActivity>) =>
-  parseActivityCoordinates(activity?.coordinates);
-
-const estimateDynamicTravelCost = (user: ActivityCoordinates, days: TripScheduleDayDto[]) => {
-  const first = getFirstScheduleActivity(days);
-  const last = getLastScheduleActivity(days);
-  const firstCoords = getScheduleActivityCoords(first);
-  const lastCoords = getScheduleActivityCoords(last);
-
-  const firstLeg = first && firstCoords
-    ? computeFastestOriginToFirstActivityLeg(
-        haversineDistanceKm(user.latitude, user.longitude, firstCoords.latitude, firstCoords.longitude),
-        {
-          name: first.name,
-          location: first.location,
-          time: first.time,
-          durationMinutes: first.durationMinutes,
-          category: first.category,
-        }
-      )
-    : null;
-
-  const returnLeg = last && lastCoords
-    ? computeLastActivityToOriginLeg(
-        haversineDistanceKm(user.latitude, user.longitude, lastCoords.latitude, lastCoords.longitude),
-        {
-          name: last.name,
-          location: last.location,
-          time: last.time,
-          durationMinutes: last.durationMinutes,
-          category: last.category,
-        }
-      )
-    : null;
-
-  return (Number(firstLeg?.cost) || 0) + (Number(returnLeg?.cost) || 0);
-};
 
 const getTripImage = (trip: TripDto | any, index: number) => {
   const url = trip.imageUrl || trip.image_url;
@@ -406,39 +344,7 @@ export default function Trips() {
   const selectedTripCanBeRemovedFromOffline = selectedTripIsSavedOffline && !selectedTripIsNearestOffline;
 
   useEffect(() => {
-    let cancelled = false;
-
-    const loadDynamicTravelCost = async () => {
-      setSelectedTripDynamicTravelCost(0);
-      if (!selectedTrip || scheduleDays.length === 0 || isOffline) return;
-
-      try {
-        const permission = await Location.requestForegroundPermissionsAsync();
-        if (permission.status !== 'granted') return;
-
-        const position = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        const userCoords = {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        };
-        const cost = estimateDynamicTravelCost(userCoords, scheduleDays);
-        if (!cancelled) {
-          setSelectedTripDynamicTravelCost(Math.round(cost * 100) / 100);
-        }
-      } catch {
-        if (!cancelled) {
-          setSelectedTripDynamicTravelCost(0);
-        }
-      }
-    };
-
-    void loadDynamicTravelCost();
-
-    return () => {
-      cancelled = true;
-    };
+    setSelectedTripDynamicTravelCost(0);
   }, [isOffline, scheduleDays, selectedTrip]);
 
   useEffect(() => {
@@ -839,56 +745,7 @@ export default function Trips() {
   }, [tripListFilter, trips]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    const loadCardTravelCosts = async () => {
-      if (!accessToken || isOffline || visibleTrips.length === 0) {
-        setTripDynamicTravelCosts({});
-        return;
-      }
-
-      try {
-        const permission = await Location.getForegroundPermissionsAsync();
-        if (permission.status !== 'granted') {
-          setTripDynamicTravelCosts({});
-          return;
-        }
-
-        const position = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        const userCoords = {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        };
-
-        const entries = await Promise.all(
-          visibleTrips.map(async (trip) => {
-            try {
-              const schedule = await getTripSchedule(accessToken, trip.id);
-              const cost = estimateDynamicTravelCost(userCoords, schedule.days || []);
-              return [trip.id, Math.round(cost * 100) / 100] as const;
-            } catch {
-              return [trip.id, 0] as const;
-            }
-          })
-        );
-
-        if (!cancelled) {
-          setTripDynamicTravelCosts(Object.fromEntries(entries));
-        }
-      } catch {
-        if (!cancelled) {
-          setTripDynamicTravelCosts({});
-        }
-      }
-    };
-
-    void loadCardTravelCosts();
-
-    return () => {
-      cancelled = true;
-    };
+    setTripDynamicTravelCosts({});
   }, [accessToken, isOffline, visibleTrips]);
 
   const selectedTripIndex = useMemo(() => {

@@ -24,7 +24,7 @@ import {
   openGoogleMapsPlace,
   type MapLocationInput,
 } from '@/utils/googleMapsLinks';
-import { useOriginToFirstActivityTransit } from '@/hooks/useOriginToFirstActivityTransit';
+import { useOriginToFirstActivityTransit, type GpsTransitSnapshot } from '@/hooks/useOriginToFirstActivityTransit';
 import ActivityCostBadge, { formatPlnAmount } from '@/components/ActivityCostBadge';
 
 export type TimelineActivityItem = {
@@ -79,6 +79,12 @@ type ScheduleDayTimelineProps = {
   showLastToOriginLeg?: boolean;
   /** Dynamiczny koszt dojazdu/powrotu widoczny tylko w UI, bez zapisu w bazie. */
   onDynamicTravelCostChange?: (cost: number) => void;
+  /** Zapamiętana trasa GPS → pierwsza atrakcja (np. po przełączeniu zakładek). */
+  originGpsRestoredSnapshot?: GpsTransitSnapshot | null;
+  onOriginGpsSnapshotCommit?: (snapshot: GpsTransitSnapshot) => void;
+  /** Zapamiętany powrót z ostatniej atrakcji do GPS. */
+  returnGpsRestoredSnapshot?: GpsTransitSnapshot | null;
+  onReturnGpsSnapshotCommit?: (snapshot: GpsTransitSnapshot) => void;
 };
 
 const toMapLocation = (item: TimelineActivityItem): MapLocationInput => ({
@@ -313,6 +319,10 @@ export default function ScheduleDayTimeline({
   showOriginToFirstLeg = false,
   showLastToOriginLeg = false,
   onDynamicTravelCostChange,
+  originGpsRestoredSnapshot,
+  onOriginGpsSnapshotCommit,
+  returnGpsRestoredSnapshot,
+  onReturnGpsSnapshotCommit,
 }: ScheduleDayTimelineProps) {
   const [items, setItems] = useState(activities);
   const [reorderIndex, setReorderIndex] = useState<number | null>(null);
@@ -401,7 +411,11 @@ export default function ScheduleDayTimeline({
     originEnabled,
     originActivityInput,
     destination,
-    preferredTransport
+    preferredTransport,
+    {
+      restoredSnapshot: originGpsRestoredSnapshot ?? null,
+      onSnapshotCommit: onOriginGpsSnapshotCommit,
+    }
   );
 
   const returnActivityInput = useMemo(() => {
@@ -431,8 +445,24 @@ export default function ScheduleDayTimeline({
     returnActivityInput,
     destination,
     preferredTransport,
-    'activity-to-origin'
+    {
+      direction: 'activity-to-origin',
+      restoredSnapshot: returnGpsRestoredSnapshot ?? null,
+      onSnapshotCommit: onReturnGpsSnapshotCommit,
+    }
   );
+
+  const handleOriginGpsRecalculate = () => {
+    const returnOnly = returnEnabled ? Number(returnTransit.leg?.cost) || 0 : 0;
+    onDynamicTravelCostChange?.(returnOnly);
+    void originTransit.recalculate();
+  };
+
+  const handleReturnGpsRecalculate = () => {
+    const keepOtherLegOnThisDay = originEnabled ? Number(originTransit.leg?.cost) || 0 : 0;
+    onDynamicTravelCostChange?.(keepOtherLegOnThisDay);
+    void returnTransit.recalculate();
+  };
 
   const moveItem = (fromIndex: number, toIndex: number) => {
     if (toIndex < 0 || toIndex >= items.length || fromIndex === toIndex) return;
@@ -465,12 +495,8 @@ export default function ScheduleDayTimeline({
 
   const mapActionsVisible = showMapActions ?? !editable;
 
-  const originPending =
-    originTransit.loading ||
-    (originTransit.permissionStatus === null && originEnabled);
-  const returnPending =
-    returnTransit.loading ||
-    (returnTransit.permissionStatus === null && returnEnabled);
+  const originPending = originTransit.loading;
+  const returnPending = returnTransit.loading;
 
   useEffect(() => {
     const originCost = originEnabled ? Number(originTransit.leg?.cost) || 0 : 0;
@@ -502,7 +528,7 @@ export default function ScheduleDayTimeline({
             <TouchableOpacity
               activeOpacity={0.85}
               onPress={() => {
-                void originTransit.requestPermission();
+                void originTransit.beginRouteCheck();
               }}
               style={styles.transitRow}
             >
@@ -510,16 +536,46 @@ export default function ScheduleDayTimeline({
               <View style={styles.transitBubble}>
                 <Ionicons name="location-outline" size={12} color="#94a3b8" />
                 <View style={styles.transitTextBox}>
-                  <Text style={styles.transitTitle}>Wczytaj trasę</Text>
+                  <Text style={styles.transitTitle}>Sprawdź trasę z GPS</Text>
                   <Text style={styles.transitTime}>
-                    Włącz lokalizację — trasę odświeżymy automatycznie.
+                    Dotknij tutaj — zapytamy o lokalizację tylko wtedy, gdy chcesz zobaczyć dojazd.
                   </Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+          ) : originTransit.granted &&
+            !originTransit.leg &&
+            !originTransit.loading &&
+            !originTransit.routeFetchFailed ? (
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => {
+                void originTransit.beginRouteCheck();
+              }}
+              style={styles.transitRow}
+            >
+              <View style={styles.transitLeftSpacer} />
+              <View style={styles.transitBubble}>
+                <Ionicons name="navigate-outline" size={12} color="#94a3b8" />
+                <View style={styles.transitTextBox}>
+                  <Text style={styles.transitTitle}>Pobierz trasę z Twojej lokalizacji</Text>
+                  <Text style={styles.transitTime}>Jednorazowo odczytamy pozycję, żeby oszacować dojazd.</Text>
                 </View>
               </View>
             </TouchableOpacity>
           ) : originTransit.leg && originTransit.userCoords ? (
             <View style={styles.transitRow}>
-              <View style={styles.transitLeftSpacer} />
+              <View style={styles.transitLeftColumn}>
+                <TouchableOpacity
+                  style={styles.transitRefreshCircle}
+                  onPress={handleOriginGpsRecalculate}
+                  accessibilityRole="button"
+                  accessibilityLabel="Przelicz trasę z GPS"
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="refresh" size={17} color={Colors.brand.blue} />
+                </TouchableOpacity>
+              </View>
               <View style={styles.transitBubble}>
                 <Ionicons name="swap-horizontal-outline" size={12} color="#94a3b8" />
                 <View style={styles.transitTextBox}>
@@ -603,7 +659,7 @@ export default function ScheduleDayTimeline({
             <TouchableOpacity
               activeOpacity={0.85}
               onPress={() => {
-                void returnTransit.requestPermission();
+                void returnTransit.beginRouteCheck();
               }}
               style={styles.transitRow}
             >
@@ -611,16 +667,46 @@ export default function ScheduleDayTimeline({
               <View style={styles.transitBubble}>
                 <Ionicons name="location-outline" size={12} color="#94a3b8" />
                 <View style={styles.transitTextBox}>
-                  <Text style={styles.transitTitle}>Wczytaj powrót</Text>
+                  <Text style={styles.transitTitle}>Sprawdź powrót z GPS</Text>
                   <Text style={styles.transitTime}>
-                    Włącz lokalizację — trasę powrotną odświeżymy automatycznie.
+                    Dotknij tutaj — lokalizacja tylko na Twoją prośbę.
                   </Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+          ) : returnTransit.granted &&
+            !returnTransit.leg &&
+            !returnTransit.loading &&
+            !returnTransit.routeFetchFailed ? (
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => {
+                void returnTransit.beginRouteCheck();
+              }}
+              style={styles.transitRow}
+            >
+              <View style={styles.transitLeftSpacer} />
+              <View style={styles.transitBubble}>
+                <Ionicons name="navigate-outline" size={12} color="#94a3b8" />
+                <View style={styles.transitTextBox}>
+                  <Text style={styles.transitTitle}>Pobierz trasę powrotną</Text>
+                  <Text style={styles.transitTime}>Jednorazowo odczytamy pozycję do szacunku powrotu.</Text>
                 </View>
               </View>
             </TouchableOpacity>
           ) : returnTransit.leg && returnTransit.userCoords ? (
             <View style={styles.transitRow}>
-              <View style={styles.transitLeftSpacer} />
+              <View style={styles.transitLeftColumn}>
+                <TouchableOpacity
+                  style={styles.transitRefreshCircle}
+                  onPress={handleReturnGpsRecalculate}
+                  accessibilityRole="button"
+                  accessibilityLabel="Przelicz powrót z GPS"
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="refresh" size={17} color={Colors.brand.blue} />
+                </TouchableOpacity>
+              </View>
               <View style={styles.transitBubble}>
                 <Ionicons name="swap-horizontal-outline" size={12} color="#94a3b8" />
                 <View style={styles.transitTextBox}>
@@ -714,6 +800,15 @@ const styles = StyleSheet.create({
   confirmBtn: { marginTop: 0 },
   transitRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6, gap: 8 },
   transitLeftSpacer: { width: 44 },
+  transitLeftColumn: { width: 44, alignItems: 'center', justifyContent: 'center' },
+  transitRefreshCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(99, 102, 241, 0.12)',
+  },
   transitBubble: {
     flex: 1,
     flexDirection: 'row',
