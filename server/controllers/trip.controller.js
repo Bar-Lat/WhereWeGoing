@@ -14,6 +14,13 @@ const {
 } = require('../utils/activityGeo');
 const { alignTransitAfterActivity } = require('../utils/scheduleTransit');
 const { buildPrompt, TRANSPORT_LABELS } = require('../utils/buildTripPrompt');
+const { removeTravelToDestinationActivities } = require('../utils/tripPlanSanitizer');
+const {
+  applyTripTravelFields,
+  buildTripTravelDbFields,
+  getTripBoundaryTravelCost,
+  normalizeTripTravelCosts,
+} = require('../utils/tripTravelFields');
 const { toISO } = require('../utils/tripDates');
 
 const getUserIdFromRequest = async (req) => {
@@ -83,7 +90,8 @@ const calculateTripTotalCost = (tripPlan, fallbackBudget) => {
     return sum;
   }, 0);
 
-  if (fromDays > 0) return fromDays;
+  const boundaryTravelCost = getTripBoundaryTravelCost(tripPlan);
+  if (fromDays > 0 || boundaryTravelCost > 0) return fromDays + boundaryTravelCost;
   if (typeof tripPlan?.estimatedTotalCost === 'number' && !Number.isNaN(tripPlan.estimatedTotalCost)) return tripPlan.estimatedTotalCost;
   return typeof fallbackBudget === 'number' ? fallbackBudget : 0;
 };
@@ -128,6 +136,7 @@ const persistTripPlan = async ({ ownerId, formData, tripPlan }) => {
     status: 'planned',
     image_url: generatedImageUrl,
     notes: serializeTripPlanForNotes(tripPlan, destination),
+    ...buildTripTravelDbFields(tripPlan),
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
@@ -253,6 +262,10 @@ const generateTripPlan = async (req, res, next) => {
       return res.status(502).json({ message: 'Nie udało się sparsować odpowiedzi AI' });
     }
 
+    tripPlan = normalizeTripTravelCosts(
+      applyTripTravelFields(removeTravelToDestinationActivities(tripPlan), tripPlan),
+      promptBody
+    );
     tripPlan = await enrichTripPlanActivities(tripPlan, destination);
 
     const coordinateValidation = validateTripPlanCoordinates(tripPlan);
@@ -280,7 +293,11 @@ const acceptTripPlan = async (req, res, next) => {
       return res.status(400).json({ message: 'Brakujące dane formularza' });
     }
 
-    const enrichedPlan = await enrichTripPlanActivities(tripPlan, destination);
+    const sanitizedPlan = normalizeTripTravelCosts(
+      applyTripTravelFields(removeTravelToDestinationActivities(tripPlan), tripPlan),
+      formData
+    );
+    const enrichedPlan = await enrichTripPlanActivities(sanitizedPlan, destination);
 
     const coordinateValidation = validateTripPlanCoordinates(enrichedPlan);
     if (!coordinateValidation.valid) {
@@ -329,7 +346,14 @@ const updateTripHandler = async (req, res, next) => {
     if (fetchError || !trip) return res.status(404).json({ message: 'Wycieczka nie znaleziona' });
     if (trip.owner_id !== ownerId) return res.status(403).json({ message: 'Brak dostępu do tej wycieczki' });
 
-    const enrichedPlan = await enrichTripPlanActivities(tripPlan, trip.destination || tripPlan.destination || '');
+    const sanitizedPlan = normalizeTripTravelCosts(
+      applyTripTravelFields(removeTravelToDestinationActivities(tripPlan), {
+        ...trip,
+        ...tripPlan,
+      }),
+      { destination: trip.destination || tripPlan.destination, travelers: tripPlan.travelers || 1 }
+    );
+    const enrichedPlan = await enrichTripPlanActivities(sanitizedPlan, trip.destination || tripPlan.destination || '');
 
     const coordinateValidation = validateTripPlanCoordinates(enrichedPlan);
     if (!coordinateValidation.valid) {
@@ -338,6 +362,7 @@ const updateTripHandler = async (req, res, next) => {
 
     const updateData = {
       notes: serializeTripPlanForNotes(enrichedPlan, trip.destination || tripPlan.destination),
+      ...buildTripTravelDbFields(enrichedPlan),
       image_url: enrichedPlan.imageUrl || trip.image_url,
       updated_at: new Date().toISOString()
     };
@@ -454,7 +479,7 @@ const getTripHistory = async (req, res, next) => {
 
     const { data: tripsData, error: tripsError } = await supabaseDbClient
       .from('trips')
-      .select('id, destination, start_date, end_date, total_budget, image_url, notes')
+      .select('id, destination, start_date, end_date, total_budget, image_url, notes, travel_cost, return_cost, travel_way, return_way')
       .in('id', tripIds);
     if (tripsError) return res.status(500).json({ message: 'Nie udało się pobrać wycieczek do historii.' });
 
@@ -467,6 +492,10 @@ const getTripHistory = async (req, res, next) => {
         endDate: trip.end_date || null,
         total: null,
         budget: toNumber(trip.total_budget),
+        travelCost: toNumber(trip.travel_cost) || 0,
+        returnCost: toNumber(trip.return_cost) || 0,
+        travelWay: trip.travel_way || null,
+        returnWay: trip.return_way || null,
         imageUrl: trip.image_url || null,
         notes: trip.notes,
       }));
@@ -551,7 +580,8 @@ const getTripHistory = async (req, res, next) => {
           return 0;
         }
       })();
-      const total = (spentTotal || 0) + transitTotal;
+      const travelTotal = (Number(trip.travelCost) || 0) + (Number(trip.returnCost) || 0);
+      const total = (spentTotal || 0) + transitTotal + travelTotal;
       const { notes, ...tripWithoutNotes } = trip;
       return { ...tripWithoutNotes, total: total > 0 ? total : null, days };
     });
@@ -828,8 +858,12 @@ const refineTripPlanHandler = async (req, res, next) => {
     }
 
     const mergedPlan = mergeRefinedTripPlan(tripPlan, refinedRaw);
+    const sanitizedPlan = normalizeTripTravelCosts(
+      applyTripTravelFields(removeTravelToDestinationActivities(mergedPlan), mergedPlan),
+      { destination: mergedPlan?.destination || tripPlan?.destination, travelers: tripPlan?.travelers || 1 }
+    );
     const enrichedPlan = await enrichTripPlanActivities(
-      mergedPlan,
+      sanitizedPlan,
       mergedPlan?.destination || tripPlan?.destination || ''
     );
 
@@ -841,6 +875,7 @@ const refineTripPlanHandler = async (req, res, next) => {
     if (tripId) {
       const { error: updateError } = await updateTripById(tripId, {
         notes: serializeTripPlanForNotes(enrichedPlan, enrichedPlan?.destination || tripPlan?.destination),
+        ...buildTripTravelDbFields(enrichedPlan),
         updated_at: new Date().toISOString(),
       });
       if (updateError) {

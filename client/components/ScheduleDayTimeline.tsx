@@ -79,6 +79,8 @@ type ScheduleDayTimelineProps = {
   showLastToOriginLeg?: boolean;
   /** Dynamiczny koszt dojazdu/powrotu widoczny tylko w UI, bez zapisu w bazie. */
   onDynamicTravelCostChange?: (cost: number) => void;
+  fixedOriginTravel?: { way?: string | null; cost?: number | null; durationMinutes?: number | null } | null;
+  fixedReturnTravel?: { way?: string | null; cost?: number | null; durationMinutes?: number | null } | null;
   /** Zapamiętana trasa GPS → pierwsza atrakcja (np. po przełączeniu zakładek). */
   originGpsRestoredSnapshot?: GpsTransitSnapshot | null;
   onOriginGpsSnapshotCommit?: (snapshot: GpsTransitSnapshot) => void;
@@ -92,6 +94,56 @@ const toMapLocation = (item: TimelineActivityItem): MapLocationInput => ({
   location: item.location,
   coordinates: item.coordinates,
 });
+
+const parseTimeToMinutes = (value?: string | null) => {
+  const match = String(value || '').match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  return hours * 60 + minutes;
+};
+
+const formatMinutesAsTime = (value: number) => {
+  const minutesInDay = 24 * 60;
+  const normalized = ((Math.round(value) % minutesInDay) + minutesInDay) % minutesInDay;
+  const hours = Math.floor(normalized / 60).toString().padStart(2, '0');
+  const minutes = (normalized % 60).toString().padStart(2, '0');
+  return `${hours}:${minutes}`;
+};
+
+const getBoundaryTravelDuration = (way?: string | null) => {
+  const normalized = String(way || '').toLowerCase();
+  if (normalized.includes('samolot') || normalized.includes('lot')) return 150;
+  if (normalized.includes('poci')) return 180;
+  if (normalized.includes('autobus') || normalized.includes('bus')) return 180;
+  if (normalized.includes('samoch')) return 120;
+  return 120;
+};
+
+const getOriginTravelTimeLabel = (
+  items: TimelineActivityItem[],
+  way?: string | null,
+  durationMinutes?: number | null
+) => {
+  const firstStart = parseTimeToMinutes(items[0]?.time);
+  if (firstStart === null) return 'Orientacyjny czas dojazdu';
+  const duration = Number(durationMinutes) > 0 ? Number(durationMinutes) : getBoundaryTravelDuration(way);
+  return `${formatMinutesAsTime(firstStart - duration)}-${formatMinutesAsTime(firstStart)}`;
+};
+
+const getReturnTravelTimeLabel = (
+  items: TimelineActivityItem[],
+  way?: string | null,
+  durationMinutes?: number | null
+) => {
+  const last = items[items.length - 1];
+  const lastStart = parseTimeToMinutes(last?.time);
+  if (lastStart === null) return 'Orientacyjny czas powrotu';
+  const departure = lastStart + (Number(last?.durationMinutes) || 60);
+  const duration = Number(durationMinutes) > 0 ? Number(durationMinutes) : getBoundaryTravelDuration(way);
+  return `${formatMinutesAsTime(departure)}-${formatMinutesAsTime(departure + duration)}`;
+};
 
 function MapsPillButton({ onPress }: { onPress: () => void }) {
   return (
@@ -319,6 +371,8 @@ export default function ScheduleDayTimeline({
   showOriginToFirstLeg = false,
   showLastToOriginLeg = false,
   onDynamicTravelCostChange,
+  fixedOriginTravel,
+  fixedReturnTravel,
   originGpsRestoredSnapshot,
   onOriginGpsSnapshotCommit,
   returnGpsRestoredSnapshot,
@@ -406,7 +460,13 @@ export default function ScheduleDayTimeline({
     items[0]?.category,
   ]);
 
-  const originEnabled = Boolean(showOriginToFirstLeg && showTransits && items.length > 0);
+  const hasFixedOriginTravel = Boolean(
+    showTransits && items.length > 0 && (fixedOriginTravel?.way || Number(fixedOriginTravel?.cost) > 0)
+  );
+  const hasFixedReturnTravel = Boolean(
+    showTransits && items.length > 0 && (fixedReturnTravel?.way || Number(fixedReturnTravel?.cost) > 0)
+  );
+  const originEnabled = Boolean(showOriginToFirstLeg && showTransits && items.length > 0 && !hasFixedOriginTravel);
   const originTransit = useOriginToFirstActivityTransit(
     originEnabled,
     originActivityInput,
@@ -439,7 +499,7 @@ export default function ScheduleDayTimeline({
     items[items.length - 1]?.category,
   ]);
 
-  const returnEnabled = Boolean(showLastToOriginLeg && showTransits && items.length > 0);
+  const returnEnabled = Boolean(showLastToOriginLeg && showTransits && items.length > 0 && !hasFixedReturnTravel);
   const returnTransit = useOriginToFirstActivityTransit(
     returnEnabled,
     returnActivityInput,
@@ -451,18 +511,6 @@ export default function ScheduleDayTimeline({
       onSnapshotCommit: onReturnGpsSnapshotCommit,
     }
   );
-
-  const handleOriginGpsRecalculate = () => {
-    const returnOnly = returnEnabled ? Number(returnTransit.leg?.cost) || 0 : 0;
-    onDynamicTravelCostChange?.(returnOnly);
-    void originTransit.recalculate();
-  };
-
-  const handleReturnGpsRecalculate = () => {
-    const keepOtherLegOnThisDay = originEnabled ? Number(originTransit.leg?.cost) || 0 : 0;
-    onDynamicTravelCostChange?.(keepOtherLegOnThisDay);
-    void returnTransit.recalculate();
-  };
 
   const moveItem = (fromIndex: number, toIndex: number) => {
     if (toIndex < 0 || toIndex >= items.length || fromIndex === toIndex) return;
@@ -499,10 +547,18 @@ export default function ScheduleDayTimeline({
   const returnPending = returnTransit.loading;
 
   useEffect(() => {
-    const originCost = originEnabled ? Number(originTransit.leg?.cost) || 0 : 0;
-    const returnCost = returnEnabled ? Number(returnTransit.leg?.cost) || 0 : 0;
+    const originCost = originEnabled ? Number(originTransit.leg?.cost) || 0 : Number(fixedOriginTravel?.cost) || 0;
+    const returnCost = returnEnabled ? Number(returnTransit.leg?.cost) || 0 : Number(fixedReturnTravel?.cost) || 0;
     onDynamicTravelCostChange?.(originCost + returnCost);
-  }, [originEnabled, originTransit.leg?.cost, returnEnabled, returnTransit.leg?.cost, onDynamicTravelCostChange]);
+  }, [
+    fixedOriginTravel?.cost,
+    fixedReturnTravel?.cost,
+    originEnabled,
+    originTransit.leg?.cost,
+    returnEnabled,
+    returnTransit.leg?.cost,
+    onDynamicTravelCostChange,
+  ]);
 
   if (items.length === 0) {
     return (
@@ -514,6 +570,25 @@ export default function ScheduleDayTimeline({
 
   return (
     <View>
+      {hasFixedOriginTravel && (
+        <View style={styles.originLegWrap}>
+          <View style={styles.transitRow}>
+            <View style={styles.transitLeftSpacer} />
+            <View style={styles.transitBubble}>
+              <Ionicons name="airplane-outline" size={12} color="#94a3b8" />
+              <View style={styles.transitTextBox}>
+                <Text style={styles.transitTitle}>
+                  Dojazd do celu · {fixedOriginTravel?.way || 'Transport'}
+                  {Number(fixedOriginTravel?.cost) > 0 ? ` · ${formatPlnAmount(Number(fixedOriginTravel?.cost))} PLN` : ''}
+                </Text>
+                <Text style={styles.transitTime}>
+                  {getOriginTravelTimeLabel(items, fixedOriginTravel?.way, fixedOriginTravel?.durationMinutes)}
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      )}
       {originEnabled && (
         <View style={styles.originLegWrap}>
           {originPending ? (
@@ -565,17 +640,7 @@ export default function ScheduleDayTimeline({
             </TouchableOpacity>
           ) : originTransit.leg && originTransit.userCoords ? (
             <View style={styles.transitRow}>
-              <View style={styles.transitLeftColumn}>
-                <TouchableOpacity
-                  style={styles.transitRefreshCircle}
-                  onPress={handleOriginGpsRecalculate}
-                  accessibilityRole="button"
-                  accessibilityLabel="Przelicz trasę z GPS"
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Ionicons name="refresh" size={17} color={Colors.brand.blue} />
-                </TouchableOpacity>
-              </View>
+              <View style={styles.transitLeftSpacer} />
               <View style={styles.transitBubble}>
                 <Ionicons name="swap-horizontal-outline" size={12} color="#94a3b8" />
                 <View style={styles.transitTextBox}>
@@ -645,6 +710,25 @@ export default function ScheduleDayTimeline({
           )}
         </View>
       ))}
+      {hasFixedReturnTravel && (
+        <View style={styles.originLegWrap}>
+          <View style={styles.transitRow}>
+            <View style={styles.transitLeftSpacer} />
+            <View style={styles.transitBubble}>
+              <Ionicons name="airplane-outline" size={12} color="#94a3b8" />
+              <View style={styles.transitTextBox}>
+                <Text style={styles.transitTitle}>
+                  Powrót do domu · {fixedReturnTravel?.way || 'Transport'}
+                  {Number(fixedReturnTravel?.cost) > 0 ? ` · ${formatPlnAmount(Number(fixedReturnTravel?.cost))} PLN` : ''}
+                </Text>
+                <Text style={styles.transitTime}>
+                  {getReturnTravelTimeLabel(items, fixedReturnTravel?.way, fixedReturnTravel?.durationMinutes)}
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      )}
       {returnEnabled && (
         <View style={styles.originLegWrap}>
           {returnPending ? (
@@ -696,17 +780,7 @@ export default function ScheduleDayTimeline({
             </TouchableOpacity>
           ) : returnTransit.leg && returnTransit.userCoords ? (
             <View style={styles.transitRow}>
-              <View style={styles.transitLeftColumn}>
-                <TouchableOpacity
-                  style={styles.transitRefreshCircle}
-                  onPress={handleReturnGpsRecalculate}
-                  accessibilityRole="button"
-                  accessibilityLabel="Przelicz powrót z GPS"
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Ionicons name="refresh" size={17} color={Colors.brand.blue} />
-                </TouchableOpacity>
-              </View>
+              <View style={styles.transitLeftSpacer} />
               <View style={styles.transitBubble}>
                 <Ionicons name="swap-horizontal-outline" size={12} color="#94a3b8" />
                 <View style={styles.transitTextBox}>

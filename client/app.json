@@ -17,7 +17,7 @@
         "NSPhotoLibraryUsageDescription": "Aplikacja potrzebuje dostępu do galerii, aby ustawić avatar.",
         "NSCameraUsageDescription": "Aplikacja potrzebuje dostępu do aparatu, aby wykonać zdjęcie avatara.",
         "NSMicrophoneUsageDescription": "Aplikacja potrzebuje dostępu do mikrofonu do nagrywania dźwięku.",
-        "NSLocationWhenInUseUsageDescription": "Aplikacja użyje lokalizacji, aby pokazać trasę z Twojego miejsca do pierwszego punktu planu (pierwszy dzień)."
+        "NSLocationWhenInUseUsageDescription": "Aplikacja użyje lokalizacji, aby oszacować dojazd do celu podróży i pokazać trasę z Twojego miejsca do planu."
       }
     },
     "android": {
@@ -44,7 +44,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Aplikacja użyje lokalizacji, aby pokazać trasę z Twojego miejsca do pierwszego punktu planu (pierwszy dzień)."
+          "locationWhenInUsePermission": "Aplikacja użyje lokalizacji, aby oszacować dojazd do celu podróży i pokazać trasę z Twojego miejsca do planu."
         }
       ],
       [

@@ -11,6 +11,7 @@ const {
 } = require('../repositories/tripParticipants.repository');
 const { resolveAvatarUrl } = require('./friends.controller'); // lub ścieżka do Twojego pliku
 const { serializeCoordinatesForDb } = require('../utils/activityGeo');
+const { getTripBoundaryTravelCost, getTripTravelFields } = require('../utils/tripTravelFields');
 
 const {
   getActivitiesTotalCostByTripId,
@@ -64,6 +65,16 @@ const sumTransitCostsFromTripPlan = (tripPlan) => {
 
 const sumTransitCostsFromTripNotes = (notes) => sumTransitCostsFromTripPlan(parseTripPlanFromNotes(notes));
 
+const getTripTravelTotal = (trip) => getTripBoundaryTravelCost(trip);
+
+const getTripTravelSource = (trip) => ({
+  ...parseTripPlanFromNotes(trip?.notes),
+  travel_cost: trip?.travel_cost,
+  return_cost: trip?.return_cost,
+  travel_way: trip?.travel_way,
+  return_way: trip?.return_way,
+});
+
 const normalizeTrip = (trip, userId, participantsCount = 0, totalCost = null) => ({
   id: trip.id,
   ownerId: trip.owner_id,
@@ -72,6 +83,12 @@ const normalizeTrip = (trip, userId, participantsCount = 0, totalCost = null) =>
   endDate: trip.end_date,
   totalBudget: trip.total_budget === null || trip.total_budget === undefined ? null : Number(trip.total_budget),
   totalCost: totalCost !== null && totalCost !== undefined && Number(totalCost) > 0 ? Number(totalCost) : null,
+  travelCost: getTripTravelFields(getTripTravelSource(trip)).travelCost,
+  returnCost: getTripTravelFields(getTripTravelSource(trip)).returnCost,
+  travelDurationMinutes: getTripTravelFields(getTripTravelSource(trip)).travelDurationMinutes,
+  returnDurationMinutes: getTripTravelFields(getTripTravelSource(trip)).returnDurationMinutes,
+  travelWay: getTripTravelFields(getTripTravelSource(trip)).travelWay,
+  returnWay: getTripTravelFields(getTripTravelSource(trip)).returnWay,
   status: trip.status,
   imageUrl: trip.image_url,
   notes: trip.notes,
@@ -224,8 +241,9 @@ const recalculateTripCostSplit = async (tripId) => {
   const budgetParsed = Number(trip.total_budget);
   const safeBudget = Number.isFinite(budgetParsed) ? budgetParsed : 0;
   const transitTotal = sumTransitCostsFromTripNotes(trip.notes);
+  const boundaryTravelTotal = getTripTravelTotal(trip);
   const planCost =
-    (activityNumeric !== null && activityNumeric > 0 ? activityNumeric : 0) + transitTotal;
+    (activityNumeric !== null && activityNumeric > 0 ? activityNumeric : 0) + transitTotal + boundaryTravelTotal;
   const totalCost = planCost > 0 ? planCost : safeBudget;
   const totalCostSafe = Number.isFinite(totalCost) ? Math.max(0, totalCost) : 0;
 
@@ -343,9 +361,10 @@ const getTrips = async (req, res, next) => {
         uniqueParticipantIds.add(trip.owner_id);
         const activityTotal = totalsByTripId[trip.id] ?? null;
         const transitTotal = sumTransitCostsFromTripNotes(trip.notes);
+        const boundaryTravelTotal = getTripTravelTotal(trip);
         const totalCost =
-          activityTotal !== null || transitTotal > 0
-            ? (Number(activityTotal) || 0) + transitTotal
+          activityTotal !== null || transitTotal > 0 || boundaryTravelTotal > 0
+            ? (Number(activityTotal) || 0) + transitTotal + boundaryTravelTotal
             : null;
         return normalizeTrip(trip, userId, uniqueParticipantIds.size, totalCost);
       }));
@@ -379,7 +398,11 @@ const getTripByIdHandler = async (req, res, next) => {
     const participantIds = new Set((participantRows || []).map((row) => row.user_id).filter(Boolean));
     participantIds.add(trip.owner_id);
     const { total: activityTotal } = await getActivitiesTotalCostByTripId(trip.id);
-    return res.status(200).json({ trip: normalizeTrip(trip, userId, participantIds.size, activityTotal) });
+    const tripTotal =
+      activityTotal !== null || sumTransitCostsFromTripNotes(trip.notes) > 0 || getTripTravelTotal(trip) > 0
+        ? (Number(activityTotal) || 0) + sumTransitCostsFromTripNotes(trip.notes) + getTripTravelTotal(trip)
+        : null;
+    return res.status(200).json({ trip: normalizeTrip(trip, userId, participantIds.size, tripTotal) });
   } catch (err) {
     return next(err);
   }
@@ -681,7 +704,8 @@ const buildSchedulePayload = async (tripId) => {
     return { error: tripError };
   }
 
-  const transitsByDayNumber = getTransitsByDayNumber(parseTripPlanFromNotes(trip?.notes));
+  const parsedTripPlan = parseTripPlanFromNotes(trip?.notes);
+  const transitsByDayNumber = getTransitsByDayNumber(parsedTripPlan);
 
   const { data: dayRows, error: daysError } = await getTripDaysByTripId(tripId);
   if (daysError) {
@@ -717,9 +741,13 @@ const buildSchedulePayload = async (tripId) => {
       0
     );
     return sum + activityTotal + transitTotal;
-  }, 0);
+  }, getTripTravelTotal(trip));
 
-  return { days, totalCost: totalCost > 0 ? totalCost : null };
+  return {
+    days,
+    totalCost: totalCost > 0 ? totalCost : null,
+    ...getTripTravelFields(getTripTravelSource(trip)),
+  };
 };
 
 const getTripScheduleHandler = async (req, res, next) => {
@@ -749,6 +777,12 @@ const getTripScheduleHandler = async (req, res, next) => {
     return res.status(200).json({
       days: schedule.days,
       totalCost: schedule.totalCost,
+      travelCost: schedule.travelCost,
+      returnCost: schedule.returnCost,
+      travelDurationMinutes: schedule.travelDurationMinutes,
+      returnDurationMinutes: schedule.returnDurationMinutes,
+      travelWay: schedule.travelWay,
+      returnWay: schedule.returnWay,
       accessRole: trip.owner_id === userId ? 'owner' : 'participant',
     });
   } catch (err) {

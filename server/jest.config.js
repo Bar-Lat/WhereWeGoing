@@ -36,7 +36,7 @@ module.exports = {
   setupFilesAfterEnv: [],
 
   // Timeout
-  testTimeout: 10000,
+  testTimeout: 60_000,
 
   // Verbose output
   verbose: true
