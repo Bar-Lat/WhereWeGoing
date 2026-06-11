@@ -160,8 +160,8 @@ function DayCardView({
   parentScrollRef?: React.RefObject<ScrollView | null>;
   scrollOffsetRef?: React.RefObject<number>;
   onDynamicTravelCostChange: (dayIndex: number, cost: number) => void;
-  fixedOriginTravel?: { way?: string | null; cost?: number | null } | null;
-  fixedReturnTravel?: { way?: string | null; cost?: number | null } | null;
+  fixedOriginTravel?: { way?: string | null; cost?: number | null; durationMinutes?: number | null } | null;
+  fixedReturnTravel?: { way?: string | null; cost?: number | null; durationMinutes?: number | null } | null;
   gpsOriginSnapshot: GpsTransitSnapshot | null;
   onGpsOriginSnapshotCommit: (snapshot: GpsTransitSnapshot) => void;
   gpsReturnSnapshot: GpsTransitSnapshot | null;
@@ -1199,10 +1199,12 @@ export default function TripDetails() {
                         fixedOriginTravel={{
                           way: tripPlan.travelWay,
                           cost: tripPlan.travelCost,
+                          durationMinutes: tripPlan.travelDurationMinutes,
                         }}
                         fixedReturnTravel={{
                           way: tripPlan.returnWay,
                           cost: tripPlan.returnCost,
+                          durationMinutes: tripPlan.returnDurationMinutes,
                         }}
                         gpsOriginSnapshot={gpsOriginFirstDaySnapshot}
                         onGpsOriginSnapshotCommit={setGpsOriginFirstDaySnapshot}

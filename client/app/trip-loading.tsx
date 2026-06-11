@@ -167,6 +167,8 @@ export default function TripLoadingScreen() {
         plan.estimatedTotalCost = Math.round(Number(plan.estimatedTotalCost) || 0);
         plan.travelCost = Math.round(Number(plan.travelCost) || 0);
         plan.returnCost = Math.round(Number(plan.returnCost) || 0);
+        plan.travelDurationMinutes = Math.round(Number(plan.travelDurationMinutes) || 0);
+        plan.returnDurationMinutes = Math.round(Number(plan.returnDurationMinutes) || 0);
         
         if (plan.days && Array.isArray(plan.days)) {
           plan.days = plan.days.map(day => ({
@@ -221,6 +223,8 @@ export default function TripLoadingScreen() {
             days: mapScheduleDaysToPlanDays(schedule.days || []),
             travelCost: schedule.travelCost,
             returnCost: schedule.returnCost,
+            travelDurationMinutes: schedule.travelDurationMinutes,
+            returnDurationMinutes: schedule.returnDurationMinutes,
             travelWay: schedule.travelWay,
             returnWay: schedule.returnWay,
           };

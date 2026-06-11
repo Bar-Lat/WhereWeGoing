@@ -677,6 +677,12 @@ export default function Trips() {
     const declaredBudget = trip.totalBudget ?? trip.total_budget ?? parsedData?.estimatedTotalCost ?? 0;
     let travelCost = Number(trip.travelCost ?? trip.travel_cost ?? parsedData?.travelCost ?? 0) || 0;
     let returnCost = Number(trip.returnCost ?? trip.return_cost ?? parsedData?.returnCost ?? 0) || 0;
+    let travelDurationMinutes = Number(
+      trip.travelDurationMinutes ?? parsedData?.travelDurationMinutes ?? 0
+    ) || 0;
+    let returnDurationMinutes = Number(
+      trip.returnDurationMinutes ?? parsedData?.returnDurationMinutes ?? 0
+    ) || 0;
     let travelWay = trip.travelWay ?? trip.travel_way ?? parsedData?.travelWay ?? null;
     let returnWay = trip.returnWay ?? trip.return_way ?? parsedData?.returnWay ?? null;
 
@@ -688,6 +694,8 @@ export default function Trips() {
         }
         travelCost = Number(scheduleResponse.travelCost) || travelCost;
         returnCost = Number(scheduleResponse.returnCost) || returnCost;
+        travelDurationMinutes = Number(scheduleResponse.travelDurationMinutes) || travelDurationMinutes;
+        returnDurationMinutes = Number(scheduleResponse.returnDurationMinutes) || returnDurationMinutes;
         travelWay = scheduleResponse.travelWay ?? travelWay;
         returnWay = scheduleResponse.returnWay ?? returnWay;
       } catch (error) {
@@ -707,6 +715,8 @@ export default function Trips() {
       bestTransport: parsedData?.bestTransport || "Brak danych",
       travelCost,
       returnCost,
+      travelDurationMinutes,
+      returnDurationMinutes,
       travelWay,
       returnWay,
       imageUrl: trip.imageUrl || trip.image_url || 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?q=80&w=1000'

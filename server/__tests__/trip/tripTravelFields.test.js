@@ -32,6 +32,8 @@ describe('tripTravelFields', () => {
 
     expect(plan.travelCost).toBe(1800);
     expect(plan.returnCost).toBe(1800);
+    expect(plan.travelDurationMinutes).toBe(720);
+    expect(plan.returnDurationMinutes).toBe(720);
     expect(plan.estimatedTotalCost).toBe(4500);
   });
 
@@ -50,5 +52,29 @@ describe('tripTravelFields', () => {
     expect(plan.travelCost).toBe(1800);
     expect(plan.returnCost).toBe(1800);
     expect(plan.estimatedTotalCost).toBe(4600);
+  });
+
+  it('wybiera samochod dla krajowej trasy, gdy uzytkownik preferuje auto', () => {
+    const plan = normalizeTripTravelCosts(
+      {
+        travelWay: 'Pociąg',
+        travelCost: 80,
+        returnWay: 'Pociąg',
+        returnCost: 80,
+        days: [{ estimatedDayCost: 500 }],
+      },
+      {
+        destination: 'Kraków',
+        originLabel: 'Rzeszów, Polska',
+        originCoordinates: { latitude: 50.0413, longitude: 21.999 },
+        travelers: 2,
+        transport: ['car'],
+      }
+    );
+
+    expect(plan.travelWay).toBe('Samochód');
+    expect(plan.returnWay).toBe('Samochód');
+    expect(plan.travelDurationMinutes).toBeGreaterThanOrEqual(90);
+    expect(plan.travelDurationMinutes).toBeLessThanOrEqual(150);
   });
 });

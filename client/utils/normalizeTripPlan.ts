@@ -11,6 +11,8 @@ export const normalizeTripPlanNumbers = (plan: TripPlan): TripPlan => ({
   estimatedTotalCost: roundMoney(plan.estimatedTotalCost),
   travelCost: roundMoney(plan.travelCost),
   returnCost: roundMoney(plan.returnCost),
+  travelDurationMinutes: Math.round(Number(plan.travelDurationMinutes) || 0),
+  returnDurationMinutes: Math.round(Number(plan.returnDurationMinutes) || 0),
   days: (plan.days || []).map((day) => ({
     ...day,
     estimatedDayCost: roundMoney(day.estimatedDayCost),

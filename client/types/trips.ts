@@ -10,6 +10,8 @@ export type TripDto = {
   totalCost: number | null;
   travelCost?: number;
   returnCost?: number;
+  travelDurationMinutes?: number;
+  returnDurationMinutes?: number;
   travelWay?: string | null;
   returnWay?: string | null;
   status: string;
@@ -94,6 +96,8 @@ export type TripScheduleResponse = {
   totalCost: number | null;
   travelCost?: number;
   returnCost?: number;
+  travelDurationMinutes?: number;
+  returnDurationMinutes?: number;
   travelWay?: string | null;
   returnWay?: string | null;
   accessRole: TripAccessRole;

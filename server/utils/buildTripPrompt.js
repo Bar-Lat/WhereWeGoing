@@ -52,8 +52,10 @@ Zwróć WYŁĄCZNIE obiekt JSON (bez markdown, bez komentarzy) w tym schemacie:
   "currency": "PLN",
   "travelWay": "string (srodek transportu do celu po polsku, np. Samolot, Pociag, Autobus, Samochod)",
   "travelCost": number (koszt dojazdu do celu dla calej grupy w PLN),
+  "travelDurationMinutes": number (orientacyjny czas dojazdu do celu w minutach),
   "returnWay": "string (srodek transportu powrotnego po polsku)",
   "returnCost": number (koszt powrotu dla calej grupy w PLN),
+  "returnDurationMinutes": number (orientacyjny czas powrotu w minutach),
   "days": [
     {
       "day": number,
@@ -92,6 +94,8 @@ Dobierz dojazd do celu podróży realistycznie:
 - pola travelWay/travelCost oraz returnWay/returnCost sa jedynym miejscem na dojazd do celu i powrot; nie powtarzaj ich w days[].activities;
 - travelWay i returnWay muszą być krótką polską nazwą środka transportu, np. "Samolot", "Pociąg", "Autobus", "Samochód";
 - travelCost i returnCost muszą być realistycznymi kosztami dla całej grupy w PLN i wliczać się do estimatedTotalCost;
+- travelDurationMinutes i returnDurationMinutes muszą być realistyczne: lot Polska/Europa-USA trwa zwykle 600-840 minut, lot po Europie 120-240 minut, Rzeszów-Kraków samochodem ok. 120 minut, Rzeszów-morze samochodem ok. 420-540 minut;
+- preferowany transport użytkownika dotyczy też dojazdu do celu, jeśli dystans jest realistyczny: gdy wybrano samochód i trasa jest krajowa/regionalna, ustaw travelWay/returnWay na "Samochód"; gdy wybrano Metro/Bus, dla tras międzymiastowych preferuj "Pociąg" albo "Autobus";
 - jeśli travelWay lub returnWay to "Samolot", licz koszt na osobę i przemnoż przez ${data.travelers}: tanie linie po Europie zwykle 200-500 PLN/os. za odcinek, a lot na inny kontynent, np. z Polski/Europy do USA albo Nowego Jorku, zwykle 1800-3000 PLN/os. za odcinek;
 - jeśli budżet nie wystarcza na realistyczną drogą podróż, wybierz tańszy wariant i zostaw sensowną część na zwiedzanie.
 Każdy dzień powinien mieć dokładnie ${attractionsPerDay} atrakcji kategorii "atrakcja". 

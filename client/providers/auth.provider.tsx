@@ -1,4 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { Platform } from 'react-native';
+import * as Location from 'expo-location';
 import { ApiRequestError, loginUser, logoutUser, refreshUserSession, type AuthSession } from '@/services/auth.api';
 import { clearSession, getSession, saveSession } from '@/services/session.storage';
 import { clearCachedProfile } from '@/services/profile.storage';
@@ -26,6 +28,19 @@ const isRefreshTokenInvalidError = (error: unknown) => {
   return /refresh token|jwt|token is invalid|invalid token|session not found|sesja wygasła/i.test(
     error.message
   );
+};
+
+const requestInitialLocationPermission = async () => {
+  if (Platform.OS === 'web') return;
+
+  try {
+    const permission = await Location.getForegroundPermissionsAsync();
+    if (permission.status === 'undetermined') {
+      await Location.requestForegroundPermissionsAsync();
+    }
+  } catch {
+    // Uprawnienia lokalizacji nie moga blokowac logowania.
+  }
 };
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
@@ -86,6 +101,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     sessionRef.current = response.session;
     setSession(response.session);
     await saveSession(response.session);
+    await requestInitialLocationPermission();
   }, []);
 
   const scheduleRefresh = useCallback((currentSession: AuthSession) => {

@@ -209,6 +209,8 @@ export default function Home() {
           : '',
         travelCost: scheduleResponse?.travelCost ?? upcomingTrip.travelCost,
         returnCost: scheduleResponse?.returnCost ?? upcomingTrip.returnCost,
+        travelDurationMinutes: scheduleResponse?.travelDurationMinutes ?? upcomingTrip.travelDurationMinutes,
+        returnDurationMinutes: scheduleResponse?.returnDurationMinutes ?? upcomingTrip.returnDurationMinutes,
         travelWay: scheduleResponse?.travelWay ?? upcomingTrip.travelWay,
         returnWay: scheduleResponse?.returnWay ?? upcomingTrip.returnWay,
         imageUrl: upcomingTrip.imageUrl || undefined

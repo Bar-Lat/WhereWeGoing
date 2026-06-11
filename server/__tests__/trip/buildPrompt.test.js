@@ -93,12 +93,16 @@ describe('buildPrompt()', () => {
     expect(prompt).toContain('w bestTransport opisz rekomendowany dojazd i powrót');
     expect(prompt).toContain('"travelWay"');
     expect(prompt).toContain('"travelCost"');
+    expect(prompt).toContain('"travelDurationMinutes"');
     expect(prompt).toContain('"returnWay"');
     expect(prompt).toContain('"returnCost"');
+    expect(prompt).toContain('"returnDurationMinutes"');
     expect(prompt).toContain('pola travelWay/travelCost oraz returnWay/returnCost sa jedynym miejscem');
     expect(prompt).toContain('tanie linie po Europie zwykle 200-500 PLN/os.');
     expect(prompt).toContain('z Polski/Europy do USA albo Nowego Jorku');
     expect(prompt).toContain('1800-3000 PLN/os.');
+    expect(prompt).toContain('lot Polska/Europa-USA trwa zwykle 600-840 minut');
+    expect(prompt).toContain('gdy wybrano samochód i trasa jest krajowa/regionalna');
   });
 
   it('wymaga obiadu jako kosztu w planie dnia', () => {

@@ -79,8 +79,8 @@ type ScheduleDayTimelineProps = {
   showLastToOriginLeg?: boolean;
   /** Dynamiczny koszt dojazdu/powrotu widoczny tylko w UI, bez zapisu w bazie. */
   onDynamicTravelCostChange?: (cost: number) => void;
-  fixedOriginTravel?: { way?: string | null; cost?: number | null } | null;
-  fixedReturnTravel?: { way?: string | null; cost?: number | null } | null;
+  fixedOriginTravel?: { way?: string | null; cost?: number | null; durationMinutes?: number | null } | null;
+  fixedReturnTravel?: { way?: string | null; cost?: number | null; durationMinutes?: number | null } | null;
   /** Zapamiętana trasa GPS → pierwsza atrakcja (np. po przełączeniu zakładek). */
   originGpsRestoredSnapshot?: GpsTransitSnapshot | null;
   onOriginGpsSnapshotCommit?: (snapshot: GpsTransitSnapshot) => void;
@@ -121,19 +121,27 @@ const getBoundaryTravelDuration = (way?: string | null) => {
   return 120;
 };
 
-const getOriginTravelTimeLabel = (items: TimelineActivityItem[], way?: string | null) => {
+const getOriginTravelTimeLabel = (
+  items: TimelineActivityItem[],
+  way?: string | null,
+  durationMinutes?: number | null
+) => {
   const firstStart = parseTimeToMinutes(items[0]?.time);
   if (firstStart === null) return 'Orientacyjny czas dojazdu';
-  const duration = getBoundaryTravelDuration(way);
+  const duration = Number(durationMinutes) > 0 ? Number(durationMinutes) : getBoundaryTravelDuration(way);
   return `${formatMinutesAsTime(firstStart - duration)}-${formatMinutesAsTime(firstStart)}`;
 };
 
-const getReturnTravelTimeLabel = (items: TimelineActivityItem[], way?: string | null) => {
+const getReturnTravelTimeLabel = (
+  items: TimelineActivityItem[],
+  way?: string | null,
+  durationMinutes?: number | null
+) => {
   const last = items[items.length - 1];
   const lastStart = parseTimeToMinutes(last?.time);
   if (lastStart === null) return 'Orientacyjny czas powrotu';
   const departure = lastStart + (Number(last?.durationMinutes) || 60);
-  const duration = getBoundaryTravelDuration(way);
+  const duration = Number(durationMinutes) > 0 ? Number(durationMinutes) : getBoundaryTravelDuration(way);
   return `${formatMinutesAsTime(departure)}-${formatMinutesAsTime(departure + duration)}`;
 };
 
@@ -573,7 +581,9 @@ export default function ScheduleDayTimeline({
                   Dojazd do celu · {fixedOriginTravel?.way || 'Transport'}
                   {Number(fixedOriginTravel?.cost) > 0 ? ` · ${formatPlnAmount(Number(fixedOriginTravel?.cost))} PLN` : ''}
                 </Text>
-                <Text style={styles.transitTime}>{getOriginTravelTimeLabel(items, fixedOriginTravel?.way)}</Text>
+                <Text style={styles.transitTime}>
+                  {getOriginTravelTimeLabel(items, fixedOriginTravel?.way, fixedOriginTravel?.durationMinutes)}
+                </Text>
               </View>
             </View>
           </View>
@@ -711,7 +721,9 @@ export default function ScheduleDayTimeline({
                   Powrót do domu · {fixedReturnTravel?.way || 'Transport'}
                   {Number(fixedReturnTravel?.cost) > 0 ? ` · ${formatPlnAmount(Number(fixedReturnTravel?.cost))} PLN` : ''}
                 </Text>
-                <Text style={styles.transitTime}>{getReturnTravelTimeLabel(items, fixedReturnTravel?.way)}</Text>
+                <Text style={styles.transitTime}>
+                  {getReturnTravelTimeLabel(items, fixedReturnTravel?.way, fixedReturnTravel?.durationMinutes)}
+                </Text>
               </View>
             </View>
           </View>

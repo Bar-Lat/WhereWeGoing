@@ -57,6 +57,8 @@ export interface TripPlan {
   bestTransport: string;
   travelCost?: number;
   returnCost?: number;
+  travelDurationMinutes?: number;
+  returnDurationMinutes?: number;
   travelWay?: string | null;
   returnWay?: string | null;
   imageUrl?: string;

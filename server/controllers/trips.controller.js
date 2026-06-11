@@ -67,6 +67,14 @@ const sumTransitCostsFromTripNotes = (notes) => sumTransitCostsFromTripPlan(pars
 
 const getTripTravelTotal = (trip) => getTripBoundaryTravelCost(trip);
 
+const getTripTravelSource = (trip) => ({
+  ...parseTripPlanFromNotes(trip?.notes),
+  travel_cost: trip?.travel_cost,
+  return_cost: trip?.return_cost,
+  travel_way: trip?.travel_way,
+  return_way: trip?.return_way,
+});
+
 const normalizeTrip = (trip, userId, participantsCount = 0, totalCost = null) => ({
   id: trip.id,
   ownerId: trip.owner_id,
@@ -75,10 +83,12 @@ const normalizeTrip = (trip, userId, participantsCount = 0, totalCost = null) =>
   endDate: trip.end_date,
   totalBudget: trip.total_budget === null || trip.total_budget === undefined ? null : Number(trip.total_budget),
   totalCost: totalCost !== null && totalCost !== undefined && Number(totalCost) > 0 ? Number(totalCost) : null,
-  travelCost: getTripTravelFields(trip).travelCost,
-  returnCost: getTripTravelFields(trip).returnCost,
-  travelWay: getTripTravelFields(trip).travelWay,
-  returnWay: getTripTravelFields(trip).returnWay,
+  travelCost: getTripTravelFields(getTripTravelSource(trip)).travelCost,
+  returnCost: getTripTravelFields(getTripTravelSource(trip)).returnCost,
+  travelDurationMinutes: getTripTravelFields(getTripTravelSource(trip)).travelDurationMinutes,
+  returnDurationMinutes: getTripTravelFields(getTripTravelSource(trip)).returnDurationMinutes,
+  travelWay: getTripTravelFields(getTripTravelSource(trip)).travelWay,
+  returnWay: getTripTravelFields(getTripTravelSource(trip)).returnWay,
   status: trip.status,
   imageUrl: trip.image_url,
   notes: trip.notes,
@@ -694,7 +704,8 @@ const buildSchedulePayload = async (tripId) => {
     return { error: tripError };
   }
 
-  const transitsByDayNumber = getTransitsByDayNumber(parseTripPlanFromNotes(trip?.notes));
+  const parsedTripPlan = parseTripPlanFromNotes(trip?.notes);
+  const transitsByDayNumber = getTransitsByDayNumber(parsedTripPlan);
 
   const { data: dayRows, error: daysError } = await getTripDaysByTripId(tripId);
   if (daysError) {
@@ -735,7 +746,7 @@ const buildSchedulePayload = async (tripId) => {
   return {
     days,
     totalCost: totalCost > 0 ? totalCost : null,
-    ...getTripTravelFields(trip),
+    ...getTripTravelFields(getTripTravelSource(trip)),
   };
 };
 
@@ -768,6 +779,8 @@ const getTripScheduleHandler = async (req, res, next) => {
       totalCost: schedule.totalCost,
       travelCost: schedule.travelCost,
       returnCost: schedule.returnCost,
+      travelDurationMinutes: schedule.travelDurationMinutes,
+      returnDurationMinutes: schedule.returnDurationMinutes,
       travelWay: schedule.travelWay,
       returnWay: schedule.returnWay,
       accessRole: trip.owner_id === userId ? 'owner' : 'participant',
