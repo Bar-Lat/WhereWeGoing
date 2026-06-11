@@ -30,8 +30,25 @@ describe('tripTravelFields', () => {
       { destination: 'Tokio', travelers: 1 }
     );
 
-    expect(plan.travelCost).toBe(1900);
-    expect(plan.returnCost).toBe(1900);
-    expect(plan.estimatedTotalCost).toBe(4700);
+    expect(plan.travelCost).toBe(1800);
+    expect(plan.returnCost).toBe(1800);
+    expect(plan.estimatedTotalCost).toBe(4500);
+  });
+
+  it('rozpoznaje odmiane Nowego Jorku jako trase miedzykontynentalna', () => {
+    const plan = normalizeTripTravelCosts(
+      {
+        travelWay: 'Samolot',
+        travelCost: 500,
+        returnWay: 'Samolot',
+        returnCost: 500,
+        days: [{ estimatedDayCost: 1000 }],
+      },
+      { destination: 'wycieczka do Nowego Jorku', travelers: 1 }
+    );
+
+    expect(plan.travelCost).toBe(1800);
+    expect(plan.returnCost).toBe(1800);
+    expect(plan.estimatedTotalCost).toBe(4600);
   });
 });

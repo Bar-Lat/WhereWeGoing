@@ -4,8 +4,14 @@ const roundMoney = (value) => {
   return Math.round(num * 100) / 100;
 };
 
+const normalizeSearchText = (value) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
 const NON_EUROPE_DESTINATION_PATTERN =
-  /\b(usa|stany|nowy jork|new york|los angeles|chicago|miami|kanada|canada|meksyk|mexico|brazylia|brazil|argentyna|maroko|egipt|egypt|dubaj|dubai|emiraty|qatar|chiny|china|japonia|japan|tokio|tokyo|seul|korea|tajlandia|thailand|bangkok|indie|india|indonezja|bali|australia|nowa zelandia|new zealand)\b/i;
+  /\b(usa|stany|ameryk|nowy jork|nowego jorku|new york|los angeles|chicago|miami|kanada|canada|meksyk|mexico|brazylia|brazil|argentyna|maroko|egipt|egypt|dubaj|dubai|emiraty|qatar|chiny|china|japonia|japan|tokio|tokyo|seul|korea|tajlandia|thailand|bangkok|indie|india|indonezja|bali|australia|nowa zelandia|new zealand)\b/i;
 
 const cleanWay = (value) => {
   if (typeof value !== 'string') return null;
@@ -59,8 +65,8 @@ const isPlaneWay = (value) => /\b(samolot|lot|przelot)\b/i.test(String(value || 
 
 const normalizeFlightCost = (cost, { destination, travelers }) => {
   const passengerCount = Math.max(Number(travelers) || 1, 1);
-  const intercontinental = NON_EUROPE_DESTINATION_PATTERN.test(String(destination || ''));
-  const minPerPerson = intercontinental ? 1900 : 200;
+  const intercontinental = NON_EUROPE_DESTINATION_PATTERN.test(normalizeSearchText(destination));
+  const minPerPerson = intercontinental ? 1800 : 200;
   const maxPerPerson = intercontinental ? 3000 : 500;
   const minTotal = minPerPerson * passengerCount;
   const maxTotal = maxPerPerson * passengerCount;

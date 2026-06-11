@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, Animated, StyleSheet, TouchableOpacity, useColorScheme } from 'react-native';
+import { View, Text, Animated, StyleSheet, TouchableOpacity, useColorScheme, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import { Colors } from '@/styles/colors';
 import { useRouter } from 'expo-router';
 import { useTripStore, type TripPlan } from '@/stores/tripStore';
@@ -46,6 +47,37 @@ const formatRetryAfter = (minutes: number) => {
   }
 
   return `${minutes} minut`;
+};
+
+const resolveGenerationOrigin = async () => {
+  if (Platform.OS === 'web') return {};
+
+  try {
+    let permission = await Location.getForegroundPermissionsAsync();
+    if (permission.status !== 'granted') {
+      permission = await Location.requestForegroundPermissionsAsync();
+    }
+
+    if (permission.status !== 'granted') return {};
+
+    const position = await Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.Balanced,
+    });
+    const originCoordinates = {
+      latitude: position.coords.latitude,
+      longitude: position.coords.longitude,
+    };
+    const reverse = await Location.reverseGeocodeAsync(originCoordinates);
+    const first = reverse[0];
+    const originLabel = [first?.city, first?.region, first?.country].filter(Boolean).join(', ');
+
+    return {
+      originCoordinates,
+      originLabel: originLabel || null,
+    };
+  } catch {
+    return {};
+  }
 };
 
 export default function TripLoadingScreen() {
@@ -124,9 +156,11 @@ export default function TripLoadingScreen() {
     const fetchPlan = async () => {
       try {
         if (!formData) throw new Error('Brak danych formularza');
+        const origin = await resolveGenerationOrigin();
+        const generationFormData = { ...formData, ...origin };
         
         // 1. Generowanie planu przez AI
-        const plan = await generateTripPlan(formData, session?.access_token ?? undefined);
+        const plan = await generateTripPlan(generationFormData, session?.access_token ?? undefined);
         
         // --- 🛠️ FIX NA BŁĄD BAZY DANYCH (BIGINT) ---
         // Baza danych odrzuca ułamki. Wymuszamy liczby całkowite dla wszystkich kosztów.
@@ -147,7 +181,7 @@ export default function TripLoadingScreen() {
         
         // Upewniamy się, że z samego formularza też idzie pełna liczba
         const safeFormData = {
-          ...formData,
+          ...generationFormData,
           budget: Math.round(Number(formData.budget) || 0)
         };
         // -------------------------------------------

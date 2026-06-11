@@ -29,6 +29,7 @@ const buildPrompt = (data) => {
 
 DANE WYCIECZKI:
 - Cel podróży: ${data.destination}
+- Przybliżony punkt startu użytkownika: ${data.originLabel || 'nieznany (jeśli brak, przyjmij start z Polski)'}
 - Data wylotu: ${data.departureDate}
 - Data powrotu: ${data.returnDate}
 - Liczba podróżujących: ${data.travelers} osób
@@ -91,7 +92,7 @@ Dobierz dojazd do celu podróży realistycznie:
 - pola travelWay/travelCost oraz returnWay/returnCost sa jedynym miejscem na dojazd do celu i powrot; nie powtarzaj ich w days[].activities;
 - travelWay i returnWay muszą być krótką polską nazwą środka transportu, np. "Samolot", "Pociąg", "Autobus", "Samochód";
 - travelCost i returnCost muszą być realistycznymi kosztami dla całej grupy w PLN i wliczać się do estimatedTotalCost;
-- jeśli travelWay lub returnWay to "Samolot", licz koszt na osobę i przemnoż przez ${data.travelers}: tanie linie po Europie zwykle 200-500 PLN/os. za odcinek, a lot na inny kontynent zwykle 1900-3000 PLN/os. za odcinek;
+- jeśli travelWay lub returnWay to "Samolot", licz koszt na osobę i przemnoż przez ${data.travelers}: tanie linie po Europie zwykle 200-500 PLN/os. za odcinek, a lot na inny kontynent, np. z Polski/Europy do USA albo Nowego Jorku, zwykle 1800-3000 PLN/os. za odcinek;
 - jeśli budżet nie wystarcza na realistyczną drogą podróż, wybierz tańszy wariant i zostaw sensowną część na zwiedzanie.
 Każdy dzień powinien mieć dokładnie ${attractionsPerDay} atrakcji kategorii "atrakcja". 
 Posiłki (kategoria "jedzenie") i noclegi (kategoria "nocleg") są DODATKIEM i nie wliczają się do tej liczby.

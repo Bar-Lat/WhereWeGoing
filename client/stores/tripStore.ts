@@ -11,6 +11,8 @@ export interface TripFormData {
   transport: string[];
   attractionsPerDay: number;
   selectedFriendIds: string[];
+  originLabel?: string | null;
+  originCoordinates?: { latitude: number; longitude: number } | null;
 }
 
 export type DayTransit = {
