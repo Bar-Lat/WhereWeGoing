@@ -79,7 +79,6 @@ export default function Home() {
   const { session } = useAuth(); 
   const [isLoadingTrip, setIsLoadingTrip] = useState(false);
   const [cachedOfflineTrips, setCachedOfflineTrips] = useState<CachedOfflineTrip[]>([]);
-  const [dynamicTravelCost, setDynamicTravelCost] = useState(0);
   
 
 
@@ -169,10 +168,6 @@ export default function Home() {
     [cachedOfflineTrips, isOffline, upcomingTrip]
   );
 
-  useEffect(() => {
-    setDynamicTravelCost(0);
-  }, [upcomingTrip?.id]);
-
   // --- PRZYGOTOWANIE ZMIENNYCH DLA WIDOKU ---
   const heroImage = upcomingTrip?.imageUrl || 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?q=80&w=1000&auto=format&fit=crop';
   const startDateText = formatShortDate(upcomingTrip?.startDate);
@@ -180,7 +175,7 @@ export default function Home() {
   
   // Bezpośrednie czytanie budżetu z TripDto
   const budget = upcomingTrip?.totalBudget || 0;
-  const spent = (upcomingTrip?.totalCost || 0) + dynamicTravelCost;
+  const spent = upcomingTrip?.totalCost || 0;
   const progressPercent = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
   const isOverBudget = spent > budget;
 
@@ -190,11 +185,12 @@ export default function Home() {
     try {
       setIsLoadingTrip(true);
 
+      const scheduleResponse = isOffline || !session?.access_token
+        ? null
+        : await getTripSchedule(session.access_token, upcomingTrip.id);
       const scheduleDays = isOffline
         ? offlineUpcomingCache?.scheduleDays || []
-        : session?.access_token
-          ? (await getTripSchedule(session.access_token, upcomingTrip.id)).days || []
-          : [];
+        : scheduleResponse?.days || [];
 
       const mappedPlan: TripPlan = {
         id: upcomingTrip.id,
@@ -208,7 +204,13 @@ export default function Home() {
         days: mapScheduleDaysToPlanDays(scheduleDays),
         
         generalTips: [],
-        bestTransport: '',
+        bestTransport: upcomingTrip.travelWay && upcomingTrip.returnWay
+          ? `${upcomingTrip.travelWay} / ${upcomingTrip.returnWay}`
+          : '',
+        travelCost: scheduleResponse?.travelCost ?? upcomingTrip.travelCost,
+        returnCost: scheduleResponse?.returnCost ?? upcomingTrip.returnCost,
+        travelWay: scheduleResponse?.travelWay ?? upcomingTrip.travelWay,
+        returnWay: scheduleResponse?.returnWay ?? upcomingTrip.returnWay,
         imageUrl: upcomingTrip.imageUrl || undefined
       };
 

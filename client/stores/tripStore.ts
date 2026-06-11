@@ -53,6 +53,10 @@ export interface TripPlan {
   days: DayPlan[];
   generalTips: string[];
   bestTransport: string;
+  travelCost?: number;
+  returnCost?: number;
+  travelWay?: string | null;
+  returnWay?: string | null;
   imageUrl?: string;
 }
 

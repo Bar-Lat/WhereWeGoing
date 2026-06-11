@@ -131,6 +131,8 @@ export default function TripLoadingScreen() {
         // --- 🛠️ FIX NA BŁĄD BAZY DANYCH (BIGINT) ---
         // Baza danych odrzuca ułamki. Wymuszamy liczby całkowite dla wszystkich kosztów.
         plan.estimatedTotalCost = Math.round(Number(plan.estimatedTotalCost) || 0);
+        plan.travelCost = Math.round(Number(plan.travelCost) || 0);
+        plan.returnCost = Math.round(Number(plan.returnCost) || 0);
         
         if (plan.days && Array.isArray(plan.days)) {
           plan.days = plan.days.map(day => ({
@@ -182,8 +184,12 @@ export default function TripLoadingScreen() {
             savedPlan = {
               ...savedPlan,
               id: response.tripId,
-              days: mapScheduleDaysToPlanDays(schedule.days || []),
-            };
+            days: mapScheduleDaysToPlanDays(schedule.days || []),
+            travelCost: schedule.travelCost,
+            returnCost: schedule.returnCost,
+            travelWay: schedule.travelWay,
+            returnWay: schedule.returnWay,
+          };
           }
 
           setSavedTripId(response.tripId);

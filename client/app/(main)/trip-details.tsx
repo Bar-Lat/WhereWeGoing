@@ -135,9 +135,11 @@ function DayCardView({
                        onShowAlert,
                        parentScrollRef,
                        scrollOffsetRef,
-                       isLastDay,
-                       onDynamicTravelCostChange,
-                       gpsOriginSnapshot,
+                        isLastDay,
+                        onDynamicTravelCostChange,
+                        fixedOriginTravel,
+                        fixedReturnTravel,
+                        gpsOriginSnapshot,
                        onGpsOriginSnapshotCommit,
                        gpsReturnSnapshot,
                        onGpsReturnSnapshotCommit,
@@ -158,6 +160,8 @@ function DayCardView({
   parentScrollRef?: React.RefObject<ScrollView | null>;
   scrollOffsetRef?: React.RefObject<number>;
   onDynamicTravelCostChange: (dayIndex: number, cost: number) => void;
+  fixedOriginTravel?: { way?: string | null; cost?: number | null } | null;
+  fixedReturnTravel?: { way?: string | null; cost?: number | null } | null;
   gpsOriginSnapshot: GpsTransitSnapshot | null;
   onGpsOriginSnapshotCommit: (snapshot: GpsTransitSnapshot) => void;
   gpsReturnSnapshot: GpsTransitSnapshot | null;
@@ -268,6 +272,8 @@ function DayCardView({
                   showTransits={!isEditingMode}
                   showOriginToFirstLeg={!isEditingMode && index === 0 && Platform.OS !== 'web'}
                   showLastToOriginLeg={!isEditingMode && isLastDay && Platform.OS !== 'web'}
+                  fixedOriginTravel={index === 0 ? fixedOriginTravel : null}
+                  fixedReturnTravel={isLastDay ? fixedReturnTravel : null}
                   transitOverrides={mapDayTransitsToOverrides(day.transits)}
                   preferredTransport={preferredTransport}
                   currentColors={currentColors}
@@ -1135,17 +1141,18 @@ export default function TripDetails() {
 
   const heroImageUri = tripPlan.imageUrl || 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?q=80&w=600';
   const totalDays = tripPlan.days?.length || 0;
-  const visibleDynamicDayTravelCosts = editModeActive ? {} : dynamicDayTravelCosts;
   const getDayTransitCost = (day: DayPlan) =>
     (day.transits || []).reduce((sum, transit) => sum + (Number(transit.estimatedCost) || 0), 0);
   const getDayDisplayCost = (day: DayPlan, index: number) =>
     (Number(day.estimatedDayCost) || 0) +
-    getDayTransitCost(day) +
-    (Number(visibleDynamicDayTravelCosts[index]) || 0);
+    getDayTransitCost(day);
+  const boundaryTravelCost =
+    editModeActive ? 0 : (Number(tripPlan.travelCost) || 0) + (Number(tripPlan.returnCost) || 0);
   const calculatedTotalCost = tripPlan.days?.reduce(
     (sum, day, index) => sum + getDayDisplayCost(day, index),
     0
   ) || 0;
+  const calculatedTotalCostWithTravel = calculatedTotalCost + boundaryTravelCost;
 
   return (
       <View style={[styles.container, { backgroundColor: currentColors.background }]}>
@@ -1189,6 +1196,14 @@ export default function TripDetails() {
                         parentScrollRef={scrollRef}
                         scrollOffsetRef={scrollOffsetRef}
                         onDynamicTravelCostChange={handleDynamicTravelCostChange}
+                        fixedOriginTravel={{
+                          way: tripPlan.travelWay,
+                          cost: tripPlan.travelCost,
+                        }}
+                        fixedReturnTravel={{
+                          way: tripPlan.returnWay,
+                          cost: tripPlan.returnCost,
+                        }}
                         gpsOriginSnapshot={gpsOriginFirstDaySnapshot}
                         onGpsOriginSnapshotCommit={setGpsOriginFirstDaySnapshot}
                         gpsReturnSnapshot={gpsReturnLastDaySnapshot}
@@ -1230,9 +1245,23 @@ export default function TripDetails() {
                   </View>
                   <View style={{ height: 1, backgroundColor: currentColors.border, width: '100%', marginVertical: 12 }} />
                   <Text style={{ color: currentColors.subtext, fontSize: 14 }}>
-                    Szacowany koszt planu: <Text style={{ color: Colors.brand.blue, fontWeight: 'bold' }}>{formatPlnAmount(calculatedTotalCost)} {tripPlan.currency}</Text>
+                    Szacowany koszt planu: <Text style={{ color: Colors.brand.blue, fontWeight: 'bold' }}>{formatPlnAmount(calculatedTotalCostWithTravel)} {tripPlan.currency}</Text>
                   </Text>
                 </View>
+                {!editModeActive && boundaryTravelCost > 0 && (
+                  <View style={{ marginBottom: 16, gap: 8 }}>
+                    {Number(tripPlan.travelCost) > 0 && (
+                      <Text style={{ color: currentColors.subtext, fontSize: 13 }}>
+                        Dojazd: <Text style={{ color: currentColors.text, fontWeight: '700' }}>{tripPlan.travelWay || 'Transport'}</Text> · {formatPlnAmount(Number(tripPlan.travelCost))} PLN
+                      </Text>
+                    )}
+                    {Number(tripPlan.returnCost) > 0 && (
+                      <Text style={{ color: currentColors.subtext, fontSize: 13 }}>
+                        Powrót: <Text style={{ color: currentColors.text, fontWeight: '700' }}>{tripPlan.returnWay || 'Transport'}</Text> · {formatPlnAmount(Number(tripPlan.returnCost))} PLN
+                      </Text>
+                    )}
+                  </View>
+                )}
                 <Text style={{ color: currentColors.text, fontSize: 18, fontWeight: '700', marginTop: 10, marginBottom: 12 }}>
                   Rozbicie na dni
                 </Text>

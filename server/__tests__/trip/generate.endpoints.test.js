@@ -103,6 +103,10 @@ const SAMPLE_TRIP_PLAN = {
   destination: 'Krakow',
   englishDestination: 'Krakow',
   estimatedTotalCost: 1500,
+  travelWay: 'Pociąg',
+  travelCost: 200,
+  returnWay: 'Pociąg',
+  returnCost: 200,
   days: [
     {
       day: 1,
@@ -203,6 +207,8 @@ describe('POST /api/trip/generate – generowanie wycieczki', () => {
     expect(res.status).toBe(200);
     expect(res.body.tripPlan).toBeDefined();
     expect(res.body.tripPlan.destination).toBe('Krakow');
+    expect(res.body.tripPlan.travelWay).toBe('Pociąg');
+    expect(res.body.tripPlan.returnWay).toBe('Pociąg');
     expect(res.body.tripPlan.days).toHaveLength(1);
     expect(res.body.tripPlan.days[0].activities).toHaveLength(1);
     expect(res.body.tripId).toBeNull();
@@ -234,7 +240,7 @@ describe('POST /api/trip/generate – generowanie wycieczki', () => {
     expect(res.body.tripPlan.days[0].activities[0].name).toBe('Wawel');
     expect(res.body.tripPlan.days[0].activities[0].category).toBe('atrakcja');
     expect(res.body.tripPlan.days[0].estimatedDayCost).toBe(100);
-    expect(res.body.tripPlan.estimatedTotalCost).toBe(100);
+    expect(res.body.tripPlan.estimatedTotalCost).toBe(500);
   });
 
   it('400 – brak wymaganego pola destination', async () => {

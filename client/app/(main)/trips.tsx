@@ -138,10 +138,10 @@ const formatBudget = (value: number | null | undefined) => {
 
 const getTripDisplayCost = (trip: TripDto) => trip.totalCost ?? trip.totalBudget;
 
-const getDisplayedTripCost = (trip: TripDto, dynamicTravelCost = 0) => {
+const getTripDisplayCostPerPerson = (trip: TripDto) => {
   const baseCost = getTripDisplayCost(trip);
-  if (baseCost === null || baseCost === undefined) return dynamicTravelCost > 0 ? dynamicTravelCost : baseCost;
-  return Number(baseCost) + dynamicTravelCost;
+  if (baseCost === null || baseCost === undefined) return baseCost;
+  return Math.round(Number(baseCost) / Math.max(Number(trip.participantsCount) || 1, 1));
 };
 
 const formatParticipantCost = (value: number | null | undefined, currency = 'PLN') => {
@@ -314,8 +314,6 @@ export default function Trips() {
   const [tripListFilter, setTripListFilter] = useState<TripListFilter>('all');
   const [scheduleExpanded, setScheduleExpanded] = useState(false);
   const [scheduleDays, setScheduleDays] = useState<TripScheduleDayDto[]>([]);
-  const [selectedTripDynamicTravelCost, setSelectedTripDynamicTravelCost] = useState(0);
-  const [tripDynamicTravelCosts, setTripDynamicTravelCosts] = useState<Record<string, number>>({});
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [scheduleSaving, setScheduleSaving] = useState(false);
   const [offlineSaving, setOfflineSaving] = useState(false);
@@ -342,10 +340,6 @@ export default function Trips() {
     selectedTrip && getNearestTripForOffline(trips)?.id === selectedTrip.id
   );
   const selectedTripCanBeRemovedFromOffline = selectedTripIsSavedOffline && !selectedTripIsNearestOffline;
-
-  useEffect(() => {
-    setSelectedTripDynamicTravelCost(0);
-  }, [isOffline, scheduleDays, selectedTrip]);
 
   useEffect(() => {
     let isMounted = true;
@@ -546,7 +540,6 @@ export default function Trips() {
       setParticipants([]);
       setFriends([]);
       setScheduleDays([]);
-      setSelectedTripDynamicTravelCost(0);
       setScheduleExpanded(false);
       setOfflineCacheDirty(false);
       await loadPanelData(trip);
@@ -576,7 +569,6 @@ export default function Trips() {
     setParticipants([]);
     setFriends([]);
     setScheduleDays([]);
-    setSelectedTripDynamicTravelCost(0);
     setScheduleExpanded(false);
     setActionProfileId(null);
     setOfflineCacheDirty(false);
@@ -683,6 +675,10 @@ export default function Trips() {
 
     let planDays = Array.isArray(parsedData?.days) ? parsedData.days : [];
     const declaredBudget = trip.totalBudget ?? trip.total_budget ?? parsedData?.estimatedTotalCost ?? 0;
+    let travelCost = Number(trip.travelCost ?? trip.travel_cost ?? parsedData?.travelCost ?? 0) || 0;
+    let returnCost = Number(trip.returnCost ?? trip.return_cost ?? parsedData?.returnCost ?? 0) || 0;
+    let travelWay = trip.travelWay ?? trip.travel_way ?? parsedData?.travelWay ?? null;
+    let returnWay = trip.returnWay ?? trip.return_way ?? parsedData?.returnWay ?? null;
 
     if (accessToken) {
       try {
@@ -690,6 +686,10 @@ export default function Trips() {
         if (scheduleResponse.days?.length) {
           planDays = mapScheduleDaysToPlanDays(scheduleResponse.days);
         }
+        travelCost = Number(scheduleResponse.travelCost) || travelCost;
+        returnCost = Number(scheduleResponse.returnCost) || returnCost;
+        travelWay = scheduleResponse.travelWay ?? travelWay;
+        returnWay = scheduleResponse.returnWay ?? returnWay;
       } catch (error) {
         console.error('❌ BŁĄD POBIERANIA HARMONOGRAMU:', error);
       }
@@ -705,6 +705,10 @@ export default function Trips() {
       days: planDays,
       generalTips: Array.isArray(parsedData?.generalTips) ? parsedData.generalTips : [],
       bestTransport: parsedData?.bestTransport || "Brak danych",
+      travelCost,
+      returnCost,
+      travelWay,
+      returnWay,
       imageUrl: trip.imageUrl || trip.image_url || 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?q=80&w=1000'
     };
 
@@ -744,10 +748,6 @@ export default function Trips() {
     return sortTripsByNearestDate(filteredTrips);
   }, [tripListFilter, trips]);
 
-  useEffect(() => {
-    setTripDynamicTravelCosts({});
-  }, [accessToken, isOffline, visibleTrips]);
-
   const selectedTripIndex = useMemo(() => {
     if (!selectedTrip) return 0;
     const index = trips.findIndex((trip) => trip.id === selectedTrip.id);
@@ -757,7 +757,7 @@ export default function Trips() {
   const selectedTripDays = selectedTrip ? getTripDays(selectedTrip) : null;
   const selectedStatusMeta = selectedTrip ? getTripStatusMeta(selectedTrip) : null;
   const selectedTripDisplayedCost = selectedTrip
-    ? getDisplayedTripCost(selectedTrip, selectedTripDynamicTravelCost)
+    ? getTripDisplayCost(selectedTrip)
     : null;
   const selectedTripDisplayedAmountPerPerson =
     selectedTripDisplayedCost !== null && selectedTripDisplayedCost !== undefined && participants.length > 0
@@ -930,7 +930,7 @@ export default function Trips() {
     const statusMeta = getTripStatusMeta(trip);
     const days = getTripDays(trip);
     const isOwner = trip.accessRole === 'owner';
-    const displayedCost = getDisplayedTripCost(trip, tripDynamicTravelCosts[trip.id] || 0);
+    const displayedCost = getTripDisplayCostPerPerson(trip);
     return (
       <TouchableOpacity
         key={trip.id}

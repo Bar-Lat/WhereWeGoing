@@ -1,3 +1,5 @@
+const { getTripBoundaryTravelCost } = require('./tripTravelFields');
+
 const TRAVEL_ACTIVITY_PATTERN =
   /\b(lot|przelot|wylot|przylot|samolot|flight|airport|lotnisko|transfer|dojazd|podroz|podróż|powrot|powrót|przyjazd|wyjazd)\b/i;
 
@@ -47,7 +49,9 @@ const removeTravelToDestinationActivities = (tripPlan) => {
     };
   });
 
-  const estimatedTotalCost = days.reduce((sum, day) => sum + (Number(day?.estimatedDayCost) || 0), 0);
+  const estimatedTotalCost =
+    days.reduce((sum, day) => sum + (Number(day?.estimatedDayCost) || 0), 0) +
+    getTripBoundaryTravelCost(tripPlan);
 
   return {
     ...tripPlan,

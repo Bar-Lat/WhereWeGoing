@@ -8,6 +8,10 @@ export type TripDto = {
   endDate: string;
   totalBudget: number | null;
   totalCost: number | null;
+  travelCost?: number;
+  returnCost?: number;
+  travelWay?: string | null;
+  returnWay?: string | null;
   status: string;
   imageUrl: string | null;
   notes: string | null;
@@ -88,6 +92,10 @@ export type TripScheduleDayDto = {
 export type TripScheduleResponse = {
   days: TripScheduleDayDto[];
   totalCost: number | null;
+  travelCost?: number;
+  returnCost?: number;
+  travelWay?: string | null;
+  returnWay?: string | null;
   accessRole: TripAccessRole;
 };
 

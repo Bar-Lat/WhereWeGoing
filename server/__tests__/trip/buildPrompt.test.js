@@ -91,6 +91,21 @@ describe('buildPrompt()', () => {
     expect(prompt).toContain('aplikacja pokazuje te odcinki osobno');
     expect(prompt).toContain('nie dodawaj transportu lokalnego jako aktywności');
     expect(prompt).toContain('w bestTransport opisz rekomendowany dojazd i powrót');
+    expect(prompt).toContain('"travelWay"');
+    expect(prompt).toContain('"travelCost"');
+    expect(prompt).toContain('"returnWay"');
+    expect(prompt).toContain('"returnCost"');
+    expect(prompt).toContain('pola travelWay/travelCost oraz returnWay/returnCost sa jedynym miejscem');
+    expect(prompt).toContain('tanie linie po Europie zwykle 200-500 PLN/os.');
+    expect(prompt).toContain('lot na inny kontynent zwykle 1900-3000 PLN/os.');
+  });
+
+  it('wymaga obiadu jako kosztu w planie dnia', () => {
+    const prompt = buildPrompt(BASE_DATA);
+
+    expect(prompt).toContain('W KAŻDYM dniu dodaj co najmniej jeden posiłek');
+    expect(prompt).toContain('Obiad w lokalnej restauracji');
+    expect(prompt).toContain('estimatedCost musi być w estimatedDayCost');
   });
 
   it('wymaga sensownego wykorzystania budzetu i noclegow przy dluzszych wyjazdach', () => {

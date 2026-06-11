@@ -49,6 +49,10 @@ Zwróć WYŁĄCZNIE obiekt JSON (bez markdown, bez komentarzy) w tym schemacie:
   "totalDays": number,
   "estimatedTotalCost": number,
   "currency": "PLN",
+  "travelWay": "string (srodek transportu do celu po polsku, np. Samolot, Pociag, Autobus, Samochod)",
+  "travelCost": number (koszt dojazdu do celu dla calej grupy w PLN),
+  "returnWay": "string (srodek transportu powrotnego po polsku)",
+  "returnCost": number (koszt powrotu dla calej grupy w PLN),
   "days": [
     {
       "day": number,
@@ -84,14 +88,19 @@ Dobierz dojazd do celu podróży realistycznie:
 - ABSOLUTNIE nie dodawaj lotu, przylotu, wylotu, dojazdu do miasta docelowego ani powrotu do domu jako aktywności w days[].activities; aplikacja pokazuje te odcinki osobno na podstawie wyboru użytkownika;
 - nie dodawaj transportu lokalnego jako aktywności; przejazdy między punktami planu obsługuje aplikacja poza days[].activities;
 - w bestTransport opisz rekomendowany dojazd i powrót realistycznie, np. pociąg/autobus/samolot zamiast samochodu przez bardzo długą trasę;
+- pola travelWay/travelCost oraz returnWay/returnCost sa jedynym miejscem na dojazd do celu i powrot; nie powtarzaj ich w days[].activities;
+- travelWay i returnWay muszą być krótką polską nazwą środka transportu, np. "Samolot", "Pociąg", "Autobus", "Samochód";
+- travelCost i returnCost muszą być realistycznymi kosztami dla całej grupy w PLN i wliczać się do estimatedTotalCost;
+- jeśli travelWay lub returnWay to "Samolot", licz koszt na osobę i przemnoż przez ${data.travelers}: tanie linie po Europie zwykle 200-500 PLN/os. za odcinek, a lot na inny kontynent zwykle 1900-3000 PLN/os. za odcinek;
 - jeśli budżet nie wystarcza na realistyczną drogą podróż, wybierz tańszy wariant i zostaw sensowną część na zwiedzanie.
 Każdy dzień powinien mieć dokładnie ${attractionsPerDay} atrakcji kategorii "atrakcja". 
 Posiłki (kategoria "jedzenie") i noclegi (kategoria "nocleg") są DODATKIEM i nie wliczają się do tej liczby.
 Oznacza to że każdy dzień powinien zawierać ${attractionsPerDay} atrakcji PLUS posiłki i nocleg, jeśli wycieczka trwa dłużej niż 1 dzień.
+W KAŻDYM dniu dodaj co najmniej jeden posiłek kategorii "jedzenie" nazwany naturalnie, np. "Obiad w lokalnej restauracji"; jego estimatedCost musi być w estimatedDayCost i w budżecie.
 Przy wycieczce wielodniowej uwzględnij realistyczny koszt noclegów dla całej grupy. Dla 4 dni zwykle zaplanuj 3 noclegi, chyba że daty wskazują inaczej.
 Wszystkie koszty (estimatedCost, estimatedDayCost, estimatedTotalCost) dotyczą CAŁEJ grupy ${data.travelers} osób, nie jednej osoby.
 estimatedDayCost każdego dnia musi być równy sumie estimatedCost aktywności tego dnia.
-Suma estimatedDayCost ze wszystkich dni powinna być realistyczna, nie powinna przekraczać budżetu ${data.budget} PLN i powinna zwykle wykorzystać 75-95% budżetu.
+Suma estimatedDayCost ze wszystkich dni plus travelCost i returnCost powinna być realistyczna, nie powinna przekraczać budżetu ${data.budget} PLN i powinna zwykle wykorzystać 75-95% budżetu.
 Nie oddawaj planu za symboliczny ułamek budżetu, np. 400 PLN przy budżecie 3000 PLN na kilka dni, jeśli można sensownie doliczyć nocleg, jedzenie, bilety i transport.
 Nie planuj tak, aby sam dojazd dalekodystansowy zostawiał mniej niż ok. 40% budżetu na zwiedzanie, jedzenie i lokalny transport.
 Dla KAŻDEJ aktywności OBOWIĄZKOWO podaj location, durationMinutes oraz coordinates (latitude/longitude).

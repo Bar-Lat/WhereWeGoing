@@ -9,6 +9,8 @@ export const roundMoney = (value: unknown) => {
 export const normalizeTripPlanNumbers = (plan: TripPlan): TripPlan => ({
   ...plan,
   estimatedTotalCost: roundMoney(plan.estimatedTotalCost),
+  travelCost: roundMoney(plan.travelCost),
+  returnCost: roundMoney(plan.returnCost),
   days: (plan.days || []).map((day) => ({
     ...day,
     estimatedDayCost: roundMoney(day.estimatedDayCost),
