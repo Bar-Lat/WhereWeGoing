@@ -351,7 +351,12 @@ export default function Home() {
                   <Ionicons name="wallet-outline" size={18} color={Colors.brand.blue} />
                   <Text style={[styles.cardTitle, { color: currentColors.text }]}>Szacowane koszty</Text>
                 </View>
-                <Text style={[styles.cardSubValue, { color: currentColors.subtext }]}>
+                <Text
+                  style={[styles.cardSubValue, { color: currentColors.subtext }]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.75}
+                >
                   {formatPlnAmount(spent)} / {formatPlnAmount(budget)} PLN
                 </Text>
               </View>

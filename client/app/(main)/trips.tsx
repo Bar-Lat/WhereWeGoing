@@ -686,7 +686,7 @@ export default function Trips() {
     let travelWay = trip.travelWay ?? trip.travel_way ?? parsedData?.travelWay ?? null;
     let returnWay = trip.returnWay ?? trip.return_way ?? parsedData?.returnWay ?? null;
 
-    if (accessToken) {
+    if (accessToken && !isOffline) {
       try {
         const scheduleResponse = await getTripSchedule(accessToken, trip.id);
         if (scheduleResponse.days?.length) {
@@ -700,6 +700,18 @@ export default function Trips() {
         returnWay = scheduleResponse.returnWay ?? returnWay;
       } catch (error) {
         console.error('❌ BŁĄD POBIERANIA HARMONOGRAMU:', error);
+      }
+    } else if (isOffline && userId) {
+      const cachedTrips = await getCachedOfflineTrips(userId);
+      const cached = cachedTrips.find((item) => item.trip.id === trip.id);
+      if (cached?.scheduleDays?.length) {
+        planDays = mapScheduleDaysToPlanDays(cached.scheduleDays);
+        travelCost = Number(cached.trip.travelCost) || travelCost;
+        returnCost = Number(cached.trip.returnCost) || returnCost;
+        travelDurationMinutes = Number(cached.trip.travelDurationMinutes) || travelDurationMinutes;
+        returnDurationMinutes = Number(cached.trip.returnDurationMinutes) || returnDurationMinutes;
+        travelWay = cached.trip.travelWay ?? travelWay;
+        returnWay = cached.trip.returnWay ?? returnWay;
       }
     }
 

@@ -80,6 +80,25 @@ const resolveGenerationOrigin = async () => {
   }
 };
 
+const resolveDestinationCoordinates = async (destination?: string) => {
+  if (Platform.OS === 'web' || !destination?.trim()) return {};
+
+  try {
+    const geocoded = await Location.geocodeAsync(destination.trim());
+    const first = geocoded[0];
+    if (!first) return {};
+
+    return {
+      destinationCoordinates: {
+        latitude: first.latitude,
+        longitude: first.longitude,
+      },
+    };
+  } catch {
+    return {};
+  }
+};
+
 export default function TripLoadingScreen() {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme() ?? 'light';
@@ -157,7 +176,8 @@ export default function TripLoadingScreen() {
       try {
         if (!formData) throw new Error('Brak danych formularza');
         const origin = await resolveGenerationOrigin();
-        const generationFormData = { ...formData, ...origin };
+        const destination = await resolveDestinationCoordinates(formData.destination);
+        const generationFormData = { ...formData, ...origin, ...destination };
         
         // 1. Generowanie planu przez AI
         const plan = await generateTripPlan(generationFormData, session?.access_token ?? undefined);
@@ -190,6 +210,7 @@ export default function TripLoadingScreen() {
 
         const planWithLocalTransits: TripPlan = {
           ...plan,
+          estimatedTotalCost: safeFormData.budget,
           days: (plan.days || []).map((day) => ({
             ...day,
             transits: day.transits?.length
@@ -214,12 +235,14 @@ export default function TripLoadingScreen() {
           const response = await acceptTripPlan(safeFormData, planWithLocalTransits, session.access_token);
           savedPlan = (response.tripPlan as typeof planWithLocalTransits) ?? planWithLocalTransits;
           savedPlan.id = response.tripId;
+          savedPlan.estimatedTotalCost = safeFormData.budget;
 
           if (!savedPlan.days?.every((day) => day.activities?.every((act) => act.coordinates))) {
             const schedule = await getTripSchedule(session.access_token, response.tripId);
             savedPlan = {
               ...savedPlan,
               id: response.tripId,
+              estimatedTotalCost: safeFormData.budget,
             days: mapScheduleDaysToPlanDays(schedule.days || []),
             travelCost: schedule.travelCost,
             returnCost: schedule.returnCost,

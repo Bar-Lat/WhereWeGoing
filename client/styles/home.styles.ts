@@ -27,10 +27,10 @@ export const styles = StyleSheet.create({
   
   // Karta Budżetu
   card: { borderRadius: 20, padding: 18, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 5 },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  cardTitle: { fontSize: 15, fontWeight: '600' },
-  cardSubValue: { fontSize: 13, fontWeight: '500' },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 12 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 },
+  cardTitle: { fontSize: 13, fontWeight: '600' },
+  cardSubValue: { flexShrink: 1, maxWidth: '48%', textAlign: 'right', fontSize: 12, fontWeight: '500' },
   progressTrack: { height: 8, borderRadius: 4, overflow: 'hidden' },
   progressBar: { height: '100%', borderRadius: 4 },
   cardFooter: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 },

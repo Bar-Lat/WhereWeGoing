@@ -11,7 +11,7 @@ const normalizeSearchText = (value) =>
     .toLowerCase();
 
 const NON_EUROPE_DESTINATION_PATTERN =
-  /\b(usa|stany|ameryk|nowy jork|nowego jorku|new york|los angeles|chicago|miami|kanada|canada|meksyk|mexico|brazylia|brazil|argentyna|maroko|egipt|egypt|dubaj|dubai|emiraty|qatar|azja|asia|chiny|china|japonia|japan|tokio|tokyo|seul|korea|tajlandia|thailand|bangkok|malezja|malezji|malaysia|kuala lumpur|singapur|singapore|wietnam|vietnam|indie|india|indonezja|bali|afryka|africa|kenia|kenya|rpa|australia|nowa zelandia|new zealand)\b/i;
+  /\b(usa|stany|ameryk|nowy jork|nowego jorku|new york|los angeles|chicago|miami|kanada|canada|ottawa|toronto|vancouver|montreal|meksyk|mexico|brazylia|brazil|argentyna|maroko|egipt|egypt|dubaj|dubai|emiraty|qatar|azja|asia|chiny|china|japonia|japan|tokio|tokyo|seul|korea|tajlandia|thailand|bangkok|malezja|malezji|malaysia|kuala lumpur|singapur|singapore|wietnam|vietnam|indie|india|indonezja|bali|afryka|africa|kenia|kenya|rpa|australia|nowa zelandia|new zealand)\b/i;
 
 const CITY_COORDINATES = [
   { pattern: /\b(rzeszow|rzeszowa|rzeszowie)\b/, latitude: 50.0413, longitude: 21.999 },
@@ -21,7 +21,12 @@ const CITY_COORDINATES = [
   { pattern: /\b(wroclaw|wroclawia|wroclawiu)\b/, latitude: 51.1079, longitude: 17.0385 },
   { pattern: /\b(poznan|poznania|poznaniu)\b/, latitude: 52.4064, longitude: 16.9252 },
   { pattern: /\b(zakopane|zakopanego|zakopanem)\b/, latitude: 49.2992, longitude: 19.9496 },
+  { pattern: /\b(bruksela|brukseli|brussels|bruxelles)\b/, latitude: 50.8503, longitude: 4.3517 },
   { pattern: /\b(new york|nowy jork|nowego jorku)\b/, latitude: 40.7128, longitude: -74.006 },
+  { pattern: /\b(ottawa|ottawie|ottawy)\b/, latitude: 45.4215, longitude: -75.6972 },
+  { pattern: /\b(toronto)\b/, latitude: 43.6532, longitude: -79.3832 },
+  { pattern: /\b(vancouver)\b/, latitude: 49.2827, longitude: -123.1207 },
+  { pattern: /\b(montreal|montrealu)\b/, latitude: 45.5019, longitude: -73.5674 },
 ];
 
 const cleanWay = (value) => {
@@ -104,22 +109,45 @@ const haversineDistanceKm = (from, to) => {
   return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
+const isLikelyEuropeCoordinate = (coordinates) => {
+  if (!coordinates) return null;
+  return (
+    coordinates.latitude >= 34 &&
+    coordinates.latitude <= 72 &&
+    coordinates.longitude >= -25 &&
+    coordinates.longitude <= 45
+  );
+};
+
 const estimateTripDistanceKm = (formData = {}) => {
   const origin = getCoordinates(formData.originCoordinates) ?? resolveKnownCoordinates(formData.originLabel);
-  const destination = resolveKnownCoordinates(formData.destination);
+  const destination = getCoordinates(formData.destinationCoordinates) ?? resolveKnownCoordinates(formData.destination);
   return haversineDistanceKm(origin, destination);
+};
+
+const isIntercontinentalDestination = (formData = {}) => {
+  if (NON_EUROPE_DESTINATION_PATTERN.test(normalizeSearchText(formData.destination))) return true;
+
+  const origin = getCoordinates(formData.originCoordinates) ?? resolveKnownCoordinates(formData.originLabel);
+  const destination = getCoordinates(formData.destinationCoordinates) ?? resolveKnownCoordinates(formData.destination);
+  const originEurope = isLikelyEuropeCoordinate(origin);
+  const destinationEurope = isLikelyEuropeCoordinate(destination);
+
+  if (originEurope !== null && destinationEurope !== null) return originEurope !== destinationEurope;
+  if (destinationEurope === false) return true;
+  return false;
 };
 
 const choosePreferredTravelWay = (fields, formData = {}) => {
   const preferences = Array.isArray(formData.transport) ? formData.transport : [];
   const distanceKm = estimateTripDistanceKm(formData);
-  const intercontinental = NON_EUROPE_DESTINATION_PATTERN.test(normalizeSearchText(formData.destination));
+  const intercontinental = isIntercontinentalDestination(formData);
 
-  if (intercontinental || (distanceKm !== null && distanceKm >= 1200)) {
+  if (intercontinental || (distanceKm !== null && distanceKm >= 2200)) {
     return 'Samolot';
   }
 
-  if (preferences.includes('car') && (distanceKm === null || distanceKm <= 850)) {
+  if (preferences.includes('car') && (distanceKm === null || distanceKm <= 1500)) {
     return 'Samochód';
   }
 
@@ -133,9 +161,10 @@ const choosePreferredTravelWay = (fields, formData = {}) => {
   return fields.travelWay || fields.returnWay || (distanceKm !== null && distanceKm <= 120 ? 'Samochód' : 'Pociąg');
 };
 
-const normalizeFlightCost = (cost, { destination, travelers }) => {
+const normalizeFlightCost = (cost, formData = {}) => {
+  const { travelers } = formData;
   const passengerCount = Math.max(Number(travelers) || 1, 1);
-  const intercontinental = NON_EUROPE_DESTINATION_PATTERN.test(normalizeSearchText(destination));
+  const intercontinental = isIntercontinentalDestination(formData);
   const minPerPerson = intercontinental ? 1800 : 200;
   const maxPerPerson = intercontinental ? 3000 : 500;
   const minTotal = minPerPerson * passengerCount;
@@ -146,17 +175,26 @@ const normalizeFlightCost = (cost, { destination, travelers }) => {
 };
 
 const estimateNonFlightCost = (way, distanceKm, travelers) => {
-  if (distanceKm === null || distanceKm === undefined) return 0;
   const passengerCount = Math.max(Number(travelers) || 1, 1);
-  if (/\b(samochod|samochód)\b/i.test(String(way || ''))) return roundMoney(Math.max(35, distanceKm * 1.15));
-  if (/\b(pociag|pociąg)\b/i.test(String(way || ''))) return roundMoney(Math.max(20, distanceKm * 0.28 * passengerCount));
-  if (/\b(autobus|bus)\b/i.test(String(way || ''))) return roundMoney(Math.max(15, distanceKm * 0.2 * passengerCount));
+  const safeDistanceKm = Number.isFinite(Number(distanceKm)) ? Number(distanceKm) : null;
+  if (/\b(samochod|samochód)\b/i.test(String(way || ''))) {
+    if (safeDistanceKm === null) return roundMoney(180);
+    return roundMoney(Math.max(35, safeDistanceKm * 1.15));
+  }
+  if (/\b(pociag|pociąg)\b/i.test(String(way || ''))) {
+    if (safeDistanceKm === null) return roundMoney(120 * passengerCount);
+    return roundMoney(Math.max(20, safeDistanceKm * 0.28 * passengerCount));
+  }
+  if (/\b(autobus|bus)\b/i.test(String(way || ''))) {
+    if (safeDistanceKm === null) return roundMoney(80 * passengerCount);
+    return roundMoney(Math.max(15, safeDistanceKm * 0.2 * passengerCount));
+  }
   return 0;
 };
 
 const estimateTravelDurationMinutes = (way, formData = {}) => {
   const distanceKm = estimateTripDistanceKm(formData);
-  const intercontinental = NON_EUROPE_DESTINATION_PATTERN.test(normalizeSearchText(formData.destination));
+  const intercontinental = isIntercontinentalDestination(formData);
   const text = String(way || '').toLowerCase();
   if (isPlaneWay(way)) return intercontinental ? 12 * 60 : 3 * 60;
   if (text.includes('samoch')) return Math.round(((distanceKm ?? 160) / 75) * 60);
