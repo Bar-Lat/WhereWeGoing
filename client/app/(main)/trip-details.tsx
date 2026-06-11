@@ -15,7 +15,6 @@ import {
   BackHandler,
   Platform,
 } from 'react-native';
-import * as Location from 'expo-location';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,6 +22,7 @@ import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Colors } from '@/styles/colors';
 import ScheduleDayTimeline, { type TimelineActivityItem } from '@/components/ScheduleDayTimeline';
+import type { GpsTransitSnapshot } from '@/hooks/useOriginToFirstActivityTransit';
 import TripMapTab from '@/components/TripMapTab';
 import LocationMapPickerModal from '@/components/LocationMapPickerModal';
 import { formatPlnAmount } from '@/components/ActivityCostBadge';
@@ -53,9 +53,6 @@ import { normalizeTripPlanNumbers } from '@/utils/normalizeTripPlan';
 import { validateTripPlanSchedule } from '@/utils/scheduleValidation';
 import {
   buildTransitsForActivities,
-  computeFastestOriginToFirstActivityLeg,
-  computeLastActivityToOriginLeg,
-  haversineDistanceKm,
   mapDayTransitsToOverrides,
 } from '@/utils/scheduleTransit';
 import { parseActivityCoordinates, geocodeActivityLocation, reverseGeocodeCoordinates, type ActivityCoordinates } from '@/utils/activityMap';
@@ -113,62 +110,6 @@ const mergePlanWithSchedule = (
   ),
 });
 
-const getFirstPlanActivity = (days?: DayPlan[]) => {
-  for (const day of days || []) {
-    const activity = day.activities?.[0];
-    if (activity) return activity;
-  }
-  return null;
-};
-
-const getLastPlanActivity = (days?: DayPlan[]) => {
-  const safeDays = days || [];
-  for (let dayIndex = safeDays.length - 1; dayIndex >= 0; dayIndex -= 1) {
-    const activities = safeDays[dayIndex]?.activities || [];
-    const activity = activities[activities.length - 1];
-    if (activity) return activity;
-  }
-  return null;
-};
-
-const estimatePlanEndpointTravelCosts = (userCoords: ActivityCoordinates, days?: DayPlan[]) => {
-  const first = getFirstPlanActivity(days);
-  const last = getLastPlanActivity(days);
-  const firstCoords = parseActivityCoordinates(first?.coordinates);
-  const lastCoords = parseActivityCoordinates(last?.coordinates);
-
-  const firstLeg = first && firstCoords
-    ? computeFastestOriginToFirstActivityLeg(
-        haversineDistanceKm(userCoords.latitude, userCoords.longitude, firstCoords.latitude, firstCoords.longitude),
-        {
-          name: first.name,
-          location: first.location,
-          time: first.time,
-          durationMinutes: first.durationMinutes,
-          category: first.category,
-        }
-      )
-    : null;
-
-  const returnLeg = last && lastCoords
-    ? computeLastActivityToOriginLeg(
-        haversineDistanceKm(userCoords.latitude, userCoords.longitude, lastCoords.latitude, lastCoords.longitude),
-        {
-          name: last.name,
-          location: last.location,
-          time: last.time,
-          durationMinutes: last.durationMinutes,
-          category: last.category,
-        }
-      )
-    : null;
-
-  return {
-    firstCost: Number(firstLeg?.cost) || 0,
-    returnCost: Number(returnLeg?.cost) || 0,
-  };
-};
-
 function formatDate(dateStr: string): string {
   if (!dateStr) return '';
   const parts = dateStr.split('.');
@@ -196,6 +137,10 @@ function DayCardView({
                        scrollOffsetRef,
                        isLastDay,
                        onDynamicTravelCostChange,
+                       gpsOriginSnapshot,
+                       onGpsOriginSnapshotCommit,
+                       gpsReturnSnapshot,
+                       onGpsReturnSnapshotCommit,
                      }: {
   day: DayPlan;
   index: number;
@@ -213,6 +158,10 @@ function DayCardView({
   parentScrollRef?: React.RefObject<ScrollView | null>;
   scrollOffsetRef?: React.RefObject<number>;
   onDynamicTravelCostChange: (dayIndex: number, cost: number) => void;
+  gpsOriginSnapshot: GpsTransitSnapshot | null;
+  onGpsOriginSnapshotCommit: (snapshot: GpsTransitSnapshot) => void;
+  gpsReturnSnapshot: GpsTransitSnapshot | null;
+  onGpsReturnSnapshotCommit: (snapshot: GpsTransitSnapshot) => void;
 }) {
   const [expanded, setExpanded] = useState(index === 0);
 
@@ -325,6 +274,10 @@ function DayCardView({
                   parentScrollRef={parentScrollRef}
                   scrollOffsetRef={scrollOffsetRef}
                   onDynamicTravelCostChange={(cost) => onDynamicTravelCostChange(index, cost)}
+                  originGpsRestoredSnapshot={index === 0 ? gpsOriginSnapshot : null}
+                  onOriginGpsSnapshotCommit={index === 0 ? onGpsOriginSnapshotCommit : undefined}
+                  returnGpsRestoredSnapshot={isLastDay ? gpsReturnSnapshot : null}
+                  onReturnGpsSnapshotCommit={isLastDay ? onGpsReturnSnapshotCommit : undefined}
                   onEdit={(actIndex) => onEditActivity(index, actIndex, day.activities[actIndex])}
                   onDelete={(activityKey) => {
                     const actIndexById = day.activities.findIndex((activity) => activity.id === activityKey);
@@ -385,10 +338,18 @@ export default function TripDetails() {
   const [isApplyingEdit, setIsApplyingEdit] = useState(false);
   const [scheduleDays, setScheduleDays] = useState<TripScheduleDayDto[]>([]);
   const [dynamicDayTravelCosts, setDynamicDayTravelCosts] = useState<Record<number, number>>({});
+  const [gpsOriginFirstDaySnapshot, setGpsOriginFirstDaySnapshot] = useState<GpsTransitSnapshot | null>(null);
+  const [gpsReturnLastDaySnapshot, setGpsReturnLastDaySnapshot] = useState<GpsTransitSnapshot | null>(null);
   const [backupPlan, setBackupPlan] = useState<TripPlan | null>(null);
   const router = useRouter();
   const scrollRef = useRef<ScrollView>(null);
   const scrollOffsetRef = useRef(0);
+
+  const gpsTripCacheKey = `${tripPlan?.id ?? 'new'}:${tripPlan?.days?.length ?? 0}:${tripPlan?.destination ?? ''}`;
+  React.useEffect(() => {
+    setGpsOriginFirstDaySnapshot(null);
+    setGpsReturnLastDaySnapshot(null);
+  }, [gpsTripCacheKey]);
 
   React.useEffect(() => {
     const onBackPress = () => {
@@ -472,49 +433,6 @@ export default function TripDetails() {
   useEffect(() => {
     setDynamicDayTravelCosts({});
   }, [tripPlan?.id, tripPlan?.days?.length]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadEndpointTravelCosts = async () => {
-      setDynamicDayTravelCosts({});
-      if (!tripPlan?.days?.length || isOffline || Platform.OS === 'web') return;
-
-      try {
-        const permission = await Location.getForegroundPermissionsAsync();
-        if (permission.status !== 'granted') return;
-
-        const position = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        const costs = estimatePlanEndpointTravelCosts(
-          {
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-          },
-          tripPlan.days
-        );
-
-        if (cancelled) return;
-
-        const lastIndex = Math.max((tripPlan.days?.length || 1) - 1, 0);
-        const nextCosts: Record<number, number> = {};
-        if (costs.firstCost > 0) nextCosts[0] = Math.round(costs.firstCost * 100) / 100;
-        if (costs.returnCost > 0) {
-          nextCosts[lastIndex] = Math.round(((nextCosts[lastIndex] || 0) + costs.returnCost) * 100) / 100;
-        }
-        setDynamicDayTravelCosts(nextCosts);
-      } catch {
-        if (!cancelled) setDynamicDayTravelCosts({});
-      }
-    };
-
-    void loadEndpointTravelCosts();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isOffline, tripPlan?.id, tripPlan?.days]);
 
   useEffect(() => {
     if (!canEditTrip && isEditingMode) {
@@ -1271,6 +1189,10 @@ export default function TripDetails() {
                         parentScrollRef={scrollRef}
                         scrollOffsetRef={scrollOffsetRef}
                         onDynamicTravelCostChange={handleDynamicTravelCostChange}
+                        gpsOriginSnapshot={gpsOriginFirstDaySnapshot}
+                        onGpsOriginSnapshotCommit={setGpsOriginFirstDaySnapshot}
+                        gpsReturnSnapshot={gpsReturnLastDaySnapshot}
+                        onGpsReturnSnapshotCommit={setGpsReturnLastDaySnapshot}
                     />
                 ))}
 

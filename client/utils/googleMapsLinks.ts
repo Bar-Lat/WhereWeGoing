@@ -66,32 +66,46 @@ export const buildGoogleMapsBetweenUrl = (
   return `https://www.google.com/maps/dir/?api=1&origin=${originParam}&destination=${destinationParam}`;
 };
 
+const openMapUrl = async (url: string): Promise<void> => {
+  try {
+    const canOpen = await Linking.canOpenURL(url);
+    if (!canOpen) {
+      console.warn('Nie można otworzyć linku Google Maps:', url);
+      return;
+    }
+
+    await Linking.openURL(url);
+  } catch (error) {
+    console.warn('Nie udało się otworzyć Google Maps:', error);
+  }
+};
+
 export const openGoogleMapsFromCurrentLocation = async (
   input: MapLocationInput,
   tripDestination: string
 ) => {
   const coordinates = await resolveMapLocation(input, tripDestination);
   if (coordinates) {
-    await Linking.openURL(buildGoogleMapsFromCurrentLocationUrl(coordinates));
+    await openMapUrl(buildGoogleMapsFromCurrentLocationUrl(coordinates));
     return;
   }
 
   const fallback = [input.location, input.name, tripDestination].filter(Boolean).join(', ');
   if (fallback) {
-    await Linking.openURL(buildGoogleMapsFromCurrentLocationUrl(fallback));
+    await openMapUrl(buildGoogleMapsFromCurrentLocationUrl(fallback));
   }
 };
 
 export const openGoogleMapsPlace = async (input: MapLocationInput, tripDestination: string) => {
   const coordinates = await resolveMapLocation(input, tripDestination);
   if (coordinates) {
-    await Linking.openURL(buildGoogleMapsPlaceUrl(coordinates));
+    await openMapUrl(buildGoogleMapsPlaceUrl(coordinates));
     return;
   }
 
   const fallback = [input.location, input.name, tripDestination].filter(Boolean).join(', ');
   if (fallback) {
-    await Linking.openURL(buildGoogleMapsPlaceUrl(fallback));
+    await openMapUrl(buildGoogleMapsPlaceUrl(fallback));
   }
 };
 
@@ -105,13 +119,13 @@ export const openGoogleMapsFromUserCoordinates = async (
 ) => {
   const destCoords = await resolveMapLocation(input, tripDestination);
   if (destCoords) {
-    await Linking.openURL(buildGoogleMapsBetweenUrl(origin, destCoords));
+    await openMapUrl(buildGoogleMapsBetweenUrl(origin, destCoords));
     return;
   }
 
   const fallback = buildMapLocationLabel(input, tripDestination);
   if (fallback) {
-    await Linking.openURL(
+    await openMapUrl(
       `https://www.google.com/maps/dir/?api=1&origin=${origin.latitude},${origin.longitude}&destination=${encodeURIComponent(fallback)}`
     );
   }
@@ -124,13 +138,13 @@ export const openGoogleMapsToUserCoordinates = async (
 ) => {
   const originCoords = await resolveMapLocation(input, tripDestination);
   if (originCoords) {
-    await Linking.openURL(buildGoogleMapsBetweenUrl(originCoords, destination));
+    await openMapUrl(buildGoogleMapsBetweenUrl(originCoords, destination));
     return;
   }
 
   const fallback = buildMapLocationLabel(input, tripDestination);
   if (fallback) {
-    await Linking.openURL(
+    await openMapUrl(
       `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(fallback)}&destination=${destination.latitude},${destination.longitude}`
     );
   }
@@ -150,6 +164,6 @@ export const openGoogleMapsBetweenActivities = async (
   const destination = toCoords ?? buildMapLocationLabel(to, tripDestination);
 
   if (origin && destination) {
-    await Linking.openURL(buildGoogleMapsBetweenUrl(origin, destination));
+    await openMapUrl(buildGoogleMapsBetweenUrl(origin, destination));
   }
 };
