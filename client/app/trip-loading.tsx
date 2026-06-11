@@ -80,6 +80,25 @@ const resolveGenerationOrigin = async () => {
   }
 };
 
+const resolveDestinationCoordinates = async (destination?: string) => {
+  if (Platform.OS === 'web' || !destination?.trim()) return {};
+
+  try {
+    const geocoded = await Location.geocodeAsync(destination.trim());
+    const first = geocoded[0];
+    if (!first) return {};
+
+    return {
+      destinationCoordinates: {
+        latitude: first.latitude,
+        longitude: first.longitude,
+      },
+    };
+  } catch {
+    return {};
+  }
+};
+
 export default function TripLoadingScreen() {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme() ?? 'light';
@@ -157,7 +176,8 @@ export default function TripLoadingScreen() {
       try {
         if (!formData) throw new Error('Brak danych formularza');
         const origin = await resolveGenerationOrigin();
-        const generationFormData = { ...formData, ...origin };
+        const destination = await resolveDestinationCoordinates(formData.destination);
+        const generationFormData = { ...formData, ...origin, ...destination };
         
         // 1. Generowanie planu przez AI
         const plan = await generateTripPlan(generationFormData, session?.access_token ?? undefined);

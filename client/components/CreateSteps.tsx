@@ -29,6 +29,7 @@ export interface TripFormData {
   selectedFriendIds: string[];
   originLabel?: string | null;
   originCoordinates?: { latitude: number; longitude: number } | null;
+  destinationCoordinates?: { latitude: number; longitude: number } | null;
 }
 
 interface StepProps {
